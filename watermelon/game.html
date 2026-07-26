@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Watermelon Game — Human vs AI</title>
+        <link rel="shortcut icon" href="assets/watermelon.png" />
+        <link rel="stylesheet" href="style.css" />
+
+        <!-- Physics stack. Order matters: planck must load before the
+             physics wrapper, and both before the game. -->
+        <script src="lib/p5.min.js"></script>
+        <script src="lib/planck.min.js"></script>
+        <script src="lib/physics.min.js"></script>
+
+        <!-- Assets as base64 data URIs. Must not be deferred: game.js reads
+             WATERMELON_IMAGES at load. Without this, images fail to load
+             under file:// — see embed_assets.py for why. -->
+        <script src="image_data.js"></script>
+
+        <!-- AI opponent. model_data.js must not be deferred: game.js reads
+             WATERMELON_MODEL_B64 at load. Same base64-embedding trick as the
+             images and as Snake/Tetris — onnxruntime fetches a model path, and
+             fetch() of a local file is blocked under file://. -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+        <script src="model_data.js"></script>
+        <script src="game.js" defer></script>
+    </head>
+    <body>
+
+        <a class="back-nav" href="../select.html">← back</a>
+
+        <div id="arena">
+
+            <!-- ── Human board ── -->
+            <div class="board-wrap" id="board-human">
+                <div class="board-main">
+                    <div class="board-controls">
+                        <div class="highScore">
+                            <div class="highScoreTitle">High Score:</div>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="23" height="23" viewBox="0 0 23 23" fill="none">
+                                <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
+                                <path
+                                    d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
+                                    fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                                <path
+                                    d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
+                                    fill="#675424" stroke="white" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <span class="highScoreValue" id="highscore-human">0</span>
+                        </div>
+
+                        <button id="newgame-human">Restart Game</button>
+
+                        <div class="shakes">
+                            <span>Shakes: <span id="shakecount-human">0</span></span>
+                            <button disabled id="shake-human">Shake!</button>
+                            <span id="shakecountdown-human"></span>
+                        </div>
+                    </div>
+
+                    <!-- Label and bubbles live in the same column as the
+                         canvas so they centre on it, not on the whole board
+                         including the side column. -->
+                    <div class="board-column">
+                        <div class="board-label">YOU</div>
+
+                        <div class="info-row">
+                            <div class="bubble">
+                                <span class="bubble-title">Score</span>
+                                <span id="score-human">0</span>
+                            </div>
+                            <div class="bubble next">
+                                <span class="bubble-title">Next</span>
+                                <img id="nextball-human" src="" alt="" />
+                            </div>
+                        </div>
+
+                        <main id="canvas-human">
+                            <div class="overlay gameover" id="gameover-human" hidden>
+                                <div class="overlay-title">Game Over</div>
+                                <div class="overlay-sub" id="gameover-score-human"></div>
+                                <button id="playagain-human">Play Again</button>
+                            </div>
+                        </main>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── VS divider ── -->
+            <div id="vs">VS</div>
+
+            <!-- ── AI board ──
+                 Scaffold: renders the identical board and stays idle until a
+                 trained model is wired into the AI hook in game.js. -->
+            <div class="board-wrap" id="board-ai">
+                <div class="board-main">
+                    <div class="board-column">
+                        <div class="board-label">AI</div>
+
+                        <div class="info-row">
+                            <div class="bubble">
+                                <span class="bubble-title">Score</span>
+                                <span id="score-ai">0</span>
+                            </div>
+                            <div class="bubble next">
+                                <span class="bubble-title">Next</span>
+                                <img id="nextball-ai" src="" alt="" />
+                            </div>
+                        </div>
+
+                        <main id="canvas-ai">
+                            <div class="overlay" id="status-ai">
+                                <div class="overlay-sub">Awaiting model</div>
+                            </div>
+                            <div class="overlay gameover" id="gameover-ai" hidden>
+                                <div class="overlay-title">Game Over</div>
+                                <div class="overlay-sub" id="gameover-score-ai"></div>
+                            </div>
+                        </main>
+
+                        <!-- Speed multiplier for the AI, matching Tetris.
+                             Scales both the drop cooldown and how fast the
+                             cloud slides to its target. -->
+                        <div class="speed-controls" id="speed-ai" role="group" aria-label="AI speed">
+                            <button type="button" data-speed="0.25">0.25x</button>
+                            <button type="button" data-speed="0.5">0.5x</button>
+                            <button type="button" data-speed="0.75">0.75x</button>
+                            <button type="button" data-speed="1" class="active">1x</button>
+                            <button type="button" data-speed="1.5">1.5x</button>
+                            <button type="button" data-speed="1.75">1.75x</button>
+                            <button type="button" data-speed="2">2x</button>
+                        </div>
+                    </div>
+
+                    <!-- Mirrors the human board's left column, so the two
+                         boards are symmetric about the VS divider. -->
+                    <div class="board-controls">
+                    <div class="highScore">
+                        <div class="highScoreTitle">High Score:</div>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="23" height="23" viewBox="0 0 23 23" fill="none">
+                            <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
+                            <path
+                                d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
+                                fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path
+                                d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
+                                fill="#675424" stroke="white" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span class="highScoreValue" id="highscore-ai">0</span>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+        </div>
+    </body>
+</html>

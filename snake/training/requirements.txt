@@ -1,0 +1,8 @@
+gymnasium>=0.29
+numpy>=1.24
+torch>=2.1
+stable-baselines3>=2.2
+onnx>=1.15
+tqdm>=4.66
+rich>=13.0
+tensorboard>=2.15

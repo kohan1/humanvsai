@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>select — human vs ai</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; min-height: 100%;
+            background: #080808; color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+        .back {
+            position: fixed; top: 1.6rem; left: 1.8rem;
+            display: inline-flex; align-items: center; gap: 0.4em;
+            font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase;
+            color: #555; text-decoration: none; transition: color 0.15s; z-index: 100;
+        }
+        .back:hover { color: #bbb; }
+        .page {
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding: 6rem 2rem 4rem; position: relative; z-index: 10;
+        }
+        .header {
+            text-align: center; margin-bottom: 3.5rem;
+            opacity: 0; transform: translateY(16px);
+            animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.05s forwards;
+        }
+        .header .eyebrow {
+            font-size: 0.58rem; letter-spacing: 0.24em; text-transform: uppercase;
+            color: #555; margin-bottom: 0.9rem;
+        }
+        .header h1 {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+            font-weight: 300; letter-spacing: -0.01em; color: #fff;
+        }
+        .grid {
+            display: grid; grid-template-columns: repeat(3, minmax(0, 260px));
+            justify-content: center;
+            gap: 1px; width: fit-content; max-width: 100%;
+            background: #1e1e1e; border: 1px solid #1e1e1e;
+            opacity: 0; animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.22s forwards;
+        }
+        @media (max-width: 720px) {
+            .grid { grid-template-columns: repeat(auto-fit, minmax(220px, 260px)); }
+        }
+        .card {
+            display: flex; flex-direction: column; justify-content: space-between;
+            padding: 2rem 2rem 1.8rem; background: #080808;
+            text-decoration: none; color: #aaa; min-height: 180px;
+            transition: background 0.18s, color 0.18s; position: relative; overflow: hidden;
+        }
+        .card::after {
+            content: ''; position: absolute; inset: 0;
+            border: 1px solid transparent; transition: border-color 0.18s; pointer-events: none;
+        }
+        .card:hover { background: #111; color: #fff; }
+        .card:hover::after { border-color: rgba(255,255,255,0.15); }
+        .card-num { font-size: 0.55rem; letter-spacing: 0.2em; text-transform: uppercase; color: #444; }
+        .card-name {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.55rem; font-weight: 300; letter-spacing: -0.01em; line-height: 1.1; color: inherit;
+        }
+        .card-meta { display: flex; align-items: center; justify-content: space-between; }
+        .card-tag { font-size: 0.55rem; letter-spacing: 0.16em; text-transform: uppercase; color: #444; }
+        .card-arrow { font-size: 0.85rem; color: #444; transition: transform 0.2s, color 0.18s; }
+        .card:hover .card-arrow { transform: translateX(4px); color: #aaa; }
+        .foot {
+            margin-top: 4rem; font-size: 0.52rem; letter-spacing: 0.16em;
+            color: rgba(255,255,255,0.1); text-transform: uppercase;
+            opacity: 0; animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.45s forwards;
+        }
+        @keyframes up { to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) {
+            .header, .grid, .foot { animation: none; opacity: 1; transform: none; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mesh"></canvas>
+    <a class="back" href="index.html">← back</a>
+    <div class="page">
+        <div class="header">
+            <p class="eyebrow">select a game</p>
+            <h1>human vs ai</h1>
+        </div>
+        <div class="grid">
+            <a class="card" href="snake/game.html">
+                <span class="card-num">01</span>
+                <span class="card-name">Snake</span>
+                <div class="card-meta">
+                    <span class="card-tag">arcade</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+            <a class="card" href="tetris/game.html">
+                <span class="card-num">02</span>
+                <span class="card-name">Tetris</span>
+                <div class="card-meta">
+                    <span class="card-tag">strategy</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+            <a class="card" href="watermelon/game.html">
+                <span class="card-num">03</span>
+                <span class="card-name">Watermelon Game</span>
+                <div class="card-meta">
+                    <span class="card-tag">physics</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <script>
+    (() => {
+        const cvs = document.getElementById('mesh');
+        const ctx = cvs.getContext('2d');
+
+        const COLS = 22, ROWS = 14;
+        const CURSOR_RADIUS = 160;
+        const REPEL_FORCE   = 0.32;
+        const DRIFT_AMP     = 12;
+        const RETURN_SPEED  = 0.055;
+
+        let W, H, pts;
+        let driftT = 0, waveT = 0;
+        let mouseX = -9999, mouseY = -9999;
+
+        window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        window.addEventListener('touchmove', e => {
+            mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY;
+        }, { passive: true });
+
+        function resize() {
+            W = cvs.width  = window.innerWidth;
+            H = cvs.height = window.innerHeight;
+            build();
+        }
+
+        function build() {
+            pts = [];
+            const cw = W / COLS, ch = H / ROWS;
+            for (let r = 0; r <= ROWS; r++) {
+                for (let c = 0; c <= COLS; c++) {
+                    pts.push({
+                        bx: c * cw, by: r * ch,
+                        cx: c * cw, cy: r * ch,
+                        ox: (Math.random()-0.5) * DRIFT_AMP * 2.2,
+                        oy: (Math.random()-0.5) * DRIFT_AMP * 2.2,
+                        f:  0.28 + Math.random() * 0.55,
+                        ph: Math.random() * Math.PI * 2,
+                    });
+                }
+            }
+        }
+
+        const WAVE_AMP = 18;
+        function waveDisplacement(bx, by) {
+            const nx = bx / W, ny = by / H;
+            const w1 = Math.sin(nx * 4.5 + ny * 2.2 + waveT);
+            const w2 = Math.sin(nx * 2.6 - ny * 3.8 + waveT * 0.62 + 1.8);
+            const w3 = Math.sin(nx * 1.4 + ny * 1.4 - waveT * 0.4 + 3.1);
+            return (w1 * 0.45 + w2 * 0.35 + w3 * 0.2) * WAVE_AMP;
+        }
+
+        function update() {
+            driftT += 0.00028;
+            waveT  += 0.0062;
+            for (let i = 0; i < pts.length; i++) {
+                const p = pts[i];
+                const wob = waveDisplacement(p.bx, p.by);
+                const tx = p.bx + p.ox * Math.sin(driftT * p.f + p.ph);
+                const ty = p.by + p.oy * Math.cos(driftT * p.f + p.ph + 1.3) + wob;
+                const dx = p.cx - mouseX, dy = p.cy - mouseY;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                let rx = 0, ry = 0;
+                if (dist < CURSOR_RADIUS && dist > 0.1) {
+                    const s = (1 - dist / CURSOR_RADIUS) * REPEL_FORCE * CURSOR_RADIUS;
+                    rx = (dx / dist) * s; ry = (dy / dist) * s;
+                }
+                p.cx += (tx + rx - p.cx) * RETURN_SPEED;
+                p.cy += (ty + ry - p.cy) * RETURN_SPEED;
+                p.wob = wob;
+            }
+        }
+
+        function drawTri(i1, i2, i3) {
+            const mx = (pts[i1].cx + pts[i2].cx + pts[i3].cx) / 3;
+            const my = (pts[i1].cy + pts[i2].cy + pts[i3].cy) / 3;
+            const md = Math.sqrt((mx - mouseX)**2 + (my - mouseY)**2);
+            const cg = Math.max(0, 1 - md / CURSOR_RADIUS);
+
+            const avgWob = (pts[i1].wob + pts[i2].wob + pts[i3].wob) / 3;
+            const depth = (avgWob / WAVE_AMP + 1) / 2;
+
+            const r = Math.round(200 + depth * 55);
+            const g = Math.round(210 + depth * 45);
+            const b = 255;
+
+            const alpha = 0.08 + cg * 0.28 + depth * 0.11;
+            const lw    = 0.3 + cg * 0.55 + depth * 0.32;
+
+            ctx.strokeStyle = `rgba(${r},${g},${b},${Math.min(alpha, 0.68)})`;
+            ctx.lineWidth   = lw;
+            ctx.beginPath();
+            ctx.moveTo(pts[i1].cx, pts[i1].cy);
+            ctx.lineTo(pts[i2].cx, pts[i2].cy);
+            ctx.lineTo(pts[i3].cx, pts[i3].cy);
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        function drawNodes() {
+            for (let i = 0; i < pts.length; i++) {
+                const p = pts[i];
+                const depth = (p.wob / WAVE_AMP + 1) / 2;
+                if (depth < 0.72) continue;
+                const md = Math.sqrt((p.cx - mouseX)**2 + (p.cy - mouseY)**2);
+                const cg = Math.max(0, 1 - md / CURSOR_RADIUS);
+                const size = 1 + depth * 1.3 + cg * 1.1;
+                const alpha = (depth - 0.72) * 2.4 + cg * 0.28;
+                ctx.beginPath();
+                ctx.arc(p.cx, p.cy, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(220,232,255,${Math.min(alpha, 0.75)})`;
+                ctx.fill();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            update();
+            const stride = COLS + 1;
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const a = r * stride + c;
+                    drawTri(a, a+1, a+stride);
+                    drawTri(a+1, a+stride+1, a+stride);
+                }
+            }
+
+            drawNodes();
+
+            if (mouseX > 0) {
+                const g = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, CURSOR_RADIUS);
+                g.addColorStop(0,   'rgba(210,225,255,0.045)');
+                g.addColorStop(0.5, 'rgba(210,225,255,0.015)');
+                g.addColorStop(1,   'rgba(210,225,255,0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(mouseX, mouseY, CURSOR_RADIUS, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        draw();
+    })();
+    </script>
+</body>
+</html>

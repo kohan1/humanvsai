@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tetris Training — Live Visualiser</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a0a;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid #1a1a1a;
+    position: sticky;
+    top: 0;
+    background: #0a0a0a;
+    z-index: 10;
+  }
+
+  header h1 {
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: 0.2em;
+    color: #555;
+    text-transform: uppercase;
+  }
+
+  #stats {
+    display: flex;
+    gap: 32px;
+    font-size: 0.75rem;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+
+  .stat-label {
+    color: #444;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .stat-value {
+    color: #fff;
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #status {
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 2px;
+    background: #1a1a1a;
+    color: #555;
+    letter-spacing: 0.1em;
+  }
+
+  #status.connected { background: #0d2a0d; color: #4caf50; }
+  #status.error     { background: #2a0d0d; color: #f44336; }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 6px;
+    padding: 16px;
+  }
+
+  .env-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .env-label {
+    font-size: 0.5rem;
+    color: #333;
+    letter-spacing: 0.1em;
+  }
+
+  .env-canvas-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  canvas.env-canvas {
+    display: block;
+    image-rendering: pixelated;
+    width: 100%;
+    aspect-ratio: 10/18;
+    outline: 1px solid #1a1a1a;
+  }
+
+  .piece-counter {
+    position: absolute;
+    top: 2px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    font-size: 0.45rem;
+    color: rgba(255,255,255,0.7);
+    pointer-events: none;
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 3px #000;
+  }
+
+  /* Colour map matching game.js exactly */
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Training Visualiser</h1>
+  <div id="stats">
+    <div class="stat">
+      <span class="stat-label">Steps</span>
+      <span class="stat-value" id="stat-steps">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Ep Reward</span>
+      <span class="stat-value" id="stat-reward">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Ep Length</span>
+      <span class="stat-value" id="stat-len">—</span>
+    </div>
+    <div class="stat">
+      <span class="stat-label">Envs</span>
+      <span class="stat-value" id="stat-envs">—</span>
+    </div>
+  </div>
+  <div id="status">CONNECTING...</div>
+</header>
+
+<div id="grid"></div>
+
+<script>
+// Colours matching game.js CONFIG.COLORS exactly
+var COLORS = [
+  "#FF0D72","#0DC2FF","#0DFF72","#F538FF",
+  "#FF8E0D","#FFE138","#3877FF"
+];
+
+var ARENA_W = 10, ARENA_H = 18;
+var canvases = [];
+var ctxs     = [];
+var grid     = document.getElementById("grid");
+var statusEl = document.getElementById("status");
+
+function createGrid(n) {
+  grid.innerHTML = "";
+  canvases = [];
+  ctxs     = [];
+
+  // Responsive columns
+  var cols = n <= 8 ? n : n <= 16 ? 8 : n <= 24 ? 8 : 8;
+  grid.style.gridTemplateColumns = "repeat(" + cols + ", 1fr)";
+
+  for (var i = 0; i < n; i++) {
+    var wrap   = document.createElement("div");
+    wrap.className = "env-wrap";
+
+    var label  = document.createElement("div");
+    label.className = "env-label";
+    label.textContent = "ENV " + (i + 1);
+
+    var canvasWrap = document.createElement("div");
+    canvasWrap.className = "env-canvas-wrap";
+
+    var canvas = document.createElement("canvas");
+    canvas.className  = "env-canvas";
+    canvas.width      = ARENA_W;
+    canvas.height     = ARENA_H;
+
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, ARENA_W, ARENA_H);
+
+    var counter = document.createElement("div");
+    counter.className = "piece-counter";
+    counter.textContent = "0";
+
+    canvasWrap.appendChild(canvas);
+    canvasWrap.appendChild(counter);
+    wrap.appendChild(label);
+    wrap.appendChild(canvasWrap);
+    grid.appendChild(wrap);
+
+    canvases.push(canvas);
+    ctxs.push(ctx);
+  }
+}
+
+function drawEnv(idx, board, pieces) {
+  if (idx >= ctxs.length) return;
+  var ctx = ctxs[idx];
+
+  // Background
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0, 0, ARENA_W, ARENA_H);
+
+  // Cells
+  for (var r = 0; r < ARENA_H; r++) {
+    for (var c = 0; c < ARENA_W; c++) {
+      var v = board[r] && board[r][c];
+      if (!v) continue;
+      ctx.fillStyle = COLORS[Math.max(0, (v - 1)) % COLORS.length];
+      ctx.fillRect(c, r, 1, 1);
+    }
+  }
+
+  // Danger line at row 3
+  ctx.fillStyle = "rgba(255,40,40,0.5)";
+  ctx.fillRect(0, 3, ARENA_W, 0.15);
+
+  // Update piece counter
+  var counters = document.querySelectorAll(".piece-counter");
+  if (counters[idx]) {
+    counters[idx].textContent = pieces !== undefined ? pieces + " pcs" : "";
+  }
+}
+
+function updateStats(data) {
+  document.getElementById("stat-steps").textContent =
+    data.steps ? data.steps.toLocaleString() : "—";
+  document.getElementById("stat-reward").textContent =
+    data.mean_r !== undefined ? (data.mean_r > 0 ? "+" : "") + data.mean_r.toFixed(1) : "—";
+  document.getElementById("stat-len").textContent =
+    data.mean_len !== undefined ? data.mean_len.toFixed(1) : "—";
+  document.getElementById("stat-envs").textContent =
+    data.n_envs || "—";
+}
+
+// ── WebSocket connection ──────────────────────────────────────────────────────
+var ws, reconnectTimer;
+var gridCreated = false;
+
+function connect() {
+  statusEl.textContent   = "CONNECTING...";
+  statusEl.className     = "";
+
+  ws = new WebSocket("ws://localhost:8765");
+
+  ws.onopen = function() {
+    statusEl.textContent = "LIVE";
+    statusEl.className   = "connected";
+    clearTimeout(reconnectTimer);
+  };
+
+  ws.onmessage = function(e) {
+    try {
+      var data = JSON.parse(e.data);
+
+      // Create grid on first message or if n_envs changes
+      if (!gridCreated || canvases.length !== data.n_envs) {
+        createGrid(data.n_envs || 32);
+        gridCreated = true;
+      }
+
+      // Draw each environment
+      // Draw each environment
+      if (data.envs) {
+        for (var i = 0; i < data.envs.length; i++) {
+          var env    = data.envs[i];
+          var board  = Array.isArray(env) ? env : env.board;
+          var pieces = Array.isArray(env) ? undefined : env.pieces;
+          drawEnv(i, board, pieces);
+        }
+      }
+
+      updateStats(data);
+    } catch(err) {
+      console.error("Parse error:", err);
+    }
+  };
+
+  ws.onclose = function() {
+    statusEl.textContent = "DISCONNECTED";
+    statusEl.className   = "error";
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = function() {
+    statusEl.textContent = "ERROR — is visualiser_server.py running?";
+    statusEl.className   = "error";
+  };
+}
+
+// Init with empty grid while waiting
+createGrid(32);
+connect();
+</script>
+</body>
+</html>

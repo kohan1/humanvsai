@@ -1,0 +1,56 @@
+# ── Training artifacts ───────────────────────────────────────────────────────
+# Checkpoints and TensorBoard logs are intermediate: 2.1 GB of them here, and
+# none of it is worth moving between machines. Retraining regenerates them.
+checkpoints/
+checkpoints_*/
+tb_logs/
+logs/
+*.log
+
+# TensorBoard event files, wherever they land.
+events.out.tfevents.*
+
+# Scratch files the pipelines write while capturing eval output for their gates.
+_bc_eval.txt
+_final_eval.txt
+
+# Cached training data. tetris/training/heuristic_data.json alone is 1.3 GB —
+# it is a regenerable cache of heuristic rollouts, not source.
+heuristic_data.json
+recordings.json
+vis_state.json
+
+# Trained models. Large, binary, and produced on the training PC rather than
+# edited. Move the one you actually need by hand (or Syncthing) after training;
+# Git is the wrong tool for a 19 MB blob that changes wholesale each run.
+models/
+*.zip
+*.onnx
+*.onnx.data
+
+# ── Generated, machine-local ─────────────────────────────────────────────────
+# Rebuilt by embed_model.py / embed_assets.py. Syncing them is pure waste, and
+# a stale copy is worse than none — it silently pairs an old model with a new
+# encoder. Re-run the embed scripts after pulling.
+model_data.js
+image_data.js
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ── OS noise ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editors ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# per-game record of what is live on the site
+.shipped_score

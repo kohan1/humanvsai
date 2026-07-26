@@ -1,0 +1,338 @@
+/* Watermelon Game — human vs ai
+   The board's own look (cream canvas, sage backdrop, whitesmoke bubbles,
+   Nanum Myeongjo) is carried over unchanged from the original game; only
+   the surrounding two-board framing is new. Both boards are styled from the
+   same rules, so the AI side is visually identical to the human side. */
+
+:root {
+    /* Lifted verbatim from the original game. */
+    --backdrop:   #bfcca4;
+    --canvas-bg:  #FDFBEC;
+    --bubble-bg:  whitesmoke;
+    --accent:     #675424;
+    --canvas-w:   448px;
+    --canvas-h:   599px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+    background-color: var(--backdrop);
+    margin: 0;
+    padding: 0;
+    /* Matches Tetris and Snake, so all three games read as one site. */
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 100%;
+    color: #000;
+}
+
+body {
+    overscroll-behavior: none;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Even top/bottom padding so the boards sit vertically centred; the old
+       4.5rem top vs 2.5rem bottom pushed them low. */
+    padding: 3.5rem 1.5rem 3.5rem;
+    text-align: center;
+}
+
+*[hidden] { display: none !important; }
+
+/* ── Back navigation ─────────────────────────────────────────────────────── */
+
+.back-nav {
+    position: fixed;
+    top: 1.5rem;
+    left: 1.75rem;
+    z-index: 100;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    opacity: 0.65;
+    text-decoration: none;
+    transition: opacity 0.15s;
+}
+.back-nav:hover { opacity: 1; }
+
+/* ── Two-board layout ────────────────────────────────────────────────────── */
+
+#arena {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 40px;
+}
+
+#vs {
+    align-self: center;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+.board-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+
+.board-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    opacity: 0.75;
+}
+
+/* ── Info bubbles (original .bubble rules, unchanged) ────────────────────── */
+
+.info-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+}
+
+.bubble {
+    height: 150px;
+    aspect-ratio: 1;
+    background-color: var(--bubble-bg);
+    border-radius: 50%;
+    display: grid;
+    align-content: center;
+    justify-content: center;
+    justify-items: center;
+    font-size: 32px;
+    gap: 1rem;
+    box-shadow: 6px 6px 9.3px rgba(0, 0, 0, 0.25);
+}
+
+/* The original gave the next-ball bubble a smaller type scale. */
+.bubble.next {
+    font-size: 16px;
+    gap: 0;
+}
+
+.bubble.next img {
+    max-width: 90px;
+    max-height: 70px;
+    object-fit: contain;
+}
+
+.bubble .bubble-title {
+    font-size: 16px;
+}
+
+.highScore {
+    display: grid;
+    justify-content: center;
+    align-items: center;
+    align-content: center;
+    justify-items: center;
+    grid-template-columns: 1fr 1fr;
+    width: max-content;
+    gap: 0.5rem;
+    margin: 0 auto;
+}
+
+.highScoreValue {
+    color: var(--accent);
+    justify-self: start;
+    font-weight: 600;
+}
+
+.highScoreTitle { grid-column: span 2; }
+
+/* ── Board ───────────────────────────────────────────────────────────────── */
+
+main {
+    position: relative;
+    width: var(--canvas-w);
+    height: var(--canvas-h);
+    flex-shrink: 0;
+    background-color: var(--canvas-bg);
+    box-shadow: 6px 6px 9.3px rgba(0, 0, 0, 0.25);
+}
+
+main canvas {
+    display: block;
+    width: var(--canvas-w);
+    height: var(--canvas-h);
+}
+
+/* ── Overlays ────────────────────────────────────────────────────────────── */
+
+.overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    background: rgba(253, 251, 236, 0.88);
+    color: var(--accent);
+    pointer-events: none;
+}
+
+.overlay.gameover { pointer-events: auto; }
+
+.overlay .overlay-title {
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.overlay .overlay-sub {
+    font-size: 15px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.7;
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+
+/* Canvas plus its side column. The controls sit beside the board rather
+   than under it so they stay in view without scrolling past a 599px canvas.
+   Human is [controls | board], AI is [board | controls] — equal widths, so
+   the two boards are symmetric about the VS divider and the arena centres. */
+.board-main {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+/* Label, bubbles and canvas as one unit, so the label and bubbles centre on
+   the canvas rather than on the board plus its side column. */
+.board-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.board-controls {
+    width: 150px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    /* Centre the column's contents. With `stretch` the button spanned the full
+       150px while the high score and shakes sat at their natural width, so the
+       three items didn't line up with each other. */
+    align-items: center;
+    text-align: center;
+    gap: 0.75rem;
+    font-size: 14px;
+    padding-top: 0.25rem;
+}
+
+/* Sized to the text rather than the column, so it centres with everything
+   else instead of spanning the full width. */
+.board-controls button { width: auto; }
+
+.board-controls .shakes {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.25rem;
+}
+
+/* The AI board's column holds only a high score — keep the same 150px width
+   as the human side so both boards stay the same overall width, and align it
+   to the top so it sits level with the human board's high score rather than
+   floating in the middle of the column. */
+#board-ai .board-controls { justify-content: flex-start; }
+
+button {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 0.45em 0.9em;
+    color: var(--accent);
+    background-color: var(--bubble-bg);
+    border: 1px solid rgba(103, 84, 36, 0.35);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.12s, opacity 0.12s;
+}
+
+button:hover:not(:disabled) { background-color: #fff; }
+
+button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+label { cursor: pointer; }
+
+/* The AI board used to be dimmed to 0.55 opacity while it was a scaffold with
+   no model behind it. It plays for real now, so the wash just made it look
+   washed out next to the human board. */
+
+/* Each board is now 150 + 20 + 448 = 618px, so the arena needs ~1400px with
+   padding. Tighten the spacing before giving up and stacking, which keeps the
+   boards side by side down to ~1340px instead of clipping a side column. */
+@media (max-width: 1440px) {
+    body { padding-left: 0.75rem; padding-right: 0.75rem; }
+    #arena { gap: 24px; }
+    .board-main { gap: 0.9rem; }
+}
+
+@media (max-width: 1340px) {
+    #arena { flex-direction: column; align-items: center; }
+    #vs { align-self: center; }
+}
+
+/* ── AI speed controls ──────────────────────────────────────────────────────
+   Same control as Tetris, restyled for this game's palette. Scales the AI's
+   drop cooldown and cloud tracking together — speeding up one without the
+   other makes the AI wait on an alignment it cannot reach in time. */
+.speed-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 0.75rem;
+    max-width: var(--canvas-w);
+}
+
+.speed-controls button {
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    padding: 3px 7px;
+    width: auto;
+    cursor: pointer;
+    color: var(--accent);
+    opacity: 0.6;
+    background-color: var(--bubble-bg);
+    border: 1px solid rgba(103, 84, 36, 0.3);
+    border-radius: 3px;
+    transition: opacity 0.12s, background-color 0.12s, border-color 0.12s;
+}
+
+.speed-controls button:hover { opacity: 1; }
+
+.speed-controls button.active {
+    opacity: 1;
+    background-color: #fff;
+    border-color: var(--accent);
+    font-weight: 700;
+}

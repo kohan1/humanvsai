@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Watermelon training pipeline, with gates.
+#
+# Same structure as snake/training/run_v2_pipeline.sh, and for the same reason:
+# the ungated version of that script spent hours fine-tuning a BC policy that
+# had already evaluated at 0.00. Every stage here has to earn the next one.
+#
+# PYTHONIOENCODING=utf-8: torch/SB3 print glyphs cp1252 cannot encode.
+# python -u: stdout is a pipe here, and buffering means no visible progress.
+set -o pipefail
+cd "$(dirname "$0")"
+export PYTHONIOENCODING=utf-8
+
+# The heuristic teacher scores ~800. A BC clone worth fine-tuning should be in
+# the same order of magnitude; random play scores ~500, so the gate sits above
+# random to catch a clone that learned nothing useful.
+MIN_BC_SCORE=550
+
+score_of() {
+    grep -oE "Average score: [0-9.]+" "$1" | tail -1 | grep -oE "[0-9.]+"
+}
+
+# Float comparison via awk, not bc — bc is not installed on this box, and
+# `[ "$(… | bc -l)" = "1" ]` fails *open* when bc is missing, silently
+# disabling the gate it implements.
+lt() { awk -v a="$1" -v b="$2" 'BEGIN { exit !(a < b) }'; }
+
+echo "=== [0/5] pre-flight ==="
+python -u sanity_check.py || {
+    echo "PIPELINE ABORTED: sanity checks failed. Fix the env before training."
+    exit 1
+}
+
+echo
+echo "=== [1/5] behavioural cloning ==="
+python -u pretrain.py || { echo "PIPELINE FAILED: pretrain"; exit 1; }
+
+echo
+echo "=== [2/5] gate: is the BC policy actually any good? ==="
+python -u evaluate.py watermelon_pretrained.zip 20 2>&1 | tee _bc_eval.txt
+BC=$(score_of _bc_eval.txt)
+echo "BC score: ${BC:-unknown} (gate: >= $MIN_BC_SCORE)"
+if [ -z "$BC" ] || lt "$BC" "$MIN_BC_SCORE"; then
+    echo
+    echo "PIPELINE ABORTED: BC scored ${BC:-unknown}, below $MIN_BC_SCORE."
+    echo "Check worst_class_recall in the epoch lines above — a value near 0.00"
+    echo "means the policy collapsed onto a few columns. Not worth PPO time."
+    exit 1
+fi
+
+echo
+echo "=== [3/5] PPO training ==="
+python -u train.py || { echo "PIPELINE FAILED: train"; exit 1; }
+
+echo
+echo "=== [4/5] final evaluation ==="
+python -u evaluate.py watermelon_final.zip 30 2>&1 | tee _final_eval.txt
+FINAL=$(score_of _final_eval.txt)
+
+echo
+echo "=== [5/5] regression check ==="
+echo "heuristic teacher: run 'python evaluate.py heuristic 20' to compare"
+echo "BC:    ${BC:-?}"
+echo "Final: ${FINAL:-?}"
+if [ -n "$FINAL" ] && [ -n "$BC" ] && lt "$FINAL" "$BC"; then
+    echo
+    echo "WARNING: PPO made the policy WORSE than behavioural cloning."
+    echo "watermelon_pretrained.zip is the better model. Do not export the final one."
+    echo "Suspect (in order): reward ordering, ent_coef on the resume branch,"
+    echo "learning rate. Run sanity_check.py first."
+else
+    echo "PPO improved on BC."
+fi
+
+echo
+echo "=== PIPELINE COMPLETE ==="

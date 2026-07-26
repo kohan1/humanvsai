@@ -1,0 +1,19 @@
+# Line endings. This project is edited on both a Mac and a Windows PC, and
+# without this every file looks fully rewritten after a round trip because one
+# machine writes CRLF and the other LF — which buries real changes in noise and
+# causes phantom merge conflicts.
+#
+# Normalise to LF in the repository; Git checks out whatever each OS prefers.
+* text=auto eol=lf
+
+# Binary assets: never touch these, and never try to diff them as text.
+*.png binary
+*.jpg binary
+*.onnx binary
+*.zip binary
+*.woff binary
+*.woff2 binary
+
+# Minified vendor libraries are not worth diffing either — collapse them in
+# pull requests so a real change is not lost in a 1 MB single-line file.
+*.min.js linguist-vendored -diff
