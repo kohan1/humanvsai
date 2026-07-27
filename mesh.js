@@ -27,6 +27,21 @@ function initMesh(canvasId, opts) {
     const RETURN_SPEED  = 0.055;
     const WAVE_AMP      = 18;
 
+    /* OVERSCAN — rings of cells built OUTSIDE the viewport on every side.
+     *
+     * Every point moves: drift (up to ~26px), the wave (18px) and the cursor
+     * push (REPEL_FORCE * CURSOR_RADIUS, ~51px). Without overscan the outermost
+     * row and column are the edge of the mesh, so any of that motion pulling
+     * them inward opens a bare strip along the border — most visible when the
+     * cursor is near an edge and shoves the boundary points away.
+     *
+     * Two rings covers the worst case (~95px) at any sensible cell size. The
+     * cost is the extra triangles: 26x18 instead of 22x14. */
+    const OVER = 2;
+    const gridCols = COLS + OVER * 2;
+    const gridRows = ROWS + OVER * 2;
+    const stride = gridCols + 1;
+
     let W, H, pts;
     let driftT = 0, waveT = 0;
     let mouseX = -9999, mouseY = -9999;
@@ -44,12 +59,15 @@ function initMesh(canvasId, opts) {
 
     function build() {
         pts = [];
+        // Cell size still comes from the VISIBLE area, so the mesh looks the
+        // same density as before; the overscan rings simply extend past it.
         const cw = W / COLS, ch = H / ROWS;
-        for (let r = 0; r <= ROWS; r++) {
-            for (let c = 0; c <= COLS; c++) {
+        for (let r = 0; r <= gridRows; r++) {
+            for (let c = 0; c <= gridCols; c++) {
+                const x = (c - OVER) * cw, y = (r - OVER) * ch;
                 pts.push({
-                    bx: c * cw, by: r * ch,
-                    cx: c * cw, cy: r * ch,
+                    bx: x, by: y,
+                    cx: x, cy: y,
                     ox: (Math.random()-0.5) * DRIFT_AMP * 2.2,
                     oy: (Math.random()-0.5) * DRIFT_AMP * 2.2,
                     f:  0.28 + Math.random() * 0.55,
@@ -133,9 +151,8 @@ function initMesh(canvasId, opts) {
     function draw() {
         ctx.clearRect(0, 0, W, H);
         update();
-        const stride = COLS + 1;
-        for (let r = 0; r < ROWS; r++) {
-            for (let c = 0; c < COLS; c++) {
+        for (let r = 0; r < gridRows; r++) {
+            for (let c = 0; c < gridCols; c++) {
                 const a = r * stride + c;
                 drawTri(a, a+1, a+stride);
                 drawTri(a+1, a+stride+1, a+stride);
