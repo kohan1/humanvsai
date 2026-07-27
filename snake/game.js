@@ -143,6 +143,15 @@
 
         die() {
             this.isDead = true;
+
+            // Record the match when the HUMAN dies, capturing both scores at
+            // that instant. update() returns early once isDead, so this fires
+            // exactly once. The identity check is needed because both snakes
+            // share this class.
+            if (this === window.snake && typeof MatchResults !== "undefined") {
+                MatchResults.record("snake", score, aiScore, Date.now());
+            }
+
             const original = this.color;
             this.color = "red";
             this.face = this.redFace;

@@ -41,6 +41,7 @@ RUN_NOTES = {
     "train_day1.log": dict(
         game="snake", label="resume · GPU", evalScore=135.78,
         outcome="improved",
+        checkpoint="snake/training/archive/models/snake_final.135pt78.zip",
         note="Reward curve was flat from iteration 50 onward, but evaluation "
              "still came out ahead of the shipped 129.34. Early-stopped on "
              "728 of 728 iterations, 716 of them at epoch 0 of 10.",
@@ -49,6 +50,7 @@ RUN_NOTES = {
     "pipeline_entropy_regression.log": dict(
         game="watermelon", label="BC + PPO with entropy", evalScore=614.40,
         outcome="rejected",
+        checkpoint="watermelon/training/archive/models/watermelon_ppo_614.zip",
         note="ent_coef=0.01 on top of a good behavioural-cloning start "
              "dragged a confident policy back toward uniform.",
     ),
@@ -66,33 +68,43 @@ RUN_NOTES = {
     "pipeline_v2_done.log": dict(
         game="watermelon", label="BC + PPO · separate extractors",
         evalScore=841.87, outcome="improved",
+        checkpoint="watermelon/training/archive/models/watermelon_final.841pt87.zip",
         note="share_features_extractor=False. First run where fitting the "
              "critic could no longer damage the policy.",
     ),
     "train_v3_resume_done.log": dict(
         game="watermelon", label="resume", evalScore=902.10,
         outcome="shipped",
+        parent="pipeline_v2_done.log",
+        checkpoint="watermelon/training/archive/models/watermelon_final.902pt10.zip",
         note="The model currently live on the site.",
     ),
     "train_v4_done.log": dict(
         game="watermelon", label="resume", evalScore=872.00,
         outcome="rejected",
+        parent="train_v3_resume_done.log",
+        checkpoint="watermelon/training/archive/models/watermelon_final.872_rejected.zip",
         note="Below the shipped 902.10, so the install guard refused it.",
     ),
     "train_day1_893.log": dict(
         game="watermelon", label="resume", evalScore=893.03,
         outcome="rejected",
+        parent="train_v3_resume_done.log",
+        checkpoint="watermelon/training/archive/models/watermelon_final.893_rejected.zip",
         note="Third consecutive rejection. Preserved rather than installed.",
     ),
     "train_day2.log": dict(
         game="watermelon", label="resume · CPU", evalScore=936.70,
         outcome="improved",
+        parent="train_v3_resume_done.log",
+        checkpoint="watermelon/training/archive/models/watermelon_final.936pt70.zip",
         note="Beat the shipped model at last, but took 3h45m on CPU for "
              "+3.8%, and early-stopped on 49 of 49 iterations.",
     ),
     "train_day3_gpu.log": dict(
         game="watermelon", label="resume · GPU, wider trust region",
         outcome="running",
+        parent="train_day2.log",
         note="First run on the GPU with 20 envs, target_kl 0.05 and "
              "best-checkpoint tracking. No early stopping at all.",
     ),
@@ -143,6 +155,64 @@ def parse_log(path: pathlib.Path):
             current = {}
 
     return series, evals
+
+
+def describe_onnx(path: pathlib.Path):
+    """
+    Describe a model from its .onnx rather than its training checkpoint.
+
+    All three games have a .onnx; only two still have the SB3 .zip that made
+    it (Tetris's 1B-step checkpoint is gone). Reading the exported graph is
+    therefore the only way to describe all three the same way — and it
+    describes what the site actually runs, not what training once held.
+
+    Conv and Gemm are the layers with weights; everything between them is
+    activations and reshapes, which would pad the diagram without adding
+    anything.
+    """
+    try:
+        import numpy as np
+        import onnx
+    except ImportError:
+        return None
+    if not path.exists():
+        return None
+
+    model = onnx.load(str(path))
+    graph = model.graph
+    init = {i.name: i for i in graph.initializer}
+    total_params = sum(int(np.prod(i.dims)) for i in init.values())
+
+    def shape_of(t):
+        return [d.dim_param or d.dim_value
+                for d in t.type.tensor_type.shape.dim]
+
+    layers = []
+    for node in graph.node:
+        if node.op_type not in ("Conv", "Gemm", "MatMul"):
+            continue
+        weight = None
+        for name in node.input:
+            if name in init and len(init[name].dims) >= 2:
+                weight = init[name]
+                break
+        if weight is None:
+            continue
+        dims = [int(d) for d in weight.dims]
+        layers.append({
+            "kind": "conv" if node.op_type == "Conv" else "dense",
+            "shape": dims,
+            "params": int(np.prod(dims)),
+        })
+
+    return {
+        "file": path.name,
+        "sizeMB": round(path.stat().st_size / 1048576, 1),
+        "params": total_params,
+        "inputs": [{"name": i.name, "shape": shape_of(i)} for i in graph.input],
+        "outputs": [{"name": o.name, "shape": shape_of(o)} for o in graph.output],
+        "layers": layers,
+    }
 
 
 def parse_tetris_tensorboard():
@@ -310,6 +380,12 @@ def main():
                 "note": note.get("note"),
                 "outcome": note.get("outcome"),
                 "evalScore": note.get("evalScore"),
+                "parent": note.get("parent"),
+                # Only advertise a checkpoint that is actually still on disk,
+                # or the progression track would offer a model it cannot load.
+                "checkpoint": note.get("checkpoint")
+                              if note.get("checkpoint")
+                              and (ROOT / note["checkpoint"]).exists() else None,
                 "steps": int(last["t"]),
                 "elapsed": int(elapsed),
                 "endedAt": ended.isoformat(timespec="seconds"),
@@ -332,11 +408,62 @@ def main():
         if f.exists():
             shipped[game] = float(f.read_text().strip())
 
+    # Cumulative steps along each lineage. A resume inherits everything its
+    # parent had already trained, so the progression track can plot skill
+    # against total experience rather than against one run's own counter.
+    by_file = {r["file"]: r for r in runs}
+    def cumulative(run, seen=None):
+        seen = seen or set()
+        if run["file"] in seen:          # a mis-typed parent must not hang here
+            return run["steps"]
+        seen.add(run["file"])
+        parent = by_file.get(run.get("parent"))
+        return run["steps"] + (cumulative(parent, seen) if parent else 0)
+    for r in runs:
+        r["cumulativeSteps"] = cumulative(r)
+        # Score gained per million steps of THIS run — the sample-efficiency
+        # figure. Only meaningful when both this run and its parent were
+        # measured the same way.
+        parent = by_file.get(r.get("parent"))
+        if r.get("evalScore") and parent and parent.get("evalScore") and r["steps"]:
+            r["gainPerMStep"] = round(
+                (r["evalScore"] - parent["evalScore"]) / (r["steps"] / 1e6), 3)
+
+    architecture = {}
+    for game, onnx_path in (
+        ("snake", ROOT / "snake" / "snake_ai.onnx"),
+        ("tetris", ROOT / "tetris" / "training" / "tetris_ai.onnx"),
+        ("watermelon", ROOT / "watermelon" / "watermelon_ai.onnx"),
+    ):
+        desc = describe_onnx(onnx_path)
+        if desc:
+            architecture[game] = desc
+
     payload = {
         "generated": datetime.now().isoformat(timespec="seconds"),
         "shipped": shipped,
         "runs": runs,
+        "architecture": architecture,
+        # Measured with watermelon/training/bench_envs.py on 2026-07-27:
+        # Ryzen 7 3700X (8 physical / 16 logical), RTX 4060 Ti 16 GB.
+        "benchmark": {
+            "machine": "Ryzen 7 3700X · RTX 4060 Ti 16 GB",
+            "game": "watermelon",
+            "unit": "steps / second",
+            "results": [
+                {"envs": 8,  "device": "cuda", "fps": 534},
+                {"envs": 12, "device": "cuda", "fps": 685},
+                {"envs": 16, "device": "cuda", "fps": 593},
+                {"envs": 20, "device": "cuda", "fps": 1079},
+                {"envs": 24, "device": "cuda", "fps": 1028},
+                {"envs": 16, "device": "cpu",  "fps": 217},
+            ],
+        },
     }
+
+    dist_file = ROOT / "inside" / "distributions.json"
+    if dist_file.exists():
+        payload["distributions"] = json.loads(dist_file.read_text(encoding="utf-8"))
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(

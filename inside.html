@@ -96,6 +96,64 @@
         /* ── Chart ──────────────────────────────────────────────────────── */
         .chart-wrap { position: relative; border: 1px solid #1e1e1e; background: #0a0a0a; }
         canvas.chart { display: block; width: 100%; height: 380px; }
+        canvas.chart.short { height: 240px; }
+
+        .two-up {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem;
+            align-items: start;
+        }
+        @media (max-width: 820px) { .two-up { grid-template-columns: 1fr; } }
+        .two-up .chart-wrap { margin-top: 1.4rem; }
+
+        /* ── Architecture ───────────────────────────────────────────────── */
+        .arch-flow {
+            display: flex; flex-wrap: wrap; align-items: stretch; gap: 0;
+            border: 1px solid #1e1e1e; background: #0a0a0a;
+        }
+        .arch-step {
+            flex: 1 1 0; min-width: 104px;
+            padding: 1.1rem 0.9rem;
+            border-right: 1px solid #141414;
+            display: flex; flex-direction: column; gap: 0.4rem;
+        }
+        .arch-step:last-child { border-right: 0; }
+        .arch-kind {
+            font-size: 0.5rem; letter-spacing: 0.16em; text-transform: uppercase;
+            color: #4a4a4a;
+        }
+        .arch-shape {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.72rem; color: #cfe4ff;
+        }
+        .arch-params { font-size: 0.6rem; color: #6a6a6a; font-variant-numeric: tabular-nums; }
+        .arch-summary {
+            display: flex; flex-wrap: wrap; gap: 2rem;
+            margin-top: 1.1rem; font-size: 0.7rem; color: #7a7a7a;
+        }
+        .arch-summary b {
+            display: block; color: #fff; font-weight: 400;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.25rem; margin-bottom: 0.2rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Head to head ───────────────────────────────────────────────── */
+        .h2h-empty {
+            border: 1px solid #1e1e1e; background: #0a0a0a;
+            padding: 2rem 1.4rem; font-size: 0.74rem; line-height: 1.8; color: #6a6a6a;
+        }
+        .h2h-row {
+            display: grid; grid-template-columns: 1fr auto; gap: 1rem;
+            align-items: center; padding: 0.9rem 1.1rem;
+            border: 1px solid #1e1e1e; border-bottom: 0; background: #0a0a0a;
+        }
+        .h2h-row:last-child { border-bottom: 1px solid #1e1e1e; }
+        .h2h-name { font-size: 0.75rem; color: #ccc; }
+        .h2h-tally { font-size: 0.7rem; color: #7a7a7a; font-variant-numeric: tabular-nums; }
+        .h2h-tally b { color: #8fd6a8; font-weight: 500; }
+        .h2h-tally i { color: #d98a8a; font-style: normal; }
+        .h2h-bar { grid-column: 1 / -1; height: 3px; background: #d98a8a; margin-top: 0.5rem; }
+        .h2h-bar span { display: block; height: 100%; background: #8fd6a8; }
         .tip {
             position: absolute; pointer-events: none; opacity: 0;
             background: #131313; border: 1px solid #262626;
@@ -222,6 +280,117 @@
             <div class="chart-wrap">
                 <canvas class="chart" id="evals"></canvas>
                 <div class="tip" id="evals-tip"></div>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>How good it got, for how much training</h2>
+                    <p class="block-note">
+                        Skill against total experience. A resume inherits everything
+                        its parent already learned, so the scale is cumulative rather
+                        than per-run. Hover a point for what that version scored and
+                        what changed to get there.
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="prog-tabs"></div>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="progression"></canvas>
+                <div class="tip" id="prog-tip"></div>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>The family tree</h2>
+                    <p class="block-note">
+                        Training did not run in a line. When a run came out worse than
+                        the model already shipped it was thrown away and the next one
+                        started again from the last good version — so the failures are
+                        dead branches, not steps along the way.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="tree"></canvas>
+                <div class="tip" id="tree-tip"></div>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>The same model, sixty games</h2>
+                    <p class="block-note">
+                        One unchanged model played sixty fixed games. The spread is the
+                        reason training keeps its best checkpoint rather than its last:
+                        a single evaluation can land almost anywhere in this range.
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="dist-tabs"></div>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="dist"></canvas>
+                <div class="tip" id="dist-tip"></div>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>What the network actually is</h2>
+                    <p class="block-note">
+                        Read out of the model files the site ships, so this cannot
+                        drift from what is really running.
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="arch-tabs"></div>
+                </div>
+            </div>
+            <div id="arch"></div>
+        </div>
+
+        <div class="block two-up">
+            <div>
+                <h2>Where the time went</h2>
+                <p class="block-note">
+                    Measured with the real training loop, not a synthetic benchmark.
+                </p>
+                <div class="chart-wrap">
+                    <canvas class="chart short" id="bench"></canvas>
+                    <div class="tip" id="bench-tip"></div>
+                </div>
+            </div>
+            <div>
+                <h2>Head to head</h2>
+                <p class="block-note">
+                    Your own results against these opponents, recorded on this device.
+                </p>
+                <div id="h2h"></div>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>When it all happened</h2>
+                    <p class="block-note">
+                        Every run on a wall clock. Gaps are the machine doing something
+                        else; the bars are actual compute.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="timeline"></canvas>
+                <div class="tip" id="timeline-tip"></div>
             </div>
         </div>
 
@@ -677,9 +846,467 @@
             `data generated ${TRAINING_DATA.generated.replace('T', ' ')} · ` +
             Object.entries(shipped).map(([g, s]) => `${g} ${s}`).join(' · ');
 
+        /* ── Shared: a tab strip bound to a redraw ──────────────────────── */
+        function tabs(id, items, initial, onPick) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.innerHTML = items.map(v =>
+                `<button class="ctl${v === initial ? ' on' : ''}" data-v="${v}">${v}</button>`
+            ).join('');
+            el.addEventListener('click', e => {
+                const b = e.target.closest('[data-v]'); if (!b) return;
+                [...el.children].forEach(c => c.classList.toggle('on', c === b));
+                onPick(b.dataset.v);
+            });
+        }
+
+        function hover(cvs, tip, pick, format) {
+            cvs.addEventListener('mousemove', e => {
+                const rect = cvs.getBoundingClientRect();
+                const hit = pick(e.clientX - rect.left, e.clientY - rect.top);
+                if (!hit) { tip.style.opacity = 0; return; }
+                tip.innerHTML = format(hit);
+                tip.style.opacity = 1;
+                const tw = tip.offsetWidth, th = tip.offsetHeight;
+                tip.style.left = Math.min(Math.max(8, e.clientX - rect.left + 14), rect.width - tw - 8) + 'px';
+                tip.style.top  = Math.min(Math.max(8, e.clientY - rect.top - th - 12), rect.height - th - 8) + 'px';
+            });
+            cvs.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+        }
+
+        /* ── Progression: skill against cumulative experience ───────────── */
+        const scored = runs.filter(r => r.evalScore);
+        const progGames = [...new Set(scored.map(r => r.game))];
+        let progGame = progGames.includes('watermelon') ? 'watermelon' : progGames[0];
+        const progCvs = document.getElementById('progression');
+        const progTip = document.getElementById('prog-tip');
+        let progGeom = null;
+
+        function drawProgression() {
+            const { ctx, w, h } = setupCanvas(progCvs);
+            const list = scored.filter(r => r.game === progGame)
+                               .sort((a, b) => a.cumulativeSteps - b.cumulativeSteps);
+            if (!list.length) { progGeom = null; return; }
+
+            const xMax = Math.max(...list.map(r => r.cumulativeSteps));
+            const vals = list.map(r => r.evalScore);
+            let yLo = Math.min(...vals), yHi = Math.max(...vals);
+            const pad = (yHi - yLo) * 0.18 || 10;
+            yLo -= pad; yHi += pad;
+
+            const xs = makeScale(0, xMax * 1.04, PAD.l, w - PAD.r);
+            const ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
+            const xt = niceTicks(0, xMax, 6), yt = niceTicks(yLo, yHi, 5);
+            xt.scale = xs; yt.scale = ys;
+            drawFrame(ctx, w, h, xt, yt, fmtSteps, v => v.toFixed(0), 'evaluated score');
+
+            // The surviving line only. Rejected runs are drawn as strays,
+            // because joining them would imply the next run built on them.
+            const kept = list.filter(r => r.outcome !== 'rejected');
+            ctx.strokeStyle = '#cfe4ff';
+            ctx.lineWidth = 1.8;
+            ctx.lineJoin = ctx.lineCap = 'round';
+            ctx.beginPath();
+            kept.forEach((r, i) => {
+                const x = xs(r.cumulativeSteps), y = ys(r.evalScore);
+                i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+            });
+            ctx.stroke();
+
+            list.forEach(r => {
+                const x = xs(r.cumulativeSteps), y = ys(r.evalScore);
+                const rejected = r.outcome === 'rejected';
+                if (rejected) {
+                    ctx.strokeStyle = '#d98a8a';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([2, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(x, ys(yLo + pad)); ctx.lineTo(x, y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+                ctx.beginPath();
+                ctx.arc(x, y, r.checkpoint ? 5 : 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = rejected ? '#d98a8a'
+                              : r.outcome === 'shipped' ? '#fff' : '#cfe4ff';
+                ctx.fill();
+                // A ring marks a version whose weights still exist, so it
+                // could be played.
+                if (r.checkpoint) {
+                    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.stroke();
+                }
+            });
+
+            progGeom = { xs, ys, list };
+        }
+
+        hover(progCvs, progTip,
+            (mx, my) => {
+                if (!progGeom) return null;
+                let best = null, bd = Infinity;
+                progGeom.list.forEach(r => {
+                    const dx = progGeom.xs(r.cumulativeSteps) - mx;
+                    const dy = progGeom.ys(r.evalScore) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; best = r; }
+                });
+                return bd < 80 * 80 ? best : null;
+            },
+            r => `<div class="tip-run">${r.label}</div>`
+               + `<div class="tip-row">after <b>${fmtSteps(r.cumulativeSteps)}</b> steps total</div>`
+               + `<div class="tip-row">scored <b>${r.evalScore.toFixed(2)}</b></div>`
+               + (r.gainPerMStep !== undefined
+                    ? `<div class="tip-row">this run <b>${r.gainPerMStep > 0 ? '+' : ''}${r.gainPerMStep}</b> per M steps</div>` : '')
+               + (r.checkpoint ? `<div class="tip-row">weights kept — playable</div>` : '')
+               + (r.note ? `<div class="tip-row" style="max-width:34ch;white-space:normal">${r.note}</div>` : ''));
+
+        // The tree reads progGame too, so it follows the same tab.
+        tabs('prog-tabs', progGames, progGame, v => {
+            progGame = v; drawProgression(); drawTree();
+        });
+
+        /* ── Family tree ────────────────────────────────────────────────── */
+        const treeCvs = document.getElementById('tree');
+        const treeTip = document.getElementById('tree-tip');
+        let treeGeom = null;
+
+        function drawTree() {
+            const { ctx, w, h } = setupCanvas(treeCvs);
+            const list = runs.filter(r => r.game === progGame && (r.evalScore || r.parent || r.outcome));
+            if (!list.length) { treeGeom = null; return; }
+
+            // Everything that survived sits on one trunk; each rejected run
+            // gets a lane of its own so its branch is visibly a dead end.
+            let deadLane = 0;
+            const lane = new Map();
+            list.forEach(r => lane.set(r.file, r.outcome === 'rejected' ? ++deadLane : 0));
+            const maxLane = Math.max(...lane.values());
+
+            const xMax = Math.max(...list.map(r => r.cumulativeSteps));
+            const xs = makeScale(0, xMax * 1.06, PAD.l, w - PAD.r);
+            const laneH = (h - PAD.t - PAD.b) / (maxLane + 1.6);
+            const ys = (l) => PAD.t + laneH * (l + 0.5);
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            const xt = niceTicks(0, xMax, 6);
+            xt.forEach(v => {
+                ctx.fillStyle = '#4a4a4a';
+                ctx.textAlign = 'center';
+                ctx.fillText(fmtSteps(v), xs(v), h - PAD.b + 14);
+            });
+
+            const byFile = Object.fromEntries(list.map(r => [r.file, r]));
+            list.forEach(r => {
+                const p = byFile[r.parent];
+                if (!p) return;
+                const x1 = xs(p.cumulativeSteps), y1 = ys(lane.get(p.file));
+                const x2 = xs(r.cumulativeSteps), y2 = ys(lane.get(r.file));
+                const dead = r.outcome === 'rejected';
+                ctx.strokeStyle = dead ? '#5a3a3a' : '#3f5670';
+                ctx.lineWidth = dead ? 1 : 2;
+                ctx.setLineDash(dead ? [3, 3] : []);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.bezierCurveTo((x1 + x2) / 2, y1, (x1 + x2) / 2, y2, x2, y2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            list.forEach(r => {
+                const x = xs(r.cumulativeSteps), y = ys(lane.get(r.file));
+                const c = { shipped: '#fff', improved: '#8fd6a8',
+                            rejected: '#d98a8a', running: '#e0c07a' }[r.outcome] || '#4a4a4a';
+                ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = c; ctx.fill();
+                ctx.fillStyle = r.outcome === 'rejected' ? '#8a6a6a' : '#9a9a9a';
+                ctx.textAlign = 'center';
+                ctx.fillText(r.evalScore ? r.evalScore.toFixed(0) : '—', x, y - 15);
+            });
+
+            treeGeom = { xs, ys, lane, list };
+        }
+
+        hover(treeCvs, treeTip,
+            (mx, my) => {
+                if (!treeGeom) return null;
+                let best = null, bd = Infinity;
+                treeGeom.list.forEach(r => {
+                    const dx = treeGeom.xs(r.cumulativeSteps) - mx;
+                    const dy = treeGeom.ys(treeGeom.lane.get(r.file)) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; best = r; }
+                });
+                return bd < 70 * 70 ? best : null;
+            },
+            r => `<div class="tip-run">${r.label}</div>`
+               + `<div class="tip-row">${fmtSteps(r.steps)} steps · ${fmtHours(r.elapsed)}</div>`
+               + `<div class="tip-row">${(OUTCOME[r.outcome] || ['', 'not evaluated'])[1]}`
+               + (r.evalScore ? ` at <b>${r.evalScore.toFixed(2)}</b>` : '') + '</div>');
+
+        /* ── Score distribution ─────────────────────────────────────────── */
+        const dists = TRAINING_DATA.distributions || {};
+        const distGames = Object.keys(dists);
+        let distGame = distGames[0];
+        const distCvs = document.getElementById('dist');
+        const distTip = document.getElementById('dist-tip');
+        let distGeom = null;
+
+        function drawDist() {
+            const { ctx, w, h } = setupCanvas(distCvs);
+            const d = dists[distGame];
+            if (!d) {
+                ctx.clearRect(0, 0, w, h);
+                ctx.fillStyle = '#3d3d3d';
+                ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('not measured yet — run tools/eval_distribution.py', w / 2, h / 2);
+                distGeom = null;
+                return;
+            }
+
+            const BINS = 16;
+            const lo = d.min, hi = d.max;
+            const width = (hi - lo) / BINS || 1;
+            const bins = new Array(BINS).fill(0);
+            d.scores.forEach(s => {
+                bins[Math.min(BINS - 1, Math.floor((s - lo) / width))]++;
+            });
+            const yHi = Math.max(...bins);
+
+            const xs = makeScale(lo, hi, PAD.l, w - PAD.r);
+            const ys = makeScale(0, yHi, h - PAD.b, PAD.t);
+            const xt = niceTicks(lo, hi, 6), yt = niceTicks(0, yHi, 4);
+            xt.scale = xs; yt.scale = ys;
+            drawFrame(ctx, w, h, xt, yt, v => v.toFixed(0), v => v.toFixed(0), 'games');
+
+            const bw = (xs(hi) - xs(lo)) / BINS;
+            bins.forEach((n, i) => {
+                if (!n) return;
+                const x = xs(lo + i * width);
+                ctx.fillStyle = 'rgba(207,228,255,0.42)';
+                ctx.fillRect(x + 1, ys(n), bw - 2, ys(0) - ys(n));
+            });
+
+            [['mean', d.mean, '#cfe4ff'], ['median', d.median, '#8fd6a8']].forEach(([label, v, col], i) => {
+                ctx.strokeStyle = col; ctx.lineWidth = 1.4;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath(); ctx.moveTo(xs(v), PAD.t); ctx.lineTo(xs(v), ys(0)); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = col; ctx.textAlign = 'left';
+                ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.fillText(`${label.toUpperCase()} ${Math.round(v)}`, xs(v) + 5, PAD.t + 8 + i * 12);
+            });
+
+            distGeom = { xs, ys, bins, lo, width, bw, d };
+        }
+
+        hover(distCvs, distTip,
+            (mx) => {
+                if (!distGeom) return null;
+                const i = Math.floor((mx - distGeom.xs(distGeom.lo)) / distGeom.bw);
+                if (i < 0 || i >= distGeom.bins.length) return null;
+                return { i, n: distGeom.bins[i] };
+            },
+            ({ i, n }) => {
+                const from = Math.round(distGeom.lo + i * distGeom.width);
+                const to = Math.round(distGeom.lo + (i + 1) * distGeom.width);
+                return `<div class="tip-run">${from}–${to}</div>`
+                     + `<div class="tip-row"><b>${n}</b> of ${distGeom.d.episodes} games</div>`;
+            });
+
+        tabs('dist-tabs', distGames.length ? distGames : ['none'], distGame,
+             v => { distGame = v; drawDist(); });
+
+        /* ── Architecture ───────────────────────────────────────────────── */
+        const arch = TRAINING_DATA.architecture || {};
+        const archGames = Object.keys(arch);
+        let archGame = archGames.includes('watermelon') ? 'watermelon' : archGames[0];
+
+        function drawArch() {
+            const a = arch[archGame];
+            const el = document.getElementById('arch');
+            if (!a) { el.innerHTML = ''; return; }
+
+            const steps = [];
+            const inShape = a.inputs[0].shape.filter(v => typeof v === 'number');
+            steps.push({ kind: 'input', shape: inShape.join(' × ') + ' floats', params: null });
+            a.layers.forEach(l => steps.push({
+                kind: l.kind === 'conv' ? 'convolution' : 'dense',
+                shape: l.shape.join(' × '),
+                params: l.params,
+            }));
+            a.outputs.forEach(o => steps.push({
+                kind: 'output',
+                shape: o.name + ' (' + o.shape.filter(v => typeof v === 'number').join(' × ') + ')',
+                params: null,
+            }));
+
+            el.innerHTML =
+                '<div class="arch-flow">' + steps.map(s => `
+                    <div class="arch-step">
+                        <span class="arch-kind">${s.kind}</span>
+                        <span class="arch-shape">${s.shape}</span>
+                        <span class="arch-params">${s.params ? s.params.toLocaleString() + ' weights' : ''}</span>
+                    </div>`).join('') + '</div>' +
+                `<div class="arch-summary">
+                    <div><b>${a.params.toLocaleString()}</b>learned parameters</div>
+                    <div><b>${a.sizeMB} MB</b>model file</div>
+                    <div><b>${a.layers.filter(l => l.kind === 'conv').length}</b>convolution layers</div>
+                    <div><b>${a.layers.filter(l => l.kind === 'dense').length}</b>dense layers</div>
+                 </div>`;
+        }
+
+        tabs('arch-tabs', archGames, archGame, v => { archGame = v; drawArch(); });
+
+        /* ── CPU vs GPU ─────────────────────────────────────────────────── */
+        const bench = TRAINING_DATA.benchmark;
+        const benchCvs = document.getElementById('bench');
+        const benchTip = document.getElementById('bench-tip');
+        let benchGeom = null;
+
+        function drawBench() {
+            const { ctx, w, h } = setupCanvas(benchCvs);
+            if (!bench) return;
+            const rows = bench.results;
+            const xMax = Math.max(...rows.map(r => r.fps));
+            const left = 86, right = w - 46, top = 16;
+            const rowH = (h - top - 14) / rows.length;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            rows.forEach((r, i) => {
+                const y = top + rowH * (i + 0.5);
+                const bw = (r.fps / xMax) * (right - left);
+                ctx.fillStyle = r.device === 'cpu' ? 'rgba(217,138,138,0.5)' : 'rgba(207,228,255,0.42)';
+                ctx.fillRect(left, y - rowH * 0.3, bw, rowH * 0.6);
+                ctx.fillStyle = '#5a5a5a';
+                ctx.textAlign = 'right';
+                ctx.fillText(`${r.envs} envs · ${r.device}`, left - 8, y);
+                ctx.fillStyle = r.device === 'cpu' ? '#d98a8a' : '#cfe4ff';
+                ctx.textAlign = 'left';
+                ctx.fillText(r.fps.toLocaleString(), left + bw + 6, y);
+            });
+            benchGeom = { rows, left, right, top, rowH };
+        }
+
+        hover(benchCvs, benchTip,
+            (mx, my) => {
+                if (!benchGeom) return null;
+                const i = Math.floor((my - benchGeom.top) / benchGeom.rowH);
+                return benchGeom.rows[i] ? { r: benchGeom.rows[i] } : null;
+            },
+            ({ r }) => {
+                const cpu = bench.results.find(x => x.device === 'cpu');
+                return `<div class="tip-run">${r.envs} envs on ${r.device.toUpperCase()}</div>`
+                     + `<div class="tip-row"><b>${r.fps.toLocaleString()}</b> ${bench.unit}</div>`
+                     + (cpu && r.device !== 'cpu'
+                        ? `<div class="tip-row"><b>${(r.fps / cpu.fps).toFixed(1)}×</b> the CPU baseline</div>` : '');
+            });
+
+        /* ── Wall-clock timeline ────────────────────────────────────────── */
+        const tlCvs = document.getElementById('timeline');
+        const tlTip = document.getElementById('timeline-tip');
+        let tlGeom = null;
+
+        function drawTimeline() {
+            const { ctx, w, h } = setupCanvas(tlCvs);
+            const list = runs.filter(r => r.startedAt && r.elapsed > 0)
+                             .map(r => ({ ...r, t0: new Date(r.startedAt), t1: new Date(r.endedAt) }))
+                             .sort((a, b) => a.t0 - b.t0);
+            if (!list.length) { tlGeom = null; return; }
+
+            const lo = Math.min(...list.map(r => +r.t0));
+            const hi = Math.max(...list.map(r => +r.t1));
+            const xs = makeScale(lo, hi, PAD.l, w - PAD.r);
+            const rowH = (h - PAD.t - PAD.b) / list.length;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            // One tick per day.
+            const day = 86400000;
+            for (let t = new Date(lo).setHours(0, 0, 0, 0); t <= hi; t += day) {
+                if (t < lo) continue;
+                ctx.strokeStyle = '#161616'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(xs(t), PAD.t); ctx.lineTo(xs(t), h - PAD.b); ctx.stroke();
+                ctx.fillStyle = '#4a4a4a'; ctx.textAlign = 'center';
+                ctx.fillText(new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+                             xs(t), h - PAD.b + 14);
+            }
+
+            list.forEach((r, i) => {
+                const y = PAD.t + rowH * (i + 0.5);
+                const x1 = xs(+r.t0), x2 = Math.max(xs(+r.t1), xs(+r.t0) + 2);
+                ctx.fillStyle = r.color;
+                ctx.globalAlpha = r.outcome === 'rejected' ? 0.4 : 0.85;
+                ctx.fillRect(x1, y - rowH * 0.28, x2 - x1, rowH * 0.56);
+                ctx.globalAlpha = 1;
+            });
+
+            tlGeom = { list, xs, rowH };
+        }
+
+        hover(tlCvs, tlTip,
+            (mx, my) => {
+                if (!tlGeom) return null;
+                const i = Math.floor((my - PAD.t) / tlGeom.rowH);
+                const r = tlGeom.list[i];
+                if (!r) return null;
+                return (mx >= tlGeom.xs(+r.t0) - 6 && mx <= tlGeom.xs(+r.t1) + 6) ? r : null;
+            },
+            r => `<div class="tip-run" style="color:${r.color}">${r.game} · ${r.label}</div>`
+               + `<div class="tip-row">${r.t0.toLocaleString()}</div>`
+               + `<div class="tip-row">ran for <b>${fmtHours(r.elapsed)}</b></div>`);
+
+        /* ── Head to head ───────────────────────────────────────────────── */
+        function drawH2H() {
+            const el = document.getElementById('h2h');
+            let played = [];
+            try {
+                played = JSON.parse(localStorage.getItem('humanvsai.results') || '[]');
+            } catch (e) { played = []; }
+
+            if (!played.length) {
+                el.innerHTML = `<div class="h2h-empty">
+                    Nothing recorded yet. Finish a game against any of the three
+                    opponents and the result is stored on this device — nothing is
+                    sent anywhere — then it appears here.
+                </div>`;
+                return;
+            }
+
+            const byGame = {};
+            played.forEach(m => {
+                const g = byGame[m.game] || (byGame[m.game] = { w: 0, l: 0, d: 0 });
+                if (m.human > m.ai) g.w++; else if (m.human < m.ai) g.l++; else g.d++;
+            });
+
+            el.innerHTML = Object.entries(byGame).map(([game, g]) => {
+                const total = g.w + g.l + g.d;
+                return `<div class="h2h-row">
+                    <span class="h2h-name">${game}</span>
+                    <span class="h2h-tally"><b>${g.w}</b> won · <i>${g.l}</i> lost${g.d ? ` · ${g.d} drawn` : ''}</span>
+                    <span class="h2h-bar"><span style="width:${(100 * g.w / total).toFixed(1)}%"></span></span>
+                </div>`;
+            }).join('');
+        }
+
         /* ── Boot ───────────────────────────────────────────────────────── */
         renderLegend();
-        function redraw() { drawCurve(); drawEvals(); }
+        drawArch();
+        drawH2H();
+        function redraw() {
+            drawCurve(); drawEvals(); drawProgression(); drawTree();
+            drawDist(); drawBench(); drawTimeline();
+        }
         window.addEventListener('resize', redraw);
         redraw();
     })();

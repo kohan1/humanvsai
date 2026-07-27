@@ -544,6 +544,15 @@
                 if (isGameOver || doShake || loading) return;
                 isGameOver = true;
                 canDrop = false;
+
+                // Human board only, and gameOver() is already guarded against
+                // re-entry, so this fires once per match.
+                if (cfg.persist && typeof MatchResults !== "undefined") {
+                    let aiScore = 0;
+                    try { aiScore = getAI().getScore(); } catch (e) { /* AI not up yet */ }
+                    MatchResults.record("watermelon", score, aiScore, Date.now());
+                }
+
                 store.clear(KEY_SAVED);
                 if (domGameOverScore) domGameOverScore.innerText = `Score ${score}`;
                 if (domGameOver) domGameOver.hidden = false;
@@ -628,6 +637,7 @@
                 reset,
                 drop,
                 getState: buildState,
+                getScore: () => score,
                 setPolicy(fn) { policy = fn; },
             };
         };

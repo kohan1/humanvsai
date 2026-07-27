@@ -737,6 +737,13 @@
                 if (state.arena.slice(0, 3).some(function(row){
                     return row.some(function(v){ return v > 0; });
                 })) {
+                    // Record once, on the transition into the lost state —
+                    // this block runs every frame while the board sits lost.
+                    if (!isAI && !state.lost && typeof MatchResults !== "undefined") {
+                        var aiState = window.__aiGame ? window.__aiGame.getState() : null;
+                        MatchResults.record("tetris", state.score,
+                                            aiState ? aiState.score : 0, Date.now());
+                    }
                     state.lost = true;
                 }
             }
@@ -949,6 +956,9 @@
             aiGame._aiPlayer = aiPlayer;
             // Re-create AI game with the loaded model
             aiGame = createGame(aiCanvas, true, aiPlayer, null);
+            // The human board's loop needs the AI's score to record a match,
+            // and the two live in separate createGame closures.
+            window.__aiGame = aiGame;
             console.log("AI model loaded successfully.");
         } catch(e) {
             console.warn("AI model failed to load:", e.message);
