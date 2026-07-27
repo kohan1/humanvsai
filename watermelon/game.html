@@ -19,10 +19,12 @@
              under file:// — see embed_assets.py for why. -->
         <script src="image_data.js"></script>
 
-        <!-- AI opponent. model_data.js must not be deferred: game.js reads
-             WATERMELON_MODEL_B64 at load. Same base64-embedding trick as the
-             images and as Snake/Tetris — onnxruntime fetches a model path, and
-             fetch() of a local file is blocked under file://. -->
+        <!-- AI opponent. model_data.js embeds the model as base64 and must not
+             be deferred, because game.js reads WATERMELON_MODEL_B64 at load.
+             It is only needed under file://, where fetch() of a local file is
+             blocked — and it is a ~30 MB render-blocking script, so the
+             deployed site strips this tag and ships watermelon_ai.onnx for
+             loadAiModel() to fetch instead. See tools/deploy_pages.sh. -->
         <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
         <script src="model_data.js"></script>
         <script src="game.js" defer></script>

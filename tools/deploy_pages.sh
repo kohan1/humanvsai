@@ -10,21 +10,45 @@
 # them off main's history entirely — the branch has exactly one commit and is
 # replaced, not appended to.
 #
-# WHY model_data.js RATHER THAN THE .onnx
-# Only Tetris falls back to fetch()ing its .onnx; Snake and Watermelon require
-# the base64 constant. Serving the raw .onnx would be ~19 MB smaller per visit
-# but needs a code change in two games, and shipping a site whose AI silently
-# fails is worse than shipping a larger one. Revisit by adding a fetch fallback
-# to both, then deploying the .onnx instead.
+# WHY THE .onnx RATHER THAN model_data.js
+# model_data.js embeds the model as base64 in a <script> tag. That is the only
+# thing that works under file://, but on a served site it is a render-blocking
+# script in <head> — 45 MB for Snake, 30 MB for Watermelon — so the browser
+# paints a blank white page until the whole thing has downloaded and parsed.
+# That reads as "stuck on loading", and it bites every time this script runs,
+# because a force-push gives every file a new blob and invalidates the cache.
+#
+# All three games now prefer fetch()ing the .onnx and fall back to the base64
+# constant only when it is present. So we ship the .onnx and strip the
+# model_data.js <script> tag from the deployed HTML: nothing blocks the render,
+# the human board is playable while the model streams in, and the payload drops
+# by a third (base64 inflation) — 85 MB total to 64 MB.
+#
+# The repo keeps model_data.js so opening game.html as a local file still works.
 #
 # Builds in a temp directory so the working tree is untouched — training writes
 # into snake/training and watermelon/training while this runs.
+#
+#     tools/deploy_pages.sh --dry-run <dir>
+#
+# stages the site into <dir> and stops before pushing, so the exact bytes that
+# would go live can be served and tested first. Worth using whenever the way
+# the site loads its models changes — a broken loader is invisible on a warm
+# cache and only shows up for real visitors.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 REPO="kohan1/humanvsai"
-STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
+
+DRY_RUN=""
+if [ "${1:-}" = "--dry-run" ]; then
+    DRY_RUN=1
+    STAGE="${2:?usage: deploy_pages.sh --dry-run <dir>}"
+    rm -rf "$STAGE"; mkdir -p "$STAGE"
+else
+    STAGE="$(mktemp -d)"
+    trap 'rm -rf "$STAGE"' EXIT
+fi
 
 echo "staging the site in $STAGE"
 
@@ -34,18 +58,37 @@ cp index.html select.html "$STAGE/"
 for game in snake tetris watermelon; do
     mkdir -p "$STAGE/$game"
     # Everything the browser actually requests. training/, tools/ and the .zip
-    # checkpoints are deliberately excluded.
-    for f in game.html game.js style.css model_data.js image_data.js; do
+    # checkpoints are deliberately excluded. model_data.js is excluded too —
+    # see the note at the top; the .onnx is copied in below instead.
+    for f in game.html game.js style.css image_data.js; do
         [ -f "$game/$f" ] && cp "$game/$f" "$STAGE/$game/"
     done
     for d in assets images lib; do
         [ -d "$game/$d" ] && cp -r "$game/$d" "$STAGE/$game/"
     done
+
+    # Drop the model_data.js <script> tag. Without this the deployed page
+    # requests a file that is not there; the fallback would still work, but it
+    # would log a 404 on every load and invite someone to "fix" it by shipping
+    # the base64 again.
+    sed -i '/<script src="model_data\.js">/d' "$STAGE/$game/game.html"
 done
 
-# Tetris keeps its .onnx under training/, and its loader falls back to
-# fetch()ing it next to the page.
-[ -f tetris/training/tetris_ai.onnx ] && cp tetris/training/tetris_ai.onnx "$STAGE/tetris/"
+# The models themselves, fetched at runtime by each game's loader. Tetris keeps
+# its .onnx under training/; the other two sit beside their page.
+cp snake/snake_ai.onnx           "$STAGE/snake/"
+cp watermelon/watermelon_ai.onnx "$STAGE/watermelon/"
+cp tetris/training/tetris_ai.onnx "$STAGE/tetris/"
+
+# A page that ships no model and no base64 would fail silently at runtime, so
+# check here instead.
+for f in snake/snake_ai.onnx tetris/tetris_ai.onnx watermelon/watermelon_ai.onnx; do
+    [ -s "$STAGE/$f" ] || { echo "ABORT: $f missing or empty in the staged site"; exit 1; }
+done
+if grep -rq '<script src="model_data\.js"' "$STAGE"/*/game.html; then
+    echo "ABORT: a deployed game.html still loads model_data.js as a script"
+    exit 1
+fi
 
 # Pages runs Jekyll by default, which ignores files and folders beginning with
 # an underscore and can mangle others. This turns that off.
@@ -63,6 +106,13 @@ find "$STAGE" -type f -size +1M -printf "%6.1f MB  %P\n" 2>/dev/null | sort -rn 
 if find "$STAGE" -type f -size +100M | grep -q .; then
     echo "ABORT: a file exceeds GitHub's 100 MB limit"
     exit 1
+fi
+
+if [ -n "$DRY_RUN" ]; then
+    echo
+    echo "dry run — nothing pushed. Serve and test it with:"
+    echo "    python -m http.server 8322 --directory $STAGE"
+    exit 0
 fi
 
 echo

@@ -489,6 +489,24 @@ policy, and check the settle thresholds first** — they decide when a drop is
     General lesson: a vendored library can behave differently on the deployed
     host than on localhost. Verify user-visible changes against the live URL,
     not just the dev server.
+15. **"Stuck on loading" — the model was a render-blocking script.** Every game
+    loaded `model_data.js` (base64 model, 45 MB Snake / 30 MB Watermelon /
+    9 MB Tetris) as a plain `<script>` in `<head>`. The browser paints
+    **nothing at all** until such a script has downloaded *and* parsed, so a
+    cold visit was a blank white page for as long as that took. It bit right
+    after a `deploy_pages.sh` run, because force-pushing gh-pages gives every
+    file a new blob and invalidates the visitor's cache.
+    **Fix:** all three loaders now prefer `fetch()`ing the `.onnx` and fall
+    back to the base64 constant only when it is defined; `deploy_pages.sh`
+    ships the `.onnx` and strips the `model_data.js` script tag. Nothing
+    blocks the render, the human board is playable while the model streams,
+    and the payload dropped 85 MB → 67 MB (base64 costs a third in inflation).
+    Measured cold on the live site afterwards: DOMContentLoaded 489–841 ms,
+    with the model arriving after. `model_data.js` stays in the repo because
+    it is still the only thing that works under `file://`.
+    **This was diagnosed late because every check was on a warm cache** —
+    `performance.getEntriesByType('resource')` reported 0 ms / 0 KB for every
+    file. Always check `transferSize` before concluding a page loads fine.
 
 ---
 

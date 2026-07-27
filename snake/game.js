@@ -366,20 +366,26 @@
         return obs;
     }
 
+    /* See the equivalent comment in watermelon/game.js. model_data.js is a
+       ~45 MB render-blocking script — the largest of the three games — so over
+       HTTP we fetch the .onnx and let the page paint first. The embedded
+       base64 is used only when it is present, i.e. local file:// use. */
     async function loadModel() {
-        if (typeof SNAKE_MODEL_B64 === "undefined") {
-            aiStatusEl.textContent = "model not found";
-            aiStatusEl.hidden = false;
-            return;
-        }
         aiStatusEl.textContent = "loading model…";
         aiStatusEl.hidden = false;
         try {
             ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
-            const binaryStr = atob(SNAKE_MODEL_B64);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-            aiSession = await ort.InferenceSession.create(bytes, { executionProviders: ["wasm"] });
+
+            let src;
+            if (typeof SNAKE_MODEL_B64 !== "undefined") {
+                const binaryStr = atob(SNAKE_MODEL_B64);
+                src = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) src[i] = binaryStr.charCodeAt(i);
+            } else {
+                src = "snake_ai.onnx";
+            }
+
+            aiSession = await ort.InferenceSession.create(src, { executionProviders: ["wasm"] });
             aiReady = true;
             aiStatusEl.hidden = true;
         } catch (err) {

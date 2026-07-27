@@ -731,18 +731,35 @@
     let aiTargetFrac = null;     // where this drop is aimed, 0-1 of board width
     const AI_ALIGN_TOLERANCE = 6; // px; the cloud eases in, so wait for it
 
+    /* Two ways in, and which one is used matters a great deal for load time.
+
+       model_data.js embeds the model as a base64 string in a <script> tag.
+       That is the only thing that works under file://, but it is a ~30 MB
+       RENDER-BLOCKING script in <head>: the browser paints nothing at all —
+       a blank white page — until the whole file has downloaded and parsed.
+       Base64 also inflates the model by a third.
+
+       Over HTTP we fetch the .onnx instead. It is smaller, it downloads in
+       parallel with the page, and the human board is playable immediately
+       while the AI's "Awaiting model" overlay clears on its own.
+
+       So: use the embedded copy only when it is actually there (local
+       file:// use), and otherwise fetch. The deployed site ships the .onnx
+       and no model_data.js — see tools/deploy_pages.sh. */
     async function loadAiModel() {
-        if (typeof WATERMELON_MODEL_B64 === "undefined") {
-            if (aiStatusEl) aiStatusEl.querySelector(".overlay-sub").textContent =
-                "model not found";
-            return;
-        }
         try {
             ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
-            const raw = atob(WATERMELON_MODEL_B64);
-            const bytes = new Uint8Array(raw.length);
-            for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-            aiSession = await ort.InferenceSession.create(bytes, {
+
+            let src;
+            if (typeof WATERMELON_MODEL_B64 !== "undefined") {
+                const raw = atob(WATERMELON_MODEL_B64);
+                src = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) src[i] = raw.charCodeAt(i);
+            } else {
+                src = "watermelon_ai.onnx";
+            }
+
+            aiSession = await ort.InferenceSession.create(src, {
                 executionProviders: ["wasm"],
             });
             if (aiStatusEl) aiStatusEl.hidden = true;
