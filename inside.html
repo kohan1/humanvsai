@@ -189,6 +189,31 @@
         .tip .tip-row { color: #888; }
         .tip .tip-row b { color: #ddd; font-weight: 500; }
 
+        /* Key under a chart. Every chart that encodes something in colour or
+           shape gets one — without it the reader has to infer the encoding. */
+        .chart-key {
+            display: flex; flex-wrap: wrap; gap: 0.45rem 1.6rem;
+            margin-top: 0.9rem; font-size: 0.66rem; color: #6f6f6f;
+        }
+        .chart-key span { display: inline-flex; align-items: center; gap: 0.55em; }
+        .chart-key i { display: inline-block; width: 15px; height: 2px; flex-shrink: 0; }
+        .chart-key i.dot  { width: 9px; height: 9px; border-radius: 50%; }
+        .chart-key i.ring {
+            width: 11px; height: 11px; border-radius: 50%;
+            background: none; border: 1px solid rgba(255,255,255,0.45);
+        }
+        .chart-key i.dash {
+            background: repeating-linear-gradient(90deg, #5a5a5a 0 3px, transparent 3px 6px);
+        }
+        .chart-key i.bar { width: 11px; height: 11px; }
+
+        /* A short read-this-first line above a chart's key. */
+        .how-to-read {
+            margin-top: 0.9rem; font-size: 0.72rem; line-height: 1.8; color: #7a7a7a;
+            max-width: 78ch;
+        }
+        .how-to-read b { color: #b9b9b9; font-weight: 400; }
+
         .omitted { margin-top: 0.8rem; font-size: 0.66rem; line-height: 1.6; color: #4f4f4f; }
         .omitted:empty { display: none; }
         .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin-top: 1rem; }
@@ -294,17 +319,30 @@
                 <div>
                     <h2>Why the best model is not the last one</h2>
                     <p class="block-note">
-                        The current run scores itself every 250,000 steps on a fixed set
-                        of games, so the checks are directly comparable. The result swings
-                        wildly between checks even though the games never change — which is
-                        exactly why training keeps the best model it has seen rather than
-                        whatever it happens to end on.
+                        While it trains, the model stops every 250,000 steps and plays
+                        fifteen games. The games never change — same starting pieces,
+                        same order — so every check is measuring the model, not luck of
+                        the draw.
                     </p>
                 </div>
             </div>
             <div class="chart-wrap">
                 <canvas class="chart" id="evals"></canvas>
                 <div class="tip" id="evals-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Left to right is training progress. Each dot is one of those checks.
+                <b>They swing by hundreds of points on identical games</b> — so the model
+                you happen to stop on is close to a coin flip. The solid line is the best
+                score seen so far, and training saves a copy every time that line steps
+                up. Without it, whatever the run ended on would be what shipped, and three
+                earlier runs ended below the model they started from.
+            </p>
+            <div class="chart-key">
+                <span><i class="dot" style="background:#4d5a6a"></i> a check</span>
+                <span><i class="dot" style="background:#cfe4ff"></i> a new best</span>
+                <span><i style="background:#cfe4ff"></i> best so far — what gets kept</span>
+                <span><i class="dash"></i> the model this run started from</span>
             </div>
         </div>
 
@@ -313,10 +351,9 @@
                 <div>
                     <h2>How good it got, for how much training</h2>
                     <p class="block-note">
-                        Skill against total experience. A resume inherits everything
-                        its parent already learned, so the scale is cumulative rather
-                        than per-run. Hover a point for what that version scored and
-                        what changed to get there.
+                        Every finished run, scored over 30 to 60 full games after it
+                        ended. This is the headline question — does more training
+                        actually buy more skill?
                     </p>
                 </div>
                 <div class="controls">
@@ -327,6 +364,22 @@
                 <canvas class="chart" id="progression"></canvas>
                 <div class="tip" id="prog-tip"></div>
             </div>
+            <p class="how-to-read">
+                Sideways is <b>total</b> training, not the length of one run: a run that
+                continues from an earlier model inherits everything that model already
+                learned, so 4M steps on top of a 10M-step model sits at 14M. Up is the
+                score it achieved. The line only joins versions that were kept — a run
+                that scored worse was discarded, so nothing was ever built on top of it,
+                and joining it to the line would suggest otherwise. Hover any point for
+                what changed in that run and what it bought per million steps.
+            </p>
+            <div class="chart-key">
+                <span><i style="background:#cfe4ff"></i> the surviving chain</span>
+                <span><i class="dot" style="background:#fff"></i> shipped to the site</span>
+                <span><i class="dot" style="background:#cfe4ff"></i> kept, an improvement</span>
+                <span><i class="dot" style="background:#d98a8a"></i> discarded, scored worse</span>
+                <span><i class="ring"></i> weights still exist — playable</span>
+            </div>
         </div>
 
         <div class="block">
@@ -334,16 +387,34 @@
                 <div>
                     <h2>The family tree</h2>
                     <p class="block-note">
-                        Training did not run in a line. When a run came out worse than
-                        the model already shipped it was thrown away and the next one
-                        started again from the last good version — so the failures are
-                        dead branches, not steps along the way.
+                        Training did not run in a line. Every run starts from some
+                        earlier model, and when one came out worse it was abandoned and
+                        the next attempt went back to the last good version instead.
                     </p>
                 </div>
             </div>
             <div class="chart-wrap">
                 <canvas class="chart" id="tree"></canvas>
                 <div class="tip" id="tree-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Each dot is one training run, placed left to right by how much total
+                training it represents, with its evaluated score printed above it. A
+                curve joins a run to <b>the model it started from</b>. The straight row
+                across the middle is the surviving line — the ancestry of what the site
+                serves today. Everything hanging below it is a branch that stopped:
+                a run that finished below the model already shipped, so it was kept as a
+                record and never built on. Two of Watermelon's branches leave from the
+                same parent, which is what trying twice from a known-good model looks
+                like.
+            </p>
+            <div class="chart-key">
+                <span><i class="dot" style="background:#fff"></i> shipped</span>
+                <span><i class="dot" style="background:#8fd6a8"></i> an improvement</span>
+                <span><i class="dot" style="background:#d98a8a"></i> rejected — dead end</span>
+                <span><i class="dot" style="background:#e0c07a"></i> still running</span>
+                <span><i style="background:#3f5670;height:3px"></i> continued from</span>
+                <span><i class="dash"></i> abandoned branch</span>
             </div>
         </div>
 
@@ -352,9 +423,9 @@
                 <div>
                     <h2>The same model, sixty games</h2>
                     <p class="block-note">
-                        One unchanged model played sixty fixed games. The spread is the
-                        reason training keeps its best checkpoint rather than its last:
-                        a single evaluation can land almost anywhere in this range.
+                        Nothing changes between these games — same model, same weights,
+                        same starting conditions. Every difference in the result comes
+                        from how the game itself unfolded.
                     </p>
                 </div>
                 <div class="controls">
@@ -365,6 +436,20 @@
                 <canvas class="chart" id="dist"></canvas>
                 <div class="tip" id="dist-tip"></div>
             </div>
+            <p class="how-to-read">
+                Sideways is the score; each bar counts how many of the sixty games
+                finished in that band. Snake's ran from <b>41 to 177</b> — the best game
+                was four times the worst, from an identical opponent. Note how far apart
+                the mean and median sit: a handful of games that ended almost
+                immediately drag the average well below the typical result. That gap is
+                why one evaluation proves very little, and why a model is only replaced
+                when it wins over dozens of games rather than one.
+            </p>
+            <div class="chart-key">
+                <span><i class="bar" style="background:rgba(207,228,255,0.42)"></i> games in that band</span>
+                <span><i class="dash" style="background:repeating-linear-gradient(90deg,#cfe4ff 0 3px,transparent 3px 6px)"></i> mean — pulled down by bad games</span>
+                <span><i class="dash" style="background:repeating-linear-gradient(90deg,#8fd6a8 0 3px,transparent 3px 6px)"></i> median — the typical game</span>
+            </div>
         </div>
 
         <div class="block">
@@ -372,8 +457,8 @@
                 <div>
                     <h2>What the network actually is</h2>
                     <p class="block-note">
-                        Read out of the model files the site ships, so this cannot
-                        drift from what is really running.
+                        Read straight out of the model files the site ships, so it
+                        cannot drift from what is really running.
                     </p>
                 </div>
                 <div class="controls">
@@ -381,6 +466,19 @@
                 </div>
             </div>
             <div id="arch"></div>
+            <p class="how-to-read">
+                Read left to right: numbers describing the board go in one end, and a
+                score for every move the AI could make comes out the other. Each box in
+                between is a layer of the network, and its figures are the shape of that
+                layer's weight matrix — <b>outputs × inputs</b>. So <b>1024 × 238</b>
+                means 1,024 units each looking at all 238 input numbers, which is where
+                its 243,712 weights come from. A <b>convolution</b> layer slides one
+                small filter across the board, so it learns shapes wherever they appear;
+                a <b>dense</b> layer connects everything to everything. Snake and
+                Watermelon see a grid and use both; Tetris is dense throughout. Every
+                one of those weights started as a random number and was moved only by
+                playing.
+            </p>
         </div>
 
         <div class="block two-up">
@@ -434,6 +532,22 @@
             <div class="chart-wrap">
                 <canvas class="chart tall" id="brain"></canvas>
                 <div class="tip" id="brain-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Each column is a layer, each dot one neuron, and each line a real
+                connection between them. Numbers describing the board enter on the left
+                and a score for every possible move leaves on the right. A neuron
+                <b>brightens as it fires</b>, and a line is only lit while the neuron
+                feeding it is active — so you are watching signal find a path, not a
+                loop of decoration. Most neurons sit dark at any moment, which is
+                genuinely how this kind of network behaves. <b>Hover any neuron</b> to
+                mute everything except its own connections.
+            </p>
+            <div class="chart-key">
+                <span><i style="background:rgba(140,190,255,0.9)"></i> positive — argues for a move</span>
+                <span><i style="background:rgba(235,130,130,0.9)"></i> negative — argues against</span>
+                <span><i class="dot" style="background:#e8f1ff"></i> firing now</span>
+                <span><i class="dot" style="background:#5f6b7a"></i> quiet</span>
             </div>
             <p class="omitted" id="brain-note"></p>
 
@@ -812,10 +926,21 @@
             ctx.moveTo(PAD.l, ys(base) + 0.5); ctx.lineTo(w - PAD.r, ys(base) + 0.5);
             ctx.stroke();
             ctx.setLineDash([]);
-            ctx.fillStyle = '#555';
+
+            // Sits clear of its own line, and flips below it when the baseline
+            // is close to the top of the plot — at -9 with textBaseline middle
+            // the glyphs sat on the dashes.
             ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
             ctx.textAlign = 'left';
-            ctx.fillText('MODEL IT STARTED FROM', PAD.l + 6, ys(base) - 9);
+            const near = ys(base) - PAD.t < 26;
+            ctx.textBaseline = near ? 'top' : 'alphabetic';
+            const label = 'THE MODEL THIS RUN STARTED FROM — ' + base.toFixed(0);
+            const lw = ctx.measureText(label).width;
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(PAD.l + 4, ys(base) + (near ? 6 : -19), lw + 8, 14);
+            ctx.fillStyle = '#6a6a6a';
+            ctx.fillText(label, PAD.l + 8, ys(base) + (near ? 9 : -8));
+            ctx.textBaseline = 'middle';
 
             // Running best — the thing actually kept.
             ctx.strokeStyle = '#cfe4ff';
@@ -1448,21 +1573,37 @@
                     for (let s = 0; s < e.from; s++) {
                         const wv = e.w[d * e.from + s];
                         const mag = Math.abs(wv) / e.peak;
-                        if (mag < 0.08) continue;          // skip the invisible
-                        const dim = brainHover &&
-                                    !(brainHover.col === from && brainHover.idx === s) &&
-                                    !(brainHover.col === to && brainHover.idx === d);
+                        const touches = brainHover &&
+                            ((brainHover.col === from && brainHover.idx === s) ||
+                             (brainHover.col === to && brainHover.idx === d));
+                        const dim = brainHover && !touches;
+
                         // A connection only carries signal if the neuron
                         // feeding it is firing, so brightness is weight
                         // strength TIMES the source's activation. A dead
                         // neuron's connections go dark, which is the whole
                         // point of animating this.
+                        //
+                        // EXCEPT when hovering. A hovered neuron that happens
+                        // to be silent would otherwise highlight nothing at
+                        // all — the question being asked is "what is this
+                        // wired to", not "what is it doing right now" — so a
+                        // touched edge is drawn at full weight strength.
                         const live = 0.25 + 0.75 * fire(from, s);
-                        const alpha = mag * 0.5 * live * (dim ? 0.06 : 1);
+                        // Cull only when nothing is hovered. Hovering asks to
+                        // see EVERY connection this neuron has, including the
+                        // weak ones — culling them shows a partial fan-out and
+                        // makes the neuron look less connected than it is.
+                        if (!touches && mag < 0.08) continue;
+
+                        const alpha = touches
+                            ? Math.min(0.95, 0.35 + mag * 0.65)
+                            : mag * 0.5 * live * (dim ? 0.06 : 1);
                         ctx.strokeStyle = wv >= 0
                             ? `rgba(140,190,255,${alpha.toFixed(3)})`
                             : `rgba(235,130,130,${alpha.toFixed(3)})`;
-                        ctx.lineWidth = dim ? 0.5 : 0.4 + mag * 1.4 * live;
+                        ctx.lineWidth = touches ? 0.8 + mag * 2.2
+                                      : dim ? 0.5 : 0.4 + mag * 1.4 * live;
                         ctx.beginPath();
                         ctx.moveTo(colX(from), nodeY(from, s));
                         ctx.lineTo(colX(to), nodeY(to, d));
