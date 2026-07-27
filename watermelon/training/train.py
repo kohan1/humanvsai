@@ -46,7 +46,14 @@ from policy_config import policy_kwargs
 DEVICE = os.environ.get("TRAIN_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 
 N_ENVS = int(os.environ.get("N_ENVS", 16))                  # physics is CPU-bound; leave headroom on 16 cores
-TOTAL_TIMESTEPS = 4_000_000  # one "step" is a whole drop-and-settle, not a frame
+TOTAL_TIMESTEPS = int(os.environ.get("TOTAL_TIMESTEPS", 4_000_000))  # one "step" is a whole drop-and-settle, not a frame
+
+# How often BestScoreCallback checks the policy, and over how many fixed-seed
+# episodes. 15 episodes costs ~1500 drops against 250k of training, so well
+# under 1% overhead, and it is the only thing standing between a mid-run peak
+# and losing it.
+EVAL_FREQ = int(os.environ.get("EVAL_FREQ", 250_000))
+EVAL_EPISODES = int(os.environ.get("EVAL_EPISODES", 15))
 
 # Entropy bonus, split by how good the starting policy is.
 #
@@ -67,7 +74,23 @@ LR_END = 1e-5
 # and never completing a proper averaged update. Score drifted 716 -> 634.
 # Scaling the LR down by ~0.4 should land one epoch under the 0.03 limit so
 # updates actually finish.
-LR_RESUME = 2e-5
+LR_RESUME = float(os.environ.get("LR_RESUME", 4e-5))
+
+# Trust region and update shape on the resume path.
+#
+# The 2e-5 / 0.03 pairing above was tuned while share_features_extractor was
+# still True — the critic's gradient was flowing through the policy's CNN and
+# blowing the KL up, and the LR was cut to compensate. That bug is fixed, so
+# the compensation is now just a brake: the 4M-step run that produced 936.70
+# early-stopped on 49 of 49 iterations, completing roughly one epoch of ten.
+#
+# Raising both lets updates actually finish. What makes this safe to try is
+# BestScoreCallback: a run that overshoots and regresses no longer costs
+# anything, because the best checkpoint along the way is kept. Without that
+# safety net these numbers would be reckless; with it they are a cheap
+# experiment.
+TARGET_KL = float(os.environ.get("TARGET_KL", 0.05))
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 2048))   # bigger batch, GPU-friendly
 
 PRETRAINED_PATH = "watermelon_pretrained.zip"
 RESUME_PATH = "watermelon_final.zip"
@@ -111,6 +134,69 @@ class ScoreLoggingCallback(BaseCallback):
             self.logger.record("rollout/ep_score_mean", float(np.mean(self.score_buffer)))
 
 
+class BestScoreCallback(BaseCallback):
+    """
+    Periodically score the policy the way install_model.sh will, and keep a
+    copy of the best one seen.
+
+    Why this exists: train.py used to save only the FINAL model, so a run that
+    peaked in the middle and drifted down threw the peak away. That is not
+    hypothetical here — three consecutive Watermelon runs (614.40, 872.00,
+    893.03) were rejected by the install guard for ending worse than the model
+    already shipped, and any peak they passed through was lost with them.
+
+    Evaluation uses deterministic=True and a FIXED set of seeds, so every
+    check faces exactly the same episodes. Scores swing hugely between seeds
+    (433 to 1426 in one 30-episode run), and without fixed seeds "best" would
+    mostly select for a lucky draw rather than a better policy.
+    """
+
+    def __init__(self, eval_freq: int, n_episodes: int = 15,
+                 save_path: str = "watermelon_best.zip", verbose: int = 1):
+        super().__init__(verbose)
+        self.eval_freq = eval_freq
+        self.n_episodes = n_episodes
+        self.save_path = save_path
+        self.best_score = float("-inf")
+        # Evaluate immediately rather than after the first eval_freq steps, so
+        # the STARTING model's score becomes the bar. Otherwise a resume that
+        # degrades early would save the first thing it measured — something
+        # worse than the model it began from — and call it "best".
+        self._next_eval = 0
+
+    def _evaluate(self) -> float:
+        env = WatermelonEnv()
+        total = 0
+        for ep in range(self.n_episodes):
+            obs, _ = env.reset(seed=ep)
+            done, info = False, {"score": 0}
+            while not done:
+                action, _ = self.model.predict(obs, deterministic=True)
+                obs, _, terminated, truncated, info = env.step(int(action))
+                done = terminated or truncated
+            total += info["score"]
+        return total / self.n_episodes
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps < self._next_eval:
+            return True
+        self._next_eval = self.num_timesteps + self.eval_freq
+
+        score = self._evaluate()
+        self.logger.record("eval/score", score)
+
+        if score > self.best_score:
+            self.best_score = score
+            self.model.save(self.save_path)
+            if self.verbose:
+                print(f"\n[best] new best {score:.2f} at {self.num_timesteps} "
+                      f"steps -> {self.save_path}", flush=True)
+        elif self.verbose:
+            print(f"\n[best] {score:.2f} at {self.num_timesteps} steps "
+                  f"(best is still {self.best_score:.2f})", flush=True)
+        return True
+
+
 def main():
     vec_env = make_vec_env(make_env, n_envs=N_ENVS, vec_env_cls=SubprocVecEnv)
 
@@ -124,8 +210,9 @@ def main():
             device=DEVICE,
             tensorboard_log=TENSORBOARD_LOG,
             learning_rate=LR_RESUME,
-            target_kl=0.03,
+            target_kl=TARGET_KL,
             ent_coef=ENT_COEF_RESUME,
+            batch_size=BATCH_SIZE,
         )
         # pretrain.py sets verbose=0 and that is serialised into the .zip,
         # which would otherwise make training look frozen when it is fine.
@@ -156,6 +243,7 @@ def main():
             name_prefix="watermelon_ckpt",
         ),
         ScoreLoggingCallback(),
+        BestScoreCallback(eval_freq=EVAL_FREQ, n_episodes=EVAL_EPISODES),
     ])
 
     try:

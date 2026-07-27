@@ -11,6 +11,35 @@ here were found and fixed once already. Don't reintroduce them.
 > *why* over *what*: the code already says what it does. This file is the
 > handoff; if it's only in the chat, it's lost.
 
+## Keep the best model, not the last one
+
+`train.py` used to save only the FINAL model. A run that peaked mid-way and
+drifted down threw the peak away — and that is exactly what happened three
+times on Watermelon (614.40, 872.00, 893.03 all rejected by the install guard
+for ending worse than what was already shipped).
+
+`BestScoreCallback` in `watermelon/training/train.py` now evaluates every
+`EVAL_FREQ` steps and keeps the best in `watermelon_best.zip`. Two details
+that matter:
+
+- **Fixed seeds.** It always evaluates seeds `0..n-1`. Scores swing from 433
+  to 1426 between seeds, so without fixing them "best" would mostly select a
+  lucky draw rather than a better policy.
+- **It evaluates at step 0**, so the STARTING model sets the bar. Otherwise a
+  resume that degrades early would save the first thing it measured and call
+  it best.
+
+**Its numbers are not comparable to `evaluate.py`'s.** The callback uses 15
+seeds by default, `install_model.sh` uses 30. The same model measured 964.80
+on seeds 0-14 and 936.70 on seeds 0-29. Use the callback's score only to
+compare checkpoints *within* a run; always re-measure with `evaluate.py`
+before deciding whether to ship.
+
+This safety net is also what makes a more aggressive trust region reasonable:
+a run that overshoots and regresses no longer costs anything.
+
+---
+
 ## Before you start a training run
 
 Snake v2 burned several hours across three separate failures, and **every one
@@ -604,6 +633,36 @@ Two notes:
   `pretrain.py`'s BC batches previously relied on both being implicitly CPU.
 - `N_ENVS = 32` on a 16-core machine is 2× oversubscribed. Changing it also
   changes the effective batch (`n_steps × n_envs`), so it isn't a free knob.
+
+### Watermelon end-to-end throughput, measured 2026-07-27
+
+Machine: Ryzen 7 3700X (8 physical / 16 logical), RTX 4060 Ti 16 GB.
+Measured with `watermelon/training/bench_envs.py`, which times real
+`model.learn()` throughput after a warm-up rollout:
+
+| n_envs | device | fps |
+|---|---|---|
+| 8 | cuda | 534 |
+| 12 | cuda | 685 |
+| 16 | cuda | 593 |
+| **20** | **cuda** | **1079** |
+| 24 | cuda | 1028 |
+| 16 | cpu | 217 |
+
+**CUDA is ~5× CPU here, not the 9% measured on Snake** — Watermelon's env is
+pymunk physics driven per drop, so the per-step Python cost is higher and the
+GPU update is a bigger share of the total. Oversubscribing past 16 logical
+cores still helps, because env workers idle during the update phase. 20 is
+the sweet spot; 24 is slightly worse.
+
+The 16-env figure being below both 12 and 20 is non-monotonic and is probably
+noise — the combos run sequentially in one process. Treat single runs of this
+benchmark as approximate, but the CPU/CUDA gap is far too large to be noise.
+
+SB3 warns "PPO on the GPU ... should run on the CPU when not using a CNN
+policy". It is a false positive here — the policy IS a CNN, wrapped in a
+custom features extractor SB3's heuristic cannot see. The benchmark settles
+it; do not act on that warning.
 
 ---
 
