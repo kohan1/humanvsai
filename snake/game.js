@@ -394,6 +394,74 @@
         }
     }
 
+    /* ── Neural-network inspector ─────────────────────────────────────────
+       The grid is stored as cellKey(x, y) * GRID_CHANNELS + channel, where
+       cellKey is y * TILE_COUNT + x — so channel c of (row, col) lives at
+       (row * TILE_COUNT + col) * GRID_CHANNELS + c. Indexing this differently
+       from buildObservation would draw a convincing but wrong picture, which
+       is worse than drawing none. */
+    const inspector = createInspector({
+        mount: document.getElementById("insp-mount-ai"),
+        grid: {
+            w: TILE_COUNT,
+            h: TILE_COUNT,
+            channels: [
+                { label: "body", hint: "every segment except the head" },
+                { label: "head", hint: "where the snake is now" },
+                { label: "food", hint: "the target" },
+                { label: "tail", hint: "the cell that frees up next move" },
+                { label: "reachable", hint: "cells the head can still get to — this is what stops it boxing itself in" },
+            ],
+        },
+        readCell: (obs, row, col, ch) => obs[(row * TILE_COUNT + col) * GRID_CHANNELS + ch],
+        actions: {
+            count: 3,
+            orientation: "rows",
+            label: (i) => ["turn left", "straight", "turn right"][i],
+        },
+        scalars: (obs) => {
+            const p = CELLS * GRID_CHANNELS;
+            const dir = ["up", "right", "down", "left"];
+            let heading = "—";
+            for (let i = 0; i < 4; i++) if (obs[p + i]) heading = dir[i] || String(i);
+            return [
+                { label: "heading", value: heading },
+                { label: "length", value: Math.round(obs[p + 4] * CELLS) },
+                { label: "free space ahead", value: (obs[p + 8] * 100).toFixed(0) + "%" },
+            ];
+        },
+        valueLabel: "expected score from here",
+        valueHint: "the critic's estimate, in reward units",
+    });
+
+    /* Loaded only when the panel is first opened — see the note in
+       watermelon/game.js. Blocked under file://, where the value readout
+       simply stays hidden. */
+    let criticSession = null;
+    let criticPending = null;
+
+    function loadCritic() {
+        if (criticSession || criticPending) return criticPending;
+        criticPending = ort.InferenceSession
+            .create("snake_critic.onnx", { executionProviders: ["wasm"] })
+            .then((s) => { criticSession = s; })
+            .catch((err) => {
+                console.warn("Snake critic unavailable — value readout hidden.", err);
+            });
+        return criticPending;
+    }
+
+    const inspToggle = document.getElementById("insp-toggle-ai");
+    if (inspToggle) {
+        inspToggle.addEventListener("click", () => {
+            const on = inspToggle.getAttribute("aria-pressed") !== "true";
+            inspToggle.setAttribute("aria-pressed", String(on));
+            inspToggle.textContent = on ? "hide what it sees" : "what it sees";
+            inspector.setOpen(on);
+            if (on) loadCritic();
+        });
+    }
+
     async function runAiInference() {
         const obs = buildObservation(aiSnake, aiFood, aiStepsSinceFood);
         if (obs.length !== OBS_SIZE) {
@@ -408,6 +476,18 @@
         const tensor = new ort.Tensor("float32", obs, [1, obs.length]);
         const results = await aiSession.run({ observation: tensor });
         const logits = results.action_logits.data;
+
+        // Feed the inspector the exact tensor the model just consumed, so
+        // what it draws cannot drift from what the network actually saw.
+        if (inspector.isOpen) {
+            let value;
+            if (criticSession) {
+                const v = await criticSession.run({ observation: tensor });
+                value = v.value.data[0];
+            }
+            inspector.update({ obs, logits, value });
+        }
+
         let bestIdx = 0, bestVal = -Infinity;
         for (let i = 0; i < logits.length; i++) {
             if (logits[i] > bestVal) { bestVal = logits[i]; bestIdx = i; }

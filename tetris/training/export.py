@@ -224,6 +224,55 @@ def main():
 
     print(f"Export complete.")
 
+    # ── Critic, as a SEPARATE file ────────────────────────────────
+    # The in-game inspector shows the critic's estimate of the return expected
+    # from the current board. It is exported on its own rather than as another
+    # output of the model above, because the value head carries its own copy
+    # of the feature stack — folding it in would enlarge the file every
+    # visitor downloads, to feed a panel that is closed by default. The page
+    # fetches this only when someone opens the inspector.
+    critic_path = "tetris_critic.onnx"
+    try:
+        class Critic(torch.nn.Module):
+            def __init__(self, policy):
+                super().__init__()
+                self.features_extractor = getattr(
+                    policy, "vf_features_extractor", policy.features_extractor)
+                self.mlp_extractor = policy.mlp_extractor
+                self.value_net = policy.value_net
+
+            def forward(self, obs):
+                f = self.features_extractor(obs)
+                return self.value_net(self.mlp_extractor.forward_critic(f))
+
+        torch.onnx.export(
+            Critic(model.policy).eval(),
+            dummy_obs,
+            critic_path,
+            input_names=["observation"],
+            output_names=["value"],
+            dynamic_axes={"observation": {0: "batch_size"}, "value": {0: "batch_size"}},
+            opset_version=17,
+            training=torch.onnx.TrainingMode.EVAL,
+            keep_initializers_as_inputs=False,
+        )
+        sidecar = critic_path + ".data"
+        if os.path.exists(sidecar):
+            import onnx
+            from onnx.external_data_helper import load_external_data_for_model
+            proto = onnx.load(critic_path)
+            load_external_data_for_model(proto, os.path.dirname(os.path.abspath(critic_path)))
+            onnx.save(proto, critic_path, save_as_external_data=False)
+            os.remove(sidecar)
+        print(f"Critic exported to {critic_path} "
+              f"({os.path.getsize(critic_path) / 1048576:.1f} MB) — "
+              f"fetched only when the inspector is opened")
+    except Exception as e:
+        # A missing critic costs one readout; it must not fail the export of
+        # the model that actually plays the game.
+        print(f"WARNING: critic export failed ({e}). The value readout will "
+              f"be hidden; everything else still works.")
+
     # ── Verify the export ─────────────────────────────────────────
     print("\nVerifying ONNX model...")
     try:

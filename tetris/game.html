@@ -5,9 +5,11 @@
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Tetris — Human vs AI</title>
+        <link rel="stylesheet" href="../inspector.css" />
         <link rel="stylesheet" href="style.css" />
         <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
         <script src="model_data.js"></script>
+        <script src="../inspector.js"></script>
         <script src="game.js" defer></script>
         <style>
             /* Back nav — minimal, floats above the game */
@@ -96,6 +98,11 @@
                     <button type="button" data-speed="1.75">1.75x</button>
                     <button type="button" data-speed="2">2x</button>
                 </div>
+
+                <!-- Neural-network inspector, closed by default. -->
+                <button type="button" class="insp-toggle" id="insp-toggle-ai"
+                        aria-pressed="false">what it sees</button>
+                <div id="insp-mount-ai"></div>
             </div>
 
         </div>

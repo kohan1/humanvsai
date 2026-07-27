@@ -55,6 +55,7 @@ echo "staging the site in $STAGE"
 # Entry pages, the shared mesh background, and the Inside page with its
 # generated training data.
 cp index.html select.html inside.html mesh.js "$STAGE/"
+cp inspector.css inspector.js "$STAGE/"
 mkdir -p "$STAGE/inside"
 cp inside/data.js "$STAGE/inside/"
 
@@ -82,6 +83,19 @@ done
 cp snake/snake_ai.onnx           "$STAGE/snake/"
 cp watermelon/watermelon_ai.onnx "$STAGE/watermelon/"
 cp tetris/training/tetris_ai.onnx "$STAGE/tetris/"
+
+# Critic models, for the inspector's value readout. Separate files, fetched
+# only when someone opens the panel — folding the value head into the playing
+# model measured 22.6 -> 45.3 MB on Watermelon, doubling what every visitor
+# downloads for a panel that is closed by default.
+#
+# Tetris has none: the 1B-step checkpoint that produced its .onnx no longer
+# exists, and exporting a critic from the surviving 260M checkpoint would show
+# a different, weaker network's opinion beside the shipped policy. The page
+# hides the readout when the fetch 404s.
+for f in snake/snake_critic.onnx watermelon/watermelon_critic.onnx; do
+    [ -f "$f" ] && cp "$f" "$STAGE/$(dirname "$f")/"
+done
 
 # A page that ships no model and no base64 would fail silently at runtime, so
 # check here instead.

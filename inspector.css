@@ -1,0 +1,170 @@
+/* Shared styling for the neural-network inspector.
+ *
+ * Defaults are tuned for the dark games (Snake, Tetris). Watermelon is a cream
+ * and sage board, so watermelon/style.css overrides the custom properties
+ * below rather than restating any of these rules. */
+
+.insp {
+    --insp-fg:       #ddd;
+    --insp-dim:      #666;
+    --insp-line:     #242424;
+    --insp-panel:    rgba(255, 255, 255, 0.02);
+    --insp-accent:   #9ec7ff;
+    --insp-cell-bg:  #101010;   /* heat-map background, must be OPAQUE */
+    --insp-track:    #1a1a1a;   /* bar track */
+    --insp-cell-rgb: 158, 199, 255;
+
+    margin-top: 1.25rem;
+    padding: 1.1rem 1.2rem 1.2rem;
+    border: 1px solid var(--insp-line);
+    background: var(--insp-panel);
+    color: var(--insp-fg);
+    font-size: 12px;
+    text-align: left;
+    max-width: 100%;
+}
+
+.insp[hidden] { display: none !important; }
+
+.insp-section-label {
+    font-size: 0.53rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--insp-dim);
+    margin-bottom: 0.7rem;
+}
+.insp-actions .insp-section-label { margin-top: 1.3rem; }
+
+/* ── Observation channels ───────────────────────────────────────────────── */
+
+.insp-channels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+    align-items: flex-start;
+}
+.insp-chan { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
+.insp-chan-cvs {
+    display: block;
+    border: 1px solid var(--insp-line);
+    image-rendering: pixelated;
+}
+.insp-chan-label {
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--insp-dim);
+}
+
+/* ── Scalars ────────────────────────────────────────────────────────────── */
+
+.insp-scalars {
+    display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem;
+    margin-top: 0.9rem;
+    font-size: 0.66rem; color: var(--insp-dim);
+}
+.insp-scalars:empty { display: none; }
+.insp-scalar b {
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 0.5rem;
+    margin-right: 0.45em;
+}
+
+/* ── Action distribution ────────────────────────────────────────────────── */
+
+.insp-bars { display: flex; gap: 2px; }
+
+/* Columns: one bar per drop position, growing upward, so the shape lines up
+   with the board above it. */
+.insp-actions-columns .insp-bars { align-items: flex-end; height: 76px; }
+.insp-actions-columns .insp-act {
+    position: relative; flex: 1 1 0; height: 100%;
+    display: flex; align-items: flex-end;
+    background: var(--insp-track);
+}
+.insp-actions-columns .insp-act-fill {
+    display: block; width: 100%;
+    height: calc(var(--p, 0) * 100%);
+    background: var(--insp-accent);
+    opacity: 0.42;
+    transition: height 0.12s linear, opacity 0.12s;
+}
+.insp-actions-columns .insp-act-label { display: none; }
+.insp-actions-columns .insp-act.is-best .insp-act-fill { opacity: 1; }
+
+/* Rows: a handful of named actions, so they get labels. */
+.insp-actions-rows .insp-bars { flex-direction: column; gap: 4px; }
+.insp-actions-rows .insp-act {
+    position: relative; height: 20px;
+    display: flex; align-items: center;
+    background: var(--insp-track);
+}
+.insp-actions-rows .insp-act-fill {
+    position: absolute; inset: 0 auto 0 0;
+    width: calc(var(--p, 0) * 100%);
+    background: var(--insp-accent);
+    opacity: 0.42;
+    transition: width 0.12s linear, opacity 0.12s;
+}
+.insp-actions-rows .insp-act.is-best .insp-act-fill { opacity: 1; }
+.insp-actions-rows .insp-act-label {
+    position: relative;
+    padding-left: 0.6em;
+    font-size: 0.58rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    mix-blend-mode: difference;
+    color: #fff;
+}
+
+/* ── Readouts ───────────────────────────────────────────────────────────── */
+
+.insp-readouts {
+    display: flex; flex-wrap: wrap; gap: 1.6rem;
+    margin-top: 1.3rem; padding-top: 1.1rem;
+    border-top: 1px solid var(--insp-line);
+}
+.insp-metric { min-width: 130px; }
+.insp-metric[hidden] { display: none; }
+.insp-metric-label {
+    font-size: 0.5rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--insp-dim); margin-bottom: 0.45rem;
+}
+.insp-metric-num { font-variant-numeric: tabular-nums; font-size: 0.8rem; }
+.insp-metric-big { font-size: 1.3rem; }
+.insp-metric-hint {
+    margin-top: 0.3rem; font-size: 0.55rem; color: var(--insp-dim); opacity: 0.8;
+}
+.insp-bar {
+    height: 4px; background: var(--insp-track); margin-bottom: 0.4rem;
+    max-width: 160px;
+}
+.insp-bar-fill {
+    display: block; height: 100%;
+    width: calc(var(--p, 0) * 100%);
+    background: var(--insp-accent);
+    transition: width 0.15s linear;
+}
+
+/* ── The toggle that opens it ───────────────────────────────────────────── */
+
+.insp-toggle {
+    margin-top: 0.75rem;
+    font-family: inherit;
+    font-size: 0.55rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0.45em 0.9em;
+    color: var(--insp-dim, #666);
+    background: transparent;
+    border: 1px solid var(--insp-line, #242424);
+    transition: color 0.14s, border-color 0.14s, background 0.14s;
+}
+.insp-toggle:hover { color: #fff; border-color: #444; }
+.insp-toggle[aria-pressed="true"] {
+    color: #fff;
+    border-color: var(--insp-accent, #9ec7ff);
+}

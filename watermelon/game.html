@@ -6,6 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Watermelon Game — Human vs AI</title>
         <link rel="shortcut icon" href="assets/watermelon.png" />
+        <link rel="stylesheet" href="../inspector.css" />
         <link rel="stylesheet" href="style.css" />
 
         <!-- Physics stack. Order matters: planck must load before the
@@ -27,6 +28,7 @@
              loadAiModel() to fetch instead. See tools/deploy_pages.sh. -->
         <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
         <script src="model_data.js"></script>
+        <script src="../inspector.js"></script>
         <script src="game.js" defer></script>
     </head>
     <body>
@@ -138,6 +140,14 @@
                             <button type="button" data-speed="1.75">1.75x</button>
                             <button type="button" data-speed="2">2x</button>
                         </div>
+
+                        <!-- Opens the neural-network inspector. Off by
+                             default: it costs nothing while closed, but it is
+                             a lot of detail to put in front of someone who
+                             just wants to play. -->
+                        <button type="button" class="insp-toggle" id="insp-toggle-ai"
+                                aria-pressed="false">what it sees</button>
+                        <div id="insp-mount-ai"></div>
                     </div>
 
                     <!-- Mirrors the human board's left column, so the two

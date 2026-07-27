@@ -12,50 +12,92 @@ produce, so the whole model embeds as a single base64 blob per the
 embed_model.py pattern (see the snake build brief, section 5).
 """
 
+import os
+
 import torch
 import torch.nn as nn
+import sys
+
 import onnx
 from stable_baselines3 import PPO
 
-MODEL_PATH = "snake_final.zip"
+# Defaults to the current model, but accepts a path so a specific
+# checkpoint can be exported:
+#     python export.py archive/models/snake_final.129pt34.zip
+# Used to add the value head to the weights already on the site without
+# also swapping in a different (stronger) policy in the same change.
+MODEL_PATH = sys.argv[1] if len(sys.argv) > 1 else "snake_final.zip"
 ONNX_PATH = "snake_ai.onnx"
+CRITIC_PATH = "snake_critic.onnx"
+
+
+"""
+TWO FILES, NOT ONE — see watermelon/training/export.py. Folding the critic in
+as a second output of the playing model doubles the download, because the
+value head carries its own copy of the conv stack. The inspector fetches the
+critic separately, and only when someone opens it.
+"""
 
 
 class PolicyWrapper(nn.Module):
+    """The playing model. This is what every visitor downloads."""
+
     def __init__(self, policy):
         super().__init__()
-        self.features_extractor = policy.features_extractor
+        self.features_extractor = getattr(
+            policy, "pi_features_extractor", policy.features_extractor)
         self.mlp_extractor = policy.mlp_extractor
         self.action_net = policy.action_net
 
     def forward(self, obs):
-        features = self.features_extractor(obs)
-        latent_pi, _ = self.mlp_extractor(features)
-        return self.action_net(latent_pi)
+        return self.action_net(
+            self.mlp_extractor.forward_actor(self.features_extractor(obs)))
+
+
+class CriticWrapper(nn.Module):
+    """Value head, using the VALUE extractor — feeding it the policy's
+    features would produce numbers from a network that never saw them."""
+
+    def __init__(self, policy):
+        super().__init__()
+        self.features_extractor = getattr(
+            policy, "vf_features_extractor", policy.features_extractor)
+        self.mlp_extractor = policy.mlp_extractor
+        self.value_net = policy.value_net
+
+    def forward(self, obs):
+        return self.value_net(
+            self.mlp_extractor.forward_critic(self.features_extractor(obs)))
+
+
+def write(wrapper, path, obs_size, output_names):
+    torch.onnx.export(
+        wrapper,
+        torch.zeros(1, obs_size),
+        path,
+        input_names=["observation"],
+        output_names=output_names,
+        dynamic_axes={n: {0: "batch"} for n in ["observation"] + output_names},
+        opset_version=17,
+    )
+    m = onnx.load(path, load_external_data=True)
+    onnx.save_model(m, path, save_as_external_data=False)
+    sidecar = path + ".data"
+    if os.path.exists(sidecar):
+        os.remove(sidecar)
+    return os.path.getsize(path) / 1048576
 
 
 def main():
     model = PPO.load(MODEL_PATH, device="cpu")
-    wrapper = PolicyWrapper(model.policy).eval()
-
     obs_size = model.observation_space.shape[0]
-    dummy_input = torch.zeros(1, obs_size)
 
-    torch.onnx.export(
-        wrapper,
-        dummy_input,
-        ONNX_PATH,
-        input_names=["observation"],
-        output_names=["action_logits"],
-        dynamic_axes={"observation": {0: "batch"}, "action_logits": {0: "batch"}},
-        opset_version=17,
-    )
+    mb = write(PolicyWrapper(model.policy).eval(), ONNX_PATH, obs_size, ["action_logits"])
+    print(f"Exported to {ONNX_PATH} (obs {obs_size}, {mb:.1f} MB)")
 
-    # Inline any split external-data weights back into one file.
-    m = onnx.load(ONNX_PATH, load_external_data=True)
-    onnx.save_model(m, ONNX_PATH, save_as_external_data=False)
-
-    print(f"Exported to {ONNX_PATH} (obs size: {obs_size})")
+    mb = write(CriticWrapper(model.policy).eval(), CRITIC_PATH, obs_size, ["value"])
+    print(f"Exported to {CRITIC_PATH} (obs {obs_size} -> value, {mb:.1f} MB) "
+          f"— fetched only when the inspector is opened")
 
 
 if __name__ == "__main__":

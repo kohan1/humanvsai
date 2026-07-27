@@ -439,6 +439,68 @@
         return obs;
     }
 
+    /* ── Neural-network inspector ─────────────────────────────────────────
+       The board occupies the first ARENA_HEIGHT * ARENA_WIDTH floats of the
+       238-float observation, row-major and single-channel, so cell (row, col)
+       is simply obs[row * ARENA_WIDTH + col].
+
+       The 40 action logits are candidate PLACEMENTS (rotation x column), not
+       columns — chooseMove only considers the first `placements.length` of
+       them, which is why the panel labels them as placements. */
+    var inspector = createInspector({
+        mount: document.getElementById("insp-mount-ai"),
+        grid: {
+            w: CONFIG.ARENA_WIDTH,
+            h: CONFIG.ARENA_HEIGHT,
+            channels: [{ label: "board", hint: "1 where a cell is filled" }]
+        },
+        readCell: function (obs, row, col) {
+            return obs[row * CONFIG.ARENA_WIDTH + col];
+        },
+        actions: { count: 40, orientation: "columns", label: function (i) { return String(i); } },
+        scalars: function (obs) {
+            var W = CONFIG.ARENA_WIDTH, H = CONFIG.ARENA_HEIGHT;
+            var p = W * H + W + 7 + 35;          // board, heights, current, next five
+            var cells = W * H;
+            return [
+                { label: "holes", value: Math.round(obs[p] * cells) },
+                { label: "bumpiness", value: Math.round(obs[p + 1] * cells) },
+                { label: "stack height", value: Math.round(obs[p + 2] * cells) },
+                { label: "tallest column", value: Math.round(obs[p + 3] * H) },
+                { label: "combo", value: Math.round(obs[p + 4] * 20) }
+            ];
+        },
+        valueLabel: "expected score from here",
+        valueHint: "the critic's estimate, in reward units"
+    });
+
+    /* Fetched only when the panel is first opened. Blocked under file://,
+       where the value readout stays hidden and everything else still works. */
+    var criticSession = null;
+    var criticPending = null;
+
+    function loadCritic() {
+        if (criticSession || criticPending) return criticPending;
+        criticPending = ort.InferenceSession
+            .create("tetris_critic.onnx", { executionProviders: ["wasm"] })
+            .then(function (s) { criticSession = s; })
+            .catch(function (err) {
+                console.warn("Tetris critic unavailable — value readout hidden.", err);
+            });
+        return criticPending;
+    }
+
+    var inspToggle = document.getElementById("insp-toggle-ai");
+    if (inspToggle) {
+        inspToggle.addEventListener("click", function () {
+            var on = inspToggle.getAttribute("aria-pressed") !== "true";
+            inspToggle.setAttribute("aria-pressed", String(on));
+            inspToggle.textContent = on ? "hide what it sees" : "what it sees";
+            inspector.setOpen(on);
+            if (on) loadCritic();
+        });
+    }
+
     // ─── AI player ───────────────────────────────────────────────────────────
 
     function AIPlayer(session) {
@@ -460,6 +522,16 @@
             var tensor = new ort.Tensor("float32", obs, [1, 238]);
             var results = await this.session.run({ observation: tensor });
             var logits  = results.action_logits.data;
+
+            // The inspector sees the exact tensor the model just consumed.
+            if (inspector.isOpen) {
+                var value;
+                if (criticSession) {
+                    var v = await criticSession.run({ observation: tensor });
+                    value = v.value.data[0];
+                }
+                inspector.update({ obs: obs, logits: logits, value: value });
+            }
 
             // Pick highest-scoring valid placement (cap at placements.length)
             var bestScore = -Infinity, bestIdx = 0;

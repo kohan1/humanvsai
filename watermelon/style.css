@@ -300,6 +300,44 @@ label { cursor: pointer; }
     #vs { align-self: center; }
 }
 
+/* ── Neural-network inspector ───────────────────────────────────────────────
+   inspector.css defaults to the dark palette Snake and Tetris use. This board
+   is cream on sage, so only the custom properties are overridden — none of the
+   layout rules are restated. */
+.insp {
+    --insp-fg:       var(--accent);
+    --insp-dim:      rgba(103, 84, 36, 0.62);
+    --insp-line:     rgba(103, 84, 36, 0.28);
+    --insp-panel:    rgba(255, 255, 255, 0.42);
+    --insp-accent:   #675424;
+    /* Opaque, and the same cream as the board itself, so the heat map
+       reads as a low-resolution version of what is above it. */
+    --insp-cell-bg:  #FDFBEC;
+    --insp-track:    rgba(103, 84, 36, 0.14);
+    --insp-cell-rgb: 103, 84, 36;
+
+    width: var(--canvas-w);
+    max-width: 100%;
+}
+
+.insp-toggle {
+    --insp-dim:  rgba(103, 84, 36, 0.75);
+    --insp-line: rgba(103, 84, 36, 0.35);
+    background-color: var(--bubble-bg);
+    border-radius: 4px;
+}
+.insp-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.insp-toggle[aria-pressed="true"] {
+    color: var(--accent);
+    background-color: #fff;
+    border-color: var(--accent);
+    font-weight: 700;
+}
+
+/* The label sits on top of a filled bar, and difference-blending against a
+   cream background renders as muddy inversion rather than contrast. */
+.insp-actions-rows .insp-act-label { mix-blend-mode: normal; color: var(--accent); }
+
 /* ── AI speed controls ──────────────────────────────────────────────────────
    Same control as Tetris, restyled for this game's palette. Scales the AI's
    drop cooldown and cloud tracking together — speeding up one without the

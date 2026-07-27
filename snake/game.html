@@ -5,9 +5,11 @@
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Snake — Human vs AI</title>
+        <link rel="stylesheet" href="../inspector.css" />
         <link rel="stylesheet" href="style.css" />
         <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
         <script src="model_data.js"></script>
+        <script src="../inspector.js"></script>
         <script src="game.js" defer></script>
     </head>
     <body>
@@ -50,6 +52,12 @@
                     </button>
                     <div class="ai-status" id="ai-status"></div>
                 </main>
+
+                <!-- Neural-network inspector. Closed by default; update() is
+                     a no-op while closed, so it costs nothing unopened. -->
+                <button type="button" class="insp-toggle" id="insp-toggle-ai"
+                        aria-pressed="false">what it sees</button>
+                <div id="insp-mount-ai"></div>
             </div>
 
         </div>

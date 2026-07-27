@@ -725,6 +725,77 @@
         return obs;
     }
 
+    /* ── Neural-network inspector ─────────────────────────────────────────
+       The grid is stored interleaved — (row * GRID_W + col) * GRID_CHANNELS
+       + channel — so readCell has to index it the same way buildObservation
+       writes it. Getting this wrong would draw a plausible-looking but wrong
+       picture, which is worse than drawing nothing. */
+    const SPAWN_TIER_NAMES = ["cherry", "strawberry", "grape", "dekopon", "orange"];
+    const inspector = createInspector({
+        mount: document.getElementById("insp-mount-ai"),
+        grid: {
+            w: GRID_W,
+            h: GRID_H,
+            channels: [
+                { label: "occupancy", hint: "1 where a fruit covers the cell" },
+                { label: "tier", hint: "fruit size in that cell, 0-1" },
+            ],
+        },
+        readCell: (obs, row, col, ch) => obs[(row * GRID_W + col) * GRID_CHANNELS + ch],
+        actions: {
+            count: N_DROP_COLUMNS,
+            orientation: "columns",
+            label: (i) => String(i),
+        },
+        scalars: (obs) => {
+            const p = GRID_W * GRID_H * GRID_CHANNELS;
+            const oneHot = (off) => {
+                for (let i = 0; i < SPAWN_TIERS; i++) if (obs[off + i]) return SPAWN_TIER_NAMES[i];
+                return "—";
+            };
+            return [
+                { label: "holding", value: oneHot(p) },
+                { label: "next", value: oneHot(p + SPAWN_TIERS) },
+                { label: "stack height", value: (obs[p + 2 * SPAWN_TIERS] * 100).toFixed(0) + "%" },
+                { label: "fruit", value: Math.round(obs[p + 2 * SPAWN_TIERS + 1] * 60) },
+            ];
+        },
+        valueLabel: "expected score from here",
+        valueHint: "the critic's estimate, in reward units (~score / 10)",
+    });
+
+    /* The critic is a SEPARATE 22.6 MB model, loaded the first time the panel
+       is opened and never otherwise. Bundling it into the playing model would
+       double what every visitor downloads (22.6 -> 45.3 MB measured) to power
+       a readout inside a panel that is closed by default.
+
+       Under file:// this fetch is blocked, so the value readout simply stays
+       hidden — the rest of the inspector works either way. */
+    let criticSession = null;
+    let criticPending = null;
+
+    function loadCritic() {
+        if (criticSession || criticPending) return criticPending;
+        criticPending = ort.InferenceSession
+            .create("watermelon_critic.onnx", { executionProviders: ["wasm"] })
+            .then((s) => { criticSession = s; })
+            .catch((err) => {
+                console.warn("Watermelon critic unavailable — value readout hidden.", err);
+            });
+        return criticPending;
+    }
+
+    const inspToggle = document.getElementById("insp-toggle-ai");
+    if (inspToggle) {
+        inspToggle.addEventListener("click", () => {
+            const on = inspToggle.getAttribute("aria-pressed") !== "true";
+            inspToggle.setAttribute("aria-pressed", String(on));
+            inspToggle.textContent = on ? "hide what it sees" : "what it sees";
+            inspector.setOpen(on);
+            if (on) loadCritic();
+        });
+    }
+
     const aiStatusEl = document.getElementById("status-ai");
     let aiSession = null;
     let aiBusy = false;          // an inference is in flight
@@ -781,6 +852,19 @@
         const tensor = new ort.Tensor("float32", obs, [1, obs.length]);
         const out = await aiSession.run({ observation: tensor });
         const logits = out.action_logits.data;
+
+        // The inspector gets the very tensor that was just fed to the model,
+        // not a re-derivation of it — so what it draws cannot drift from what
+        // the network actually saw.
+        if (inspector.isOpen) {
+            let value;
+            if (criticSession) {
+                const v = await criticSession.run({ observation: tensor });
+                value = v.value.data[0];
+            }
+            inspector.update({ obs, logits, value });
+        }
+
         let best = 0;
         for (let i = 1; i < logits.length; i++) if (logits[i] > logits[best]) best = i;
         return best;
