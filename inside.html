@@ -97,6 +97,27 @@
         .chart-wrap { position: relative; border: 1px solid #1e1e1e; background: #0a0a0a; }
         canvas.chart { display: block; width: 100%; height: 380px; }
         canvas.chart.short { height: 240px; }
+        canvas.chart.tall { height: 520px; }
+
+        /* ── Weight heat maps ───────────────────────────────────────────── */
+        .heat-row {
+            display: flex; flex-wrap: wrap; gap: 1px;
+            background: #1e1e1e; border: 1px solid #1e1e1e;
+        }
+        .heat-cell {
+            flex: 1 1 180px; background: #0a0a0a;
+            padding: 1rem; display: flex; flex-direction: column;
+            align-items: center; gap: 0.6rem;
+        }
+        .heat-cell canvas {
+            width: 100%; max-width: 190px; height: auto;
+            image-rendering: pixelated; border: 1px solid #1a1a1a;
+        }
+        .heat-label {
+            font-size: 0.5rem; letter-spacing: 0.14em; text-transform: uppercase;
+            color: #4a4a4a; text-align: center; line-height: 1.7;
+        }
+        .heat-label b { display: block; color: #9a9a9a; font-weight: 400; }
 
         .two-up {
             display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem;
@@ -392,6 +413,37 @@
                 <canvas class="chart" id="timeline"></canvas>
                 <div class="tip" id="timeline-tip"></div>
             </div>
+        </div>
+
+        <div class="block" id="brain-block">
+            <div class="block-head">
+                <div>
+                    <h2>The Tetris bot's actual brain</h2>
+                    <p class="block-note">
+                        Not a diagram of a neural network — this one. Every line is a
+                        real weight read out of the model file the site ships, drawn at
+                        its true strength: blue pulls an option up, red pushes it down.
+                        Hover a neuron to isolate what it is connected to.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart tall" id="brain"></canvas>
+                <div class="tip" id="brain-tip"></div>
+            </div>
+            <p class="omitted" id="brain-note"></p>
+
+            <div class="block-head" style="margin-top:2.5rem">
+                <div>
+                    <h2 style="font-size:1rem">Every weight, layer by layer</h2>
+                    <p class="block-note">
+                        The same weights again, all of them this time — each matrix
+                        averaged down to fit and coloured by sign. Structure here is
+                        learned, not designed.
+                    </p>
+                </div>
+            </div>
+            <div id="brain-heat"></div>
         </div>
 
         <div class="block">
@@ -1299,13 +1351,152 @@
             }).join('');
         }
 
+        /* ── The actual brain ───────────────────────────────────────────────
+           Every edge is a real weight. Blue is positive, red negative, and
+           opacity is |w| against that layer's own peak — normalising per layer
+           rather than globally, because the output layer's weights are about
+           2.5x the middle layers' and would otherwise wash them out. */
+        const brain = (TRAINING_DATA.brain || {}).tetris;
+        const brainCvs = document.getElementById('brain');
+        const brainTip = document.getElementById('brain-tip');
+        let brainGeom = null;
+        let brainHover = null;
+
+        function drawBrain() {
+            if (!brain) { document.getElementById('brain-block').style.display = 'none'; return; }
+            const { ctx, w, h } = setupCanvas(brainCvs);
+            ctx.clearRect(0, 0, w, h);
+
+            const cols = brain.nodes.length;
+            const padX = 60, padY = 34;
+            const colX = (i) => padX + (w - padX * 2) * (cols === 1 ? 0.5 : i / (cols - 1));
+            const nodeY = (col, j) => {
+                const n = brain.nodes[col];
+                const usable = h - padY * 2;
+                return padY + (n === 1 ? usable / 2 : usable * j / (n - 1));
+            };
+
+            brain.edges.forEach((e) => {
+                const from = e.layer, to = e.layer + 1;
+                for (let d = 0; d < e.to; d++) {
+                    for (let s = 0; s < e.from; s++) {
+                        const wv = e.w[d * e.from + s];
+                        const mag = Math.abs(wv) / e.peak;
+                        if (mag < 0.08) continue;          // skip the invisible
+                        const dim = brainHover &&
+                                    !(brainHover.col === from && brainHover.idx === s) &&
+                                    !(brainHover.col === to && brainHover.idx === d);
+                        ctx.strokeStyle = wv >= 0
+                            ? `rgba(140,190,255,${(mag * 0.5 * (dim ? 0.06 : 1)).toFixed(3)})`
+                            : `rgba(235,130,130,${(mag * 0.5 * (dim ? 0.06 : 1)).toFixed(3)})`;
+                        ctx.lineWidth = dim ? 0.5 : 0.4 + mag * 1.4;
+                        ctx.beginPath();
+                        ctx.moveTo(colX(from), nodeY(from, s));
+                        ctx.lineTo(colX(to), nodeY(to, d));
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            const LABELS = ['board + pieces', 'hidden 1024', 'hidden 1024', 'hidden 512', 'placements'];
+            for (let c = 0; c < cols; c++) {
+                for (let j = 0; j < brain.nodes[c]; j++) {
+                    const on = brainHover && brainHover.col === c && brainHover.idx === j;
+                    ctx.beginPath();
+                    ctx.arc(colX(c), nodeY(c, j), on ? 5 : 3, 0, Math.PI * 2);
+                    ctx.fillStyle = on ? '#fff'
+                                  : c === 0 ? '#7f9bbf'
+                                  : c === cols - 1 ? '#cfe4ff' : '#5f6b7a';
+                    ctx.fill();
+                }
+                ctx.fillStyle = '#4a4a4a';
+                ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText((LABELS[c] || '').toUpperCase(), colX(c), h - 10);
+            }
+
+            brainGeom = { colX, nodeY, cols };
+        }
+
+        brainCvs.addEventListener('mousemove', e => {
+            if (!brainGeom) return;
+            const rect = brainCvs.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            let found = null, bd = 18 * 18;
+            for (let c = 0; c < brainGeom.cols; c++) {
+                for (let j = 0; j < brain.nodes[c]; j++) {
+                    const dx = brainGeom.colX(c) - mx, dy = brainGeom.nodeY(c, j) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; found = { col: c, idx: j }; }
+                }
+            }
+            const changed = JSON.stringify(found) !== JSON.stringify(brainHover);
+            brainHover = found;
+            if (changed) drawBrain();
+
+            if (!found) { brainTip.style.opacity = 0; return; }
+            const names = ['input', 'hidden layer 1', 'hidden layer 2', 'hidden layer 3', 'placement'];
+            brainTip.innerHTML =
+                `<div class="tip-run">${names[found.col] || 'neuron'}</div>` +
+                `<div class="tip-row">one of <b>${brain.layers[Math.min(found.col, brain.layers.length - 1)].shape[found.col === 0 ? 1 : 0].toLocaleString()}</b> in this layer</div>` +
+                `<div class="tip-row">showing a sample of ${brain.nodes[found.col]}</div>`;
+            brainTip.style.opacity = 1;
+            const tw = brainTip.offsetWidth, th = brainTip.offsetHeight;
+            brainTip.style.left = Math.min(Math.max(8, mx + 14), rect.width - tw - 8) + 'px';
+            brainTip.style.top  = Math.min(Math.max(8, my - th - 12), rect.height - th - 8) + 'px';
+        });
+        brainCvs.addEventListener('mouseleave', () => {
+            brainTip.style.opacity = 0;
+            if (brainHover) { brainHover = null; drawBrain(); }
+        });
+
+        function drawBrainNote() {
+            if (!brain) return;
+            const total = brain.layers.reduce((a, l) => a + l.shape[0] * l.shape[1], 0);
+            const shown = brain.edges.reduce((a, e) => a + e.w.length, 0);
+            document.getElementById('brain-note').textContent =
+                `${shown.toLocaleString()} connections drawn, sampled evenly from `
+                + `${total.toLocaleString()} real ones — every 1.84 million would be a solid block.`;
+        }
+
+        function drawHeat() {
+            if (!brain) return;
+            const host = document.getElementById('brain-heat');
+            host.innerHTML = '<div class="heat-row">' + brain.layers.map((l, i) =>
+                `<div class="heat-cell">
+                    <canvas data-heat="${i}" width="${l.heat.w}" height="${l.heat.h}"></canvas>
+                    <span class="heat-label"><b>layer ${i + 1} — ${l.shape[1]} → ${l.shape[0]}</b>
+                    ${(l.shape[0] * l.shape[1]).toLocaleString()} weights ·
+                    ±${l.heat.peak.toFixed(2)} peak · ${(l.stats.zeroish * 100).toFixed(0)}% near zero</span>
+                </div>`).join('') + '</div>';
+
+            brain.layers.forEach((l, i) => {
+                const cvs = host.querySelector(`[data-heat="${i}"]`);
+                const ctx = cvs.getContext('2d');
+                const img = ctx.createImageData(l.heat.w, l.heat.h);
+                for (let p = 0; p < l.heat.data.length; p++) {
+                    // 128 is zero; below is negative (red), above positive (blue).
+                    const v = (l.heat.data[p] - 128) / 127;
+                    const mag = Math.min(1, Math.abs(v));
+                    const o = p * 4;
+                    img.data[o]     = v < 0 ? 235 : 140;
+                    img.data[o + 1] = v < 0 ? 130 : 190;
+                    img.data[o + 2] = v < 0 ? 130 : 255;
+                    img.data[o + 3] = Math.round(28 + mag * 227);
+                }
+                ctx.putImageData(img, 0, 0);
+            });
+        }
+
         /* ── Boot ───────────────────────────────────────────────────────── */
         renderLegend();
         drawArch();
         drawH2H();
+        drawBrainNote();
+        drawHeat();
         function redraw() {
             drawCurve(); drawEvals(); drawProgression(); drawTree();
-            drawDist(); drawBench(); drawTimeline();
+            drawDist(); drawBench(); drawTimeline(); drawBrain();
         }
         window.addEventListener('resize', redraw);
         redraw();

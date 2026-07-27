@@ -215,6 +215,119 @@ def describe_onnx(path: pathlib.Path):
     }
 
 
+def extract_brain(path: pathlib.Path, sample=(18, 18, 18, 14)):
+    """
+    Pull the REAL weights out of a model so the page can draw the actual
+    network rather than a stylised picture of one.
+
+    Three things come out, all measured, none invented:
+
+      heat    each weight matrix reduced to at most 64x64 by averaging blocks,
+              then quantised to 0-255. A 238x1024 matrix is 244k floats; the
+              reduction is what makes it shippable, and block averaging keeps
+              the structure that block sampling would alias away.
+      nodes   a handful of real neurons per layer, and the true weight on every
+              connection between the sampled ones. Drawing all 1.84M edges is
+              meaningless; drawing a sample at true strength is not.
+      stats   min / max / mean / std and a histogram per layer.
+
+    Only dense layers. A conv kernel is a different shape of thing and would
+    need its own treatment, so Snake and Watermelon get nothing here rather
+    than something misleading.
+    """
+    try:
+        import numpy as np
+        import onnx
+        from onnx import numpy_helper
+    except ImportError:
+        return None
+    if not path.exists():
+        return None
+
+    model = onnx.load(str(path))
+    init = {i.name: i for i in model.graph.initializer}
+
+    mats = []
+    for node in model.graph.node:
+        if node.op_type not in ("Gemm", "MatMul"):
+            continue
+        for name in node.input:
+            if name in init and len(init[name].dims) == 2:
+                mats.append(numpy_helper.to_array(init[name]))
+                break
+
+    if not mats:
+        return None
+
+    def reduce_to(m, cap=64):
+        """Average m down to at most cap x cap. Averaging, not sampling —
+        sampling a sparse matrix mostly returns the gaps."""
+        rows, cols = m.shape
+        rs, cs = max(1, rows // cap), max(1, cols // cap)
+        r_end, c_end = (rows // rs) * rs, (cols // cs) * cs
+        block = m[:r_end, :c_end].reshape(rows // rs, rs, cols // cs, cs)
+        return block.mean(axis=(1, 3))
+
+    layers = []
+    for i, m in enumerate(mats):
+        small = reduce_to(m)
+        peak = float(np.abs(small).max()) or 1.0
+        # Signed, centred on 128: 0 is the most negative, 255 the most
+        # positive, so the page can colour sign as well as strength.
+        quant = np.clip(np.rint(small / peak * 127) + 128, 0, 255).astype(int)
+        hist, edges = np.histogram(m, bins=24)
+
+        layers.append({
+            "shape": [int(x) for x in m.shape],
+            "heat": {
+                "w": int(quant.shape[1]),
+                "h": int(quant.shape[0]),
+                "peak": round(peak, 5),
+                "data": quant.flatten().tolist(),
+            },
+            "stats": {
+                "min": round(float(m.min()), 4),
+                "max": round(float(m.max()), 4),
+                "mean": round(float(m.mean()), 6),
+                "std": round(float(m.std()), 5),
+                "zeroish": round(float((np.abs(m) < 0.01).mean()), 4),
+            },
+            "hist": {
+                "counts": [int(c) for c in hist],
+                "from": round(float(edges[0]), 4),
+                "to": round(float(edges[-1]), 4),
+            },
+        })
+
+    # A sampled node-link view. Neurons are taken evenly across each layer so
+    # the sample is not biased toward one end of the matrix.
+    counts = list(sample[:len(mats)]) + [int(mats[-1].shape[0])]
+    picks = []
+    picks.append(np.linspace(0, mats[0].shape[1] - 1, counts[0], dtype=int))
+    for i, m in enumerate(mats):
+        n = counts[i + 1] if i + 1 < len(counts) else m.shape[0]
+        picks.append(np.linspace(0, m.shape[0] - 1, min(n, m.shape[0]), dtype=int))
+
+    edges_out = []
+    for i, m in enumerate(mats):
+        src, dst = picks[i], picks[i + 1]
+        w = m[np.ix_(dst, src)]
+        edges_out.append({
+            "layer": i,
+            "from": len(src),
+            "to": len(dst),
+            "peak": round(float(np.abs(w).max()) or 1.0, 5),
+            "w": [round(float(v), 4) for v in w.flatten()],
+        })
+
+    return {
+        "file": path.name,
+        "layers": layers,
+        "nodes": [len(p) for p in picks],
+        "edges": edges_out,
+    }
+
+
 def parse_tetris_tensorboard():
     """
     Tetris predates the text-log convention and only left TensorBoard events.
@@ -439,11 +552,18 @@ def main():
         if desc:
             architecture[game] = desc
 
+    # The real weights, for the network diagram. Tetris only: it is a pure MLP,
+    # so a dense-layer view describes it completely. Snake and Watermelon are
+    # convolutional, and drawing their kernels as a node-link graph would show
+    # something that is not how they work.
+    brain = extract_brain(ROOT / "tetris" / "training" / "tetris_ai.onnx")
+
     payload = {
         "generated": datetime.now().isoformat(timespec="seconds"),
         "shipped": shipped,
         "runs": runs,
         "architecture": architecture,
+        "brain": {"tetris": brain} if brain else {},
         # Measured with watermelon/training/bench_envs.py on 2026-07-27:
         # Ryzen 7 3700X (8 physical / 16 logical), RTX 4060 Ti 16 GB.
         "benchmark": {
