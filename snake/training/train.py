@@ -47,7 +47,13 @@ def linear_schedule(start: float, end: float):
 DEVICE = os.environ.get("TRAIN_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 
 N_ENVS = int(os.environ.get("N_ENVS", 32))
-TOTAL_TIMESTEPS = 25_000_000
+
+# How often BestScoreCallback checks, and over how many fixed-seed games.
+# 15 episodes is a fraction of a percent of a 1M-step window and is the
+# only thing standing between a mid-run peak and losing it.
+EVAL_FREQ = int(os.environ.get("EVAL_FREQ", 1_000_000))
+EVAL_EPISODES = int(os.environ.get("EVAL_EPISODES", 15))
+TOTAL_TIMESTEPS = int(os.environ.get("TOTAL_TIMESTEPS", 25_000_000))
 
 # Entropy bonus, and it depends entirely on how good the starting policy is.
 #
@@ -71,7 +77,14 @@ ENT_COEF_RESUME = 0.0
 # exploring.
 LR_START = 3e-4
 LR_END = 1e-5
-LR_RESUME = 5e-5
+LR_RESUME = float(os.environ.get("LR_RESUME", 5e-5))
+
+# Snake's last run early-stopped on 728 of 728 iterations, 716 of them at
+# epoch 0 of 10 — it was collecting rollouts and then barely using them.
+# Widening the trust region is what fixed exactly that on Watermelon, and
+# BestScoreCallback now makes it safe to try: an overshoot costs nothing
+# because the peak is kept.
+TARGET_KL = float(os.environ.get("TARGET_KL", 0.05))
 
 PRETRAINED_PATH = "snake_pretrained.zip"
 RESUME_PATH = "snake_final.zip"  # a finished RL run, if there is one — prefer
@@ -121,6 +134,66 @@ class ScoreLoggingCallback(BaseCallback):
             self.logger.record("rollout/ep_score_mean", float(np.mean(self.score_buffer)))
 
 
+class BestScoreCallback(BaseCallback):
+    """
+    Keep the best model seen, not the last one. Ported from Watermelon's
+    train.py, where it immediately proved its worth: that game's 20M-step run
+    peaked at 1032.43 and ENDED on 959.93, so without this the run would have
+    shipped a model 72 points worse than the one it had already found.
+
+    Snake has never had this. Its last run early-stopped on 728 of 728
+    iterations and drifted for hours; whatever peak it passed through was lost.
+    At 100M steps that risk is far larger, not smaller.
+
+    Fixed seeds, so every check faces identical games — Snake's scores range
+    41 to 177 on one unchanged model, and without fixing them "best" would
+    mostly select a lucky draw. Evaluates at step 0 too, so the STARTING model
+    sets the bar and a run that degrades early cannot save something worse than
+    what it began with.
+    """
+
+    def __init__(self, eval_freq: int, n_episodes: int = 15,
+                 save_path: str = "snake_best.zip", verbose: int = 1):
+        super().__init__(verbose)
+        self.eval_freq = eval_freq
+        self.n_episodes = n_episodes
+        self.save_path = save_path
+        self.best_score = float("-inf")
+        self._next_eval = 0
+
+    def _evaluate(self) -> float:
+        env = SnakeEnv()
+        total = 0
+        for ep in range(self.n_episodes):
+            obs, _ = env.reset(seed=ep)
+            done, info = False, {"score": 0}
+            while not done:
+                action, _ = self.model.predict(obs, deterministic=True)
+                obs, _, terminated, truncated, info = env.step(int(action))
+                done = terminated or truncated
+            total += info["score"]
+        return total / self.n_episodes
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps < self._next_eval:
+            return True
+        self._next_eval = self.num_timesteps + self.eval_freq
+
+        score = self._evaluate()
+        self.logger.record("eval/score", score)
+
+        if score > self.best_score:
+            self.best_score = score
+            self.model.save(self.save_path)
+            if self.verbose:
+                print(f"\n[best] new best {score:.2f} at {self.num_timesteps} "
+                      f"steps -> {self.save_path}", flush=True)
+        elif self.verbose:
+            print(f"\n[best] {score:.2f} at {self.num_timesteps} steps "
+                  f"(best is still {self.best_score:.2f})", flush=True)
+        return True
+
+
 def main():
     vec_env = make_vec_env(make_env, n_envs=N_ENVS, vec_env_cls=SubprocVecEnv)
 
@@ -142,7 +215,7 @@ def main():
             device=DEVICE,
             tensorboard_log=TENSORBOARD_LOG,
             learning_rate=LR_RESUME,
-            target_kl=0.03,
+            target_kl=TARGET_KL,
             ent_coef=ENT_COEF_RESUME,
         )
         # pretrain.py sets verbose=0 to keep the BC loop quiet — that
@@ -180,7 +253,8 @@ def main():
                                        # instead of overwriting them step-for-step.
     )
     score_cb = ScoreLoggingCallback()
-    callback = CallbackList([checkpoint_cb, score_cb])
+    best_cb = BestScoreCallback(eval_freq=EVAL_FREQ, n_episodes=EVAL_EPISODES)
+    callback = CallbackList([checkpoint_cb, score_cb, best_cb])
 
     try:
         model.learn(total_timesteps=TOTAL_TIMESTEPS, callback=callback, progress_bar=True)

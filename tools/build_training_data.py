@@ -103,10 +103,21 @@ RUN_NOTES = {
     ),
     "train_day3_gpu.log": dict(
         game="watermelon", label="resume · GPU, wider trust region",
-        outcome="running",
+        evalScore=1032.43, outcome="improved",
         parent="train_day2.log",
-        note="First run on the GPU with 20 envs, target_kl 0.05 and "
-             "best-checkpoint tracking. No early stopping at all.",
+        checkpoint="watermelon/training/archive/models/watermelon_final.1032pt43.zip",
+        note="20M steps on the GPU in 6h51m, with 20 envs, target_kl 0.05 and "
+             "best-checkpoint tracking — only 3 early stops in 489 iterations, "
+             "against 49 of 49 on the previous run. It peaked at 18M steps and "
+             "then declined: the best checkpoint scores 1032.43 but the model "
+             "it ENDED on scores 959.93. Keeping the best rather than the last "
+             "is worth 72 points here, and this is the run that proved it.",
+    ),
+    "train_100m.log": dict(
+        game="snake", label="100M resume · GPU", outcome="running",
+        parent="train_day1.log",
+        note="First Snake run with best-checkpoint tracking and the wider "
+             "trust region that worked on Watermelon.",
     ),
 }
 
