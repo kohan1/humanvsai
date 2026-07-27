@@ -46,7 +46,7 @@ from policy_config import policy_kwargs
 DEVICE = os.environ.get("TRAIN_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 
 N_ENVS = int(os.environ.get("N_ENVS", 16))                  # physics is CPU-bound; leave headroom on 16 cores
-TOTAL_TIMESTEPS = 3_000_000  # one "step" is a whole drop-and-settle, not a frame
+TOTAL_TIMESTEPS = 4_000_000  # one "step" is a whole drop-and-settle, not a frame
 
 # Entropy bonus, split by how good the starting policy is.
 #

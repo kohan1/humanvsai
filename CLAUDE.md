@@ -475,6 +475,20 @@ policy, and check the settle thresholds first** — they decide when a drop is
     `width: fit-content; max-width: 100%`.
 13. **Don't use `auto-fit` in `select.html`'s grid** — it intermittently
     computes a phantom 4th column at wider viewports. Fixed columns only.
+14. **A "made with p5play" splash appeared on the live site only.**
+    `watermelon/lib/physics.min.js` injected a full-screen black overlay
+    (`div#p5play-intro`, holding `https://p5play.org/v3/made_with_p5play.png`)
+    on load. It is skipped for an allowlist of hostnames that includes `""`
+    (i.e. `file://`), `localhost` and `127.0.0.1` — so it was invisible in
+    every local test and first showed up once the site was served from
+    `kohan1.github.io`. The injector has been deleted from the vendored lib
+    (see the comment at the `default:` case of the `location.hostname` switch,
+    ~line 4044). **If `physics.min.js` is ever re-downloaded or updated, the
+    splash comes back** — re-apply the removal and confirm with
+    `grep -c p5play-intro watermelon/lib/physics.min.js` returning 0.
+    General lesson: a vendored library can behave differently on the deployed
+    host than on localhost. Verify user-visible changes against the live URL,
+    not just the dev server.
 
 ---
 
