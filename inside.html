@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>inside — human vs ai</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; min-height: 100%;
+            background: #080808; color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+
+        .back {
+            position: fixed; top: 1.6rem; left: 1.8rem;
+            display: inline-flex; align-items: center; gap: 0.4em;
+            font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase;
+            color: #555; text-decoration: none; transition: color 0.15s; z-index: 100;
+        }
+        .back:hover { color: #bbb; }
+
+        .page {
+            position: relative; z-index: 10;
+            max-width: 1080px; margin: 0 auto;
+            padding: 6rem 2rem 5rem;
+        }
+
+        .eyebrow {
+            font-size: 0.58rem; letter-spacing: 0.24em; text-transform: uppercase;
+            color: #555; margin-bottom: 0.9rem;
+        }
+        h1 {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: clamp(1.8rem, 4vw, 2.8rem);
+            font-weight: 300; letter-spacing: -0.01em;
+        }
+        .lede {
+            margin-top: 1.1rem; max-width: 60ch;
+            font-size: 0.86rem; line-height: 1.75; color: #7a7a7a;
+        }
+
+        .header, .stats, .block { opacity: 0; transform: translateY(16px);
+            animation: up 0.9s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .header { animation-delay: 0.05s; }
+        .stats  { animation-delay: 0.18s; }
+        .block  { animation-delay: 0.28s; }
+        @keyframes up { to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) {
+            .header, .stats, .block { animation: none; opacity: 1; transform: none; }
+        }
+
+        /* ── Stat strip ─────────────────────────────────────────────────── */
+        .stats {
+            margin-top: 3rem;
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 1px; background: #1e1e1e; border: 1px solid #1e1e1e;
+        }
+        @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+        .stat { background: #080808; padding: 1.5rem 1.4rem; }
+        .stat-num {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.9rem; font-weight: 300; letter-spacing: -0.02em;
+        }
+        .stat-label {
+            margin-top: 0.5rem; font-size: 0.55rem; letter-spacing: 0.18em;
+            text-transform: uppercase; color: #555;
+        }
+
+        /* ── Blocks ─────────────────────────────────────────────────────── */
+        .block { margin-top: 4.5rem; }
+        .block-head { display: flex; align-items: baseline; justify-content: space-between;
+            flex-wrap: wrap; gap: 1rem; margin-bottom: 1.4rem; }
+        h2 {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.25rem; font-weight: 300; letter-spacing: -0.01em;
+        }
+        .block-note { font-size: 0.74rem; line-height: 1.7; color: #6a6a6a; max-width: 62ch; }
+
+        /* ── Controls ───────────────────────────────────────────────────── */
+        .controls { display: flex; gap: 1.6rem; flex-wrap: wrap; }
+        .ctl-group { display: flex; gap: 1px; background: #1e1e1e; border: 1px solid #1e1e1e; }
+        .ctl {
+            background: #080808; border: 0; cursor: pointer;
+            font-family: inherit; font-size: 0.55rem; letter-spacing: 0.16em;
+            text-transform: uppercase; color: #555;
+            padding: 0.55rem 0.95rem; transition: color 0.15s, background 0.15s;
+        }
+        .ctl:hover { color: #bbb; background: #111; }
+        .ctl.on { color: #fff; background: #151515; }
+
+        /* ── Chart ──────────────────────────────────────────────────────── */
+        .chart-wrap { position: relative; border: 1px solid #1e1e1e; background: #0a0a0a; }
+        canvas.chart { display: block; width: 100%; height: 380px; }
+        .tip {
+            position: absolute; pointer-events: none; opacity: 0;
+            background: #131313; border: 1px solid #262626;
+            padding: 0.6rem 0.75rem; font-size: 0.68rem; line-height: 1.6;
+            transition: opacity 0.12s; white-space: nowrap; z-index: 20;
+        }
+        .tip .tip-run { color: #fff; margin-bottom: 0.25rem; }
+        .tip .tip-row { color: #888; }
+        .tip .tip-row b { color: #ddd; font-weight: 500; }
+
+        .omitted { margin-top: 0.8rem; font-size: 0.66rem; line-height: 1.6; color: #4f4f4f; }
+        .omitted:empty { display: none; }
+        .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin-top: 1rem; }
+        .leg {
+            display: inline-flex; align-items: center; gap: 0.5em;
+            font-size: 0.66rem; color: #777; cursor: pointer;
+            background: none; border: 0; font-family: inherit;
+            padding: 0.2rem 0; transition: color 0.15s, opacity 0.15s;
+        }
+        .leg:hover { color: #eee; }
+        .leg.off { opacity: 0.32; }
+        .leg-swatch { width: 14px; height: 2px; flex-shrink: 0; }
+        .leg-score { color: #555; font-variant-numeric: tabular-nums; }
+
+        /* ── Ledger ─────────────────────────────────────────────────────── */
+        .ledger { border: 1px solid #1e1e1e; }
+        .row {
+            display: grid; grid-template-columns: 12px 1.6fr 0.7fr 0.6fr 0.7fr 0.5fr;
+            gap: 1rem; align-items: center;
+            padding: 0.85rem 1.1rem; border-top: 1px solid #141414;
+            font-size: 0.72rem; color: #888; cursor: pointer;
+            transition: background 0.14s, color 0.14s;
+        }
+        .row:first-child { border-top: 0; }
+        .row:hover { background: #111; color: #ddd; }
+        .row.head {
+            color: #4a4a4a; font-size: 0.53rem; letter-spacing: 0.16em;
+            text-transform: uppercase; cursor: default; background: #0b0b0b;
+        }
+        .row.head:hover { background: #0b0b0b; color: #4a4a4a; }
+        .row-dot { width: 7px; height: 7px; border-radius: 50%; }
+        .row-name { color: #ccc; }
+        .row .num { font-variant-numeric: tabular-nums; text-align: right; }
+        .row-outcome { font-size: 0.53rem; letter-spacing: 0.14em; text-transform: uppercase; }
+        .row-note {
+            grid-column: 1 / -1; font-size: 0.7rem; line-height: 1.7;
+            color: #6d6d6d; padding-top: 0.5rem; max-width: 70ch;
+        }
+        .o-shipped  { color: #cfe4ff; }
+        .o-improved { color: #8fd6a8; }
+        .o-rejected { color: #d98a8a; }
+        .o-running  { color: #e0c07a; }
+        .o-unknown  { color: #4a4a4a; }
+
+        .foot {
+            margin-top: 5rem; font-size: 0.52rem; letter-spacing: 0.16em;
+            color: rgba(255,255,255,0.14); text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mesh"></canvas>
+    <a class="back" href="select.html">← back</a>
+
+    <div class="page">
+        <div class="header">
+            <p class="eyebrow">the training behind it</p>
+            <h1>inside</h1>
+            <p class="lede">
+                Every run that produced the three opponents on this site — including
+                the ones that failed. Nothing here is hand-written behaviour: each
+                model learned by playing its own game several million times and
+                being scored on the result.
+            </p>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>Learning curves</h2>
+                    <p class="block-note">
+                        Score against training steps, straight out of the logs. Click a
+                        run to hide it; hover for the numbers.
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="game-tabs"></div>
+                    <div class="ctl-group" id="metric-tabs"></div>
+                    <div class="ctl-group" id="scale-tabs"></div>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="curve"></canvas>
+                <div class="tip" id="curve-tip"></div>
+            </div>
+            <div class="legend" id="legend"></div>
+            <p class="omitted" id="omitted"></p>
+        </div>
+
+        <div class="block" id="evals-block">
+            <div class="block-head">
+                <div>
+                    <h2>Why the best model is not the last one</h2>
+                    <p class="block-note">
+                        The current run scores itself every 250,000 steps on a fixed set
+                        of games, so the checks are directly comparable. The result swings
+                        wildly between checks even though the games never change — which is
+                        exactly why training keeps the best model it has seen rather than
+                        whatever it happens to end on.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="evals"></canvas>
+                <div class="tip" id="evals-tip"></div>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>Every run, and what became of it</h2>
+                    <p class="block-note">
+                        A new model only replaces the one on the site if it scores higher.
+                        Click a row for what happened.
+                    </p>
+                </div>
+            </div>
+            <div class="ledger" id="ledger"></div>
+        </div>
+
+        <p class="foot" id="foot"></p>
+    </div>
+
+    <script src="mesh.js"></script>
+    <script src="inside/data.js"></script>
+    <script>
+    (() => {
+        initMesh('mesh', { intensity: 0.42 });
+
+        const runs = TRAINING_DATA.runs;
+        const shipped = TRAINING_DATA.shipped;
+
+        /* Colours are assigned per game so the eye groups them, with lightness
+           walking up the list — later runs read as brighter. */
+        const HUES = { snake: 145, tetris: 265, watermelon: 205 };
+        const byGame = {};
+        runs.forEach(r => { (byGame[r.game] = byGame[r.game] || []).push(r); });
+        Object.entries(byGame).forEach(([g, list]) => {
+            list.forEach((r, i) => {
+                const t = list.length === 1 ? 1 : i / (list.length - 1);
+                r.color = `hsl(${HUES[g] || 0} ${45 + t * 30}% ${38 + t * 34}%)`;
+            });
+        });
+
+        const fmtSteps = n =>
+            n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M'
+                     : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+        const fmtHours = s => s >= 3600 ? (s / 3600).toFixed(1) + ' h'
+                                        : Math.round(s / 60) + ' min';
+
+        /* ── Stat strip ─────────────────────────────────────────────────── */
+        const totalSteps = runs.reduce((a, r) => a + r.steps, 0);
+        const totalSecs  = runs.reduce((a, r) => a + r.elapsed, 0);
+        document.getElementById('stats').innerHTML = [
+            [runs.length, 'training runs'],
+            [fmtSteps(totalSteps), 'steps played'],
+            [(totalSecs / 3600).toFixed(0) + ' h', 'compute time'],
+            [runs.filter(r => r.outcome === 'rejected').length, 'runs rejected'],
+        ].map(([n, l]) =>
+            `<div class="stat"><div class="stat-num">${n}</div>
+             <div class="stat-label">${l}</div></div>`).join('');
+
+        /* ── State ──────────────────────────────────────────────────────── */
+        const METRICS = {
+            s: { key: 's', label: 'score',      axis: 'game score' },
+            r: { key: 'r', label: 'reward',     axis: 'mean reward' },
+            f: { key: 'f', label: 'throughput', axis: 'steps / second' },
+        };
+        let game = 'all';
+        let metric = 's';
+        /* Tetris ran to a billion steps; Snake's longest is 40M. On a linear
+           axis every other run is crushed into the first 4% of the width, so
+           a log option is not a nicety here — it is the only way to see them
+           together. */
+        let xmode = 'log';   // default, because Tetris is 25x longer than anything else
+        const hidden = new Set();
+
+        const games = [...new Set(runs.map(r => r.game))];
+        document.getElementById('game-tabs').innerHTML =
+            ['all', ...games].map(g =>
+                `<button class="ctl${g === 'all' ? ' on' : ''}" data-game="${g}">${g}</button>`
+            ).join('');
+        document.getElementById('metric-tabs').innerHTML =
+            Object.values(METRICS).map(m =>
+                `<button class="ctl${m.key === 's' ? ' on' : ''}" data-metric="${m.key}">${m.label}</button>`
+            ).join('');
+
+        document.getElementById('game-tabs').addEventListener('click', e => {
+            const b = e.target.closest('[data-game]'); if (!b) return;
+            game = b.dataset.game;
+            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            renderLegend(); drawCurve();
+        });
+        document.getElementById('metric-tabs').addEventListener('click', e => {
+            const b = e.target.closest('[data-metric]'); if (!b) return;
+            metric = b.dataset.metric;
+            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            renderLegend(); drawCurve();
+        });
+
+        document.getElementById('scale-tabs').innerHTML =
+            [['lin', 'linear'], ['log', 'log steps']].map(([k, l]) =>
+                `<button class="ctl${k === xmode ? ' on' : ''}" data-scale="${k}">${l}</button>`
+            ).join('');
+        document.getElementById('scale-tabs').addEventListener('click', e => {
+            const b = e.target.closest('[data-scale]'); if (!b) return;
+            xmode = b.dataset.scale;
+            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            drawCurve();
+        });
+
+        /* A run only appears under a metric it actually recorded — the older
+           logs predate the score callback and have no score series. */
+        const has = (r, m) => r.series.some(p => p[m] !== undefined);
+        const shown = () => runs.filter(r =>
+            (game === 'all' || r.game === game) && has(r, metric));
+        const visible = () => shown().filter(r => !hidden.has(r.file));
+
+        /* ── Legend ─────────────────────────────────────────────────────── */
+        function renderLegend() {
+            /* Not every run recorded every metric — Tetris predates the score
+               callback and logged only reward, and the earliest Snake runs are
+               the same. Say so, rather than letting a run silently vanish when
+               the metric changes. */
+            const missing = runs.filter(r =>
+                (game === 'all' || r.game === game) && !has(r, metric));
+            const el = document.getElementById('omitted');
+            el.textContent = missing.length
+                ? `${missing.length} run${missing.length > 1 ? 's' : ''} not shown — `
+                  + `${[...new Set(missing.map(r => r.game))].join(' and ')} `
+                  + `never recorded ${METRICS[metric].axis}.`
+                : '';
+
+            document.getElementById('legend').innerHTML = shown().map(r => `
+                <button class="leg${hidden.has(r.file) ? ' off' : ''}" data-file="${r.file}">
+                    <span class="leg-swatch" style="background:${r.color}"></span>
+                    <span>${r.game} · ${r.label}</span>
+                    <span class="leg-score">${r.evalScore ? r.evalScore.toFixed(0) : ''}</span>
+                </button>`).join('');
+        }
+        document.getElementById('legend').addEventListener('click', e => {
+            const b = e.target.closest('[data-file]'); if (!b) return;
+            const f = b.dataset.file;
+            hidden.has(f) ? hidden.delete(f) : hidden.add(f);
+            renderLegend(); drawCurve();
+        });
+
+        /* ── Chart engine ───────────────────────────────────────────────── */
+        function setupCanvas(cvs) {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = cvs.getBoundingClientRect();
+            cvs.width = rect.width * dpr;
+            cvs.height = rect.height * dpr;
+            const ctx = cvs.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            return { ctx, w: rect.width, h: rect.height };
+        }
+
+        const PAD = { l: 58, r: 18, t: 18, b: 34 };
+
+        function niceTicks(lo, hi, count) {
+            const span = hi - lo || 1;
+            const raw = span / count;
+            const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+            const norm = raw / mag;
+            const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+            const out = [];
+            for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(v);
+            return out;
+        }
+
+        function drawFrame(ctx, w, h, xs, ys, xFmt, yFmt, yAxisLabel) {
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            ys.forEach(v => {
+                const y = ys.scale(v);
+                ctx.strokeStyle = '#161616';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(PAD.l, y + 0.5); ctx.lineTo(w - PAD.r, y + 0.5);
+                ctx.stroke();
+                ctx.fillStyle = '#4a4a4a';
+                ctx.textAlign = 'right';
+                ctx.fillText(yFmt(v), PAD.l - 9, y);
+            });
+
+            xs.forEach(v => {
+                const x = xs.scale(v);
+                ctx.fillStyle = '#4a4a4a';
+                ctx.textAlign = 'center';
+                ctx.fillText(xFmt(v), x, h - PAD.b + 14);
+            });
+
+            ctx.save();
+            ctx.translate(13, (h - PAD.b + PAD.t) / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#3d3d3d';
+            ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.fillText(yAxisLabel.toUpperCase(), 0, 0);
+            ctx.restore();
+        }
+
+        function makeScale(lo, hi, a, b) {
+            const f = v => a + (v - lo) / ((hi - lo) || 1) * (b - a);
+            f.lo = lo; f.hi = hi;
+            return f;
+        }
+
+        /* Clamps at lo rather than letting log(0) go to -Infinity, which would
+           silently drop the first point of every run. */
+        function makeLogScale(lo, hi, a, b) {
+            const l0 = Math.log10(Math.max(lo, 1)), l1 = Math.log10(Math.max(hi, 10));
+            const f = v => a + (Math.log10(Math.max(v, Math.max(lo, 1))) - l0) / ((l1 - l0) || 1) * (b - a);
+            f.lo = lo; f.hi = hi;
+            return f;
+        }
+
+        function logTicks(lo, hi) {
+            const out = [];
+            for (let e = Math.floor(Math.log10(Math.max(lo, 1)));
+                 e <= Math.ceil(Math.log10(Math.max(hi, 10))); e++) {
+                for (const m of [1, 3]) {
+                    const v = m * Math.pow(10, e);
+                    if (v >= Math.max(lo, 1) && v <= hi) out.push(v);
+                }
+            }
+            return out;
+        }
+
+        /* ── Curve chart ────────────────────────────────────────────────── */
+        const curveCvs = document.getElementById('curve');
+        const curveTip = document.getElementById('curve-tip');
+        let curveGeom = null;
+
+        function drawCurve() {
+            const { ctx, w, h } = setupCanvas(curveCvs);
+            const list = visible();
+
+            if (!list.length) {
+                ctx.clearRect(0, 0, w, h);
+                ctx.fillStyle = '#3d3d3d';
+                ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('no runs recorded this metric', w / 2, h / 2);
+                curveGeom = null;
+                return;
+            }
+
+            let xMax = 0, xMin = Infinity, yLo = Infinity, yHi = -Infinity;
+            list.forEach(r => r.series.forEach(p => {
+                if (p[metric] === undefined) return;
+                xMax = Math.max(xMax, p.t);
+                if (p.t > 0) xMin = Math.min(xMin, p.t);
+                yLo = Math.min(yLo, p[metric]);
+                yHi = Math.max(yHi, p[metric]);
+            }));
+            if (!isFinite(xMin)) xMin = 1;
+            if (yLo === yHi) { yLo -= 1; yHi += 1; }
+            const padY = (yHi - yLo) * 0.08;
+            yLo -= padY; yHi += padY;
+
+            const xs = xmode === 'log'
+                ? makeLogScale(xMin, xMax, PAD.l, w - PAD.r)
+                : makeScale(0, xMax, PAD.l, w - PAD.r);
+            const ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
+            const xt = xmode === 'log' ? logTicks(xMin, xMax) : niceTicks(0, xMax, 6);
+            const yt = niceTicks(yLo, yHi, 5);
+            xt.scale = xs; yt.scale = ys;
+
+            drawFrame(ctx, w, h, xt, yt, fmtSteps,
+                      v => (Math.abs(v) >= 1000 ? fmtSteps(v) : v.toFixed(0)),
+                      METRICS[metric].axis);
+
+            ctx.lineJoin = ctx.lineCap = 'round';
+            list.forEach(r => {
+                ctx.strokeStyle = r.color;
+                ctx.lineWidth = r.outcome === 'shipped' || r.outcome === 'running' ? 2 : 1.25;
+                ctx.beginPath();
+                let started = false;
+                r.series.forEach(p => {
+                    if (p[metric] === undefined) return;
+                    const x = xs(p.t), y = ys(p[metric]);
+                    started ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), started = true);
+                });
+                ctx.stroke();
+            });
+
+            curveGeom = { xs, ys, list, w, h };
+        }
+
+        function nearest(geom, mx, my) {
+            let best = null, bestD = Infinity;
+            geom.list.forEach(r => {
+                r.series.forEach(p => {
+                    if (p[metric] === undefined) return;
+                    const dx = geom.xs(p.t) - mx, dy = geom.ys(p[metric]) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bestD) { bestD = d; best = { r, p }; }
+                });
+            });
+            return bestD < 90 * 90 ? best : null;
+        }
+
+        curveCvs.addEventListener('mousemove', e => {
+            if (!curveGeom) return;
+            const rect = curveCvs.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            const hit = nearest(curveGeom, mx, my);
+            if (!hit) { curveTip.style.opacity = 0; return; }
+
+            const { r, p } = hit;
+            const rows = [
+                `<div class="tip-row">step <b>${p.t.toLocaleString()}</b></div>`,
+                `<div class="tip-row">${METRICS[metric].axis} <b>${p[metric]}</b></div>`,
+            ];
+            if (p.e !== undefined) rows.push(`<div class="tip-row">elapsed <b>${fmtHours(p.e)}</b></div>`);
+            curveTip.innerHTML =
+                `<div class="tip-run" style="color:${r.color}">${r.game} · ${r.label}</div>` + rows.join('');
+            curveTip.style.opacity = 1;
+            const tw = curveTip.offsetWidth, th = curveTip.offsetHeight;
+            curveTip.style.left = Math.min(Math.max(8, mx + 14), curveGeom.w - tw - 8) + 'px';
+            curveTip.style.top  = Math.min(Math.max(8, my - th - 12), curveGeom.h - th - 8) + 'px';
+        });
+        curveCvs.addEventListener('mouseleave', () => { curveTip.style.opacity = 0; });
+
+        /* ── Eval chart: the fixed-seed checks of the live run ──────────── */
+        const evalRun = runs.filter(r => r.evals && r.evals.length > 2).pop();
+        const evalCvs = document.getElementById('evals');
+        const evalTip = document.getElementById('evals-tip');
+        let evalGeom = null;
+
+        function drawEvals() {
+            if (!evalRun) { document.getElementById('evals-block').style.display = 'none'; return; }
+            const { ctx, w, h } = setupCanvas(evalCvs);
+            const pts = evalRun.evals;
+
+            const xMax = Math.max(...pts.map(p => p.t));
+            let yLo = Math.min(...pts.map(p => p.score));
+            let yHi = Math.max(...pts.map(p => p.score));
+            const pad = (yHi - yLo) * 0.14 || 10;
+            yLo -= pad; yHi += pad;
+
+            const xs = makeScale(0, xMax, PAD.l, w - PAD.r);
+            const ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
+            const xt = niceTicks(0, xMax, 6), yt = niceTicks(yLo, yHi, 5);
+            xt.scale = xs; yt.scale = ys;
+            drawFrame(ctx, w, h, xt, yt, fmtSteps, v => v.toFixed(0), 'score, fixed games');
+
+            // The bar the run had to beat: the model it started from.
+            const base = pts[0].score;
+            ctx.strokeStyle = '#3a3a3a';
+            ctx.setLineDash([3, 4]);
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(PAD.l, ys(base) + 0.5); ctx.lineTo(w - PAD.r, ys(base) + 0.5);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#555';
+            ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('MODEL IT STARTED FROM', PAD.l + 6, ys(base) - 9);
+
+            // Running best — the thing actually kept.
+            ctx.strokeStyle = '#cfe4ff';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            let run = -Infinity;
+            pts.forEach((p, i) => {
+                run = Math.max(run, p.score);
+                const x = xs(p.t), y = ys(run);
+                i ? (ctx.lineTo(x, y)) : ctx.moveTo(x, y);
+            });
+            ctx.stroke();
+
+            // Each individual check.
+            pts.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(xs(p.t), ys(p.score), p.best ? 4 : 2.6, 0, Math.PI * 2);
+                ctx.fillStyle = p.best ? '#cfe4ff' : '#4d5a6a';
+                ctx.fill();
+            });
+
+            evalGeom = { xs, ys, pts, w, h };
+        }
+
+        evalCvs.addEventListener('mousemove', e => {
+            if (!evalGeom) return;
+            const rect = evalCvs.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            let best = null, bestD = Infinity;
+            evalGeom.pts.forEach(p => {
+                const dx = evalGeom.xs(p.t) - mx, dy = evalGeom.ys(p.score) - my;
+                const d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = p; }
+            });
+            if (bestD > 80 * 80) { evalTip.style.opacity = 0; return; }
+            evalTip.innerHTML =
+                `<div class="tip-run">${best.best ? 'new best' : 'check'}</div>` +
+                `<div class="tip-row">step <b>${best.t.toLocaleString()}</b></div>` +
+                `<div class="tip-row">score <b>${best.score}</b></div>`;
+            evalTip.style.opacity = 1;
+            const tw = evalTip.offsetWidth, th = evalTip.offsetHeight;
+            evalTip.style.left = Math.min(Math.max(8, mx + 14), evalGeom.w - tw - 8) + 'px';
+            evalTip.style.top  = Math.min(Math.max(8, my - th - 12), evalGeom.h - th - 8) + 'px';
+        });
+        evalCvs.addEventListener('mouseleave', () => { evalTip.style.opacity = 0; });
+
+        /* ── Ledger ─────────────────────────────────────────────────────── */
+        const OUTCOME = {
+            shipped:  ['o-shipped',  'on the site'],
+            improved: ['o-improved', 'improved'],
+            rejected: ['o-rejected', 'rejected'],
+            running:  ['o-running',  'running'],
+        };
+        const ledger = document.getElementById('ledger');
+        ledger.innerHTML =
+            `<div class="row head"><span></span><span>run</span>
+             <span class="num">steps</span><span class="num">time</span>
+             <span class="num">score</span><span>outcome</span></div>` +
+            runs.slice().reverse().map(r => {
+                const [cls, text] = OUTCOME[r.outcome] || ['o-unknown', 'not evaluated'];
+                return `<div class="row" data-file="${r.file}">
+                    <span class="row-dot" style="background:${r.color}"></span>
+                    <span class="row-name">${r.game} · ${r.label}</span>
+                    <span class="num">${fmtSteps(r.steps)}</span>
+                    <span class="num">${fmtHours(r.elapsed)}</span>
+                    <span class="num">${r.evalScore ? r.evalScore.toFixed(2) : '—'}</span>
+                    <span class="row-outcome ${cls}">${text}</span>
+                </div>`;
+            }).join('');
+
+        ledger.addEventListener('click', e => {
+            const row = e.target.closest('.row[data-file]'); if (!row) return;
+            const r = runs.find(x => x.file === row.dataset.file);
+            const open = row.nextElementSibling && row.nextElementSibling.classList.contains('row-note');
+            ledger.querySelectorAll('.row-note').forEach(n => n.remove());
+            if (open || !r.note) return;
+            const note = document.createElement('div');
+            note.className = 'row row-note';
+            note.textContent = r.note;
+            row.after(note);
+        });
+
+        document.getElementById('foot').textContent =
+            `data generated ${TRAINING_DATA.generated.replace('T', ' ')} · ` +
+            Object.entries(shipped).map(([g, s]) => `${g} ${s}`).join(' · ');
+
+        /* ── Boot ───────────────────────────────────────────────────────── */
+        renderLegend();
+        function redraw() { drawCurve(); drawEvals(); }
+        window.addEventListener('resize', redraw);
+        redraw();
+    })();
+    </script>
+</body>
+</html>

@@ -52,8 +52,11 @@ fi
 
 echo "staging the site in $STAGE"
 
-# Entry pages
-cp index.html select.html "$STAGE/"
+# Entry pages, the shared mesh background, and the Inside page with its
+# generated training data.
+cp index.html select.html inside.html mesh.js "$STAGE/"
+mkdir -p "$STAGE/inside"
+cp inside/data.js "$STAGE/inside/"
 
 for game in snake tetris watermelon; do
     mkdir -p "$STAGE/$game"
