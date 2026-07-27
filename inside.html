@@ -145,8 +145,10 @@
            column and wrapped one word wide. It is a plain block. */
         .row-note {
             display: block;
-            padding: 0 1.1rem 1rem;
-            margin-top: -0.35rem;
+            /* Even top and bottom, so the text sits centred in its band. It
+               used to have bottom-only padding and a negative top margin,
+               which pinned it against the row above. */
+            padding: 0.9rem 1.1rem;
             font-size: 0.72rem; line-height: 1.75;
             color: #8a8a8a;
             background: #111;

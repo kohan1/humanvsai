@@ -14,14 +14,19 @@
     --insp-track:    #1a1a1a;   /* bar track */
     --insp-cell-rgb: 158, 199, 255;
 
-    margin-top: 1.25rem;
+    /* FIXED WIDTH, deliberately. The panel's contents change every decision —
+       a scalar going from 9 to 10, or "cherry" to "strawberry" — and with an
+       auto width the whole box grew and shrank a few pixels several times a
+       second, which reads as the layout twitching. Pinning the width means
+       only the numbers change. */
+    width: min(600px, 100%);
+    margin: 1.25rem auto 0;
     padding: 1.1rem 1.2rem 1.2rem;
     border: 1px solid var(--insp-line);
     background: var(--insp-panel);
     color: var(--insp-fg);
     font-size: 12px;
     text-align: left;
-    max-width: 100%;
 }
 
 .insp[hidden] { display: none !important; }
@@ -40,8 +45,15 @@
 .insp-channels {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.9rem;
+    /* PIXELS, not rem. The three games set different root font sizes —
+       Snake's is 18px — so a rem gap computed wider there and tipped its
+       five 96px channels onto a second row. */
+    gap: 8px;
     align-items: flex-start;
+    /* Centred, not left-aligned. The panel is a fixed width, so two narrow
+       channels (Watermelon) or one (Tetris) would otherwise sit hard against
+       the left edge with a gap beside them. */
+    justify-content: center;
 }
 .insp-chan { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
 .insp-chan-cvs {
@@ -58,10 +70,17 @@
 
 /* ── Scalars ────────────────────────────────────────────────────────────── */
 
+/* A grid of fixed columns rather than a wrapping flex row. With flex, a value
+   changing width could push an item onto the next line and change the panel's
+   height mid-play. Fixed tracks and tabular figures keep every item exactly
+   where it was. */
 .insp-scalars {
-    display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 0.4rem 0.8rem;
     margin-top: 0.9rem;
     font-size: 0.66rem; color: var(--insp-dim);
+    font-variant-numeric: tabular-nums;
 }
 .insp-scalars:empty { display: none; }
 .insp-scalar b {
@@ -163,11 +182,14 @@ body:has(.insp-section) .screen {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 3.5rem 1.5rem;
+    /* Extra room at the bottom, so centring lifts the boards clear of the
+       fixed scroll cue instead of the cue overlapping them. */
+    padding: 2rem 1.5rem 4.5rem;
 }
+/* A block, not a flex row: .insp sets its own fixed width and centres itself
+   with auto margins, so a flex parent would fight it. */
 .insp-section {
-    display: flex;
-    justify-content: center;
+    display: block;
     padding: 0 1.5rem 5rem;
 }
 

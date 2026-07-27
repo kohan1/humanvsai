@@ -124,6 +124,14 @@
     var AI_SPEED = 1;
     var AI_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 1.75, 2];
 
+    // ─── Match start ─────────────────────────────────────────────────────────
+    // The AI used to begin playing the moment the model finished loading, so
+    // it was already several pieces deep before the player had touched a key
+    // and read "Press any key to start". It now waits for that first key, the
+    // same way Snake's board does. Module-scope because the loop and the
+    // keyboard handler live in different closures.
+    var matchStarted = false;
+
     // ─── Persistence ─────────────────────────────────────────────────────────
     // Board state is plain data — arena and bag are arrays, player is
     // {x, y, shape} — so the whole thing round-trips through JSON with no
@@ -636,7 +644,7 @@
                 timers.dropCounter  += dt;
                 timers.horizCounter += dt;
 
-                if (isAI && aiPlayer && aiPlayer.session && !state.restarting) {
+                if (isAI && matchStarted && aiPlayer && aiPlayer.session && !state.restarting) {
                     if (state.player.anim) {
                         // ── Advance the in-flight drop animation ──────────
                         var anim = state.player.anim;
@@ -809,18 +817,25 @@
                 );
             }
 
-            // AI waiting overlay (model not loaded yet)
-            if (isAI && (!aiPlayer || !aiPlayer.session)) {
+            // AI waiting overlay — either the model is still loading, or it is
+            // ready and holding for the player to start. Without the second
+            // case the board just sits there looking broken.
+            if (isAI && (!aiPlayer || !aiPlayer.session || !matchStarted)) {
+                var loading = !aiPlayer || !aiPlayer.session;
                 ctx.fillStyle = "rgba(0,0,0,0.75)";
                 ctx.fillRect(0, 0, 300, 540);
                 ctx.fillStyle = "white";
                 ctx.font = "bold 18px " + CONFIG.FONT_FAMILY;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillText("Loading AI...", 150, 260);
+                ctx.fillText(loading ? "Loading AI..." : "Ready", 150, 260);
                 ctx.font = "13px " + CONFIG.FONT_FAMILY;
                 ctx.fillStyle = "#aaa";
-                ctx.fillText("Run embed_model.py, then refresh", 150, 285);
+                ctx.fillText(
+                    loading ? "Run embed_model.py, then refresh"
+                            : "Press any key to start",
+                    150, 285
+                );
             }
 
             requestAnimationFrame(loop);
@@ -862,7 +877,10 @@
         var humanGame = createGame(humanCanvas, false, null, null);
 
         showControls(controlsEl, true, false);
-        KB.once(KB.ANY, function(){ showControls(controlsEl, false, true); });
+        KB.once(KB.ANY, function(){
+            showControls(controlsEl, false, true);
+            matchStarted = true;   // releases the AI board — see the flag above
+        });
 
         // Rotate (W / Up) — human only
         KB.onMany(CONFIG.controls.ROTATE, function() {

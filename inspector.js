@@ -43,6 +43,12 @@ function createInspector(config) {
     const root = document.createElement('div');
     root.className = 'insp';
 
+    /* Pixels per observation cell. Set the canvas size HERE rather than on
+       first paint: an unpainted canvas keeps its 300x150 default, and with
+       five of them (Snake) that is 1500px of channels trying to fit a 560px
+       panel, so they wrap into a column until the first decision arrives. */
+    const CELL = 6;
+
     const chanWrap = document.createElement('div');
     chanWrap.className = 'insp-channels';
     const canvases = grid.channels.map(ch => {
@@ -50,6 +56,8 @@ function createInspector(config) {
         cell.className = 'insp-chan';
         const cvs = document.createElement('canvas');
         cvs.className = 'insp-chan-cvs';
+        cvs.style.width = grid.w * CELL + 'px';
+        cvs.style.height = grid.h * CELL + 'px';
         const cap = document.createElement('div');
         cap.className = 'insp-chan-label';
         cap.textContent = ch.label;
@@ -109,7 +117,6 @@ function createInspector(config) {
     /* ── Drawing ────────────────────────────────────────────────────────── */
 
     function paintChannels(obs) {
-        const CELL = 6;
         canvases.forEach((cvs, ch) => {
             const dpr = window.devicePixelRatio || 1;
             const w = grid.w * CELL, h = grid.h * CELL;
