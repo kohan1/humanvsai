@@ -432,6 +432,7 @@
         },
         valueLabel: "expected score from here",
         valueHint: "the critic's estimate, in reward units",
+        onReveal: loadCritic,
     });
 
     /* Loaded only when the panel is first opened — see the note in
@@ -449,17 +450,6 @@
                 console.warn("Snake critic unavailable — value readout hidden.", err);
             });
         return criticPending;
-    }
-
-    const inspToggle = document.getElementById("insp-toggle-ai");
-    if (inspToggle) {
-        inspToggle.addEventListener("click", () => {
-            const on = inspToggle.getAttribute("aria-pressed") !== "true";
-            inspToggle.setAttribute("aria-pressed", String(on));
-            inspToggle.textContent = on ? "hide what it sees" : "what it sees";
-            inspector.setOpen(on);
-            if (on) loadCritic();
-        });
     }
 
     async function runAiInference() {

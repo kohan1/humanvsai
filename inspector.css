@@ -148,23 +148,71 @@
     transition: width 0.15s linear;
 }
 
-/* ── The toggle that opens it ───────────────────────────────────────────── */
+/* ── Placing it below the fold ──────────────────────────────────────────────
+   All three games centre their arena in a full-height flex body. Adding a
+   sibling section to that would sit it BESIDE the arena, not under it, so the
+   arena gets wrapped in .screen and the body becomes a normal block. #arena's
+   own rules are left completely alone — Tetris and Watermelon align their
+   boards differently, and overriding that here would break them. */
+body:has(.insp-section) {
+    display: block;
+    padding: 0;
+}
+body:has(.insp-section) .screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3.5rem 1.5rem;
+}
+.insp-section {
+    display: flex;
+    justify-content: center;
+    padding: 0 1.5rem 5rem;
+}
 
-.insp-toggle {
-    margin-top: 0.75rem;
+/* ── Scroll cue ─────────────────────────────────────────────────────────── */
+
+.insp-cue {
+    position: fixed;
+    left: 50%;
+    bottom: 1.4rem;
+    transform: translateX(-50%);
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
     font-family: inherit;
     font-size: 0.55rem;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    cursor: pointer;
-    padding: 0.45em 0.9em;
-    color: var(--insp-dim, #666);
-    background: transparent;
-    border: 1px solid var(--insp-line, #242424);
-    transition: color 0.14s, border-color 0.14s, background 0.14s;
+    color: var(--insp-cue-fg, #6a6a6a);
+    opacity: 0.85;
+    transition: opacity 0.35s, transform 0.35s, color 0.15s;
 }
-.insp-toggle:hover { color: #fff; border-color: #444; }
-.insp-toggle[aria-pressed="true"] {
-    color: #fff;
-    border-color: var(--insp-accent, #9ec7ff);
+.insp-cue:hover { color: var(--insp-cue-hover, #fff); opacity: 1; }
+
+/* Once the reader has started scrolling it has served its purpose. */
+.insp-cue.is-gone {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(8px);
+}
+
+.insp-cue-arrow {
+    width: 20px;
+    height: 12px;
+    animation: insp-nudge 2.1s ease-in-out infinite;
+}
+@keyframes insp-nudge {
+    0%, 100% { transform: translateY(0); opacity: 0.55; }
+    50%      { transform: translateY(4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .insp-cue-arrow { animation: none; opacity: 0.9; }
 }

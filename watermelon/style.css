@@ -320,18 +320,11 @@ label { cursor: pointer; }
     max-width: 100%;
 }
 
-.insp-toggle {
-    --insp-dim:  rgba(103, 84, 36, 0.75);
-    --insp-line: rgba(103, 84, 36, 0.35);
-    background-color: var(--bubble-bg);
-    border-radius: 4px;
-}
-.insp-toggle:hover { color: var(--accent); border-color: var(--accent); }
-.insp-toggle[aria-pressed="true"] {
-    color: var(--accent);
-    background-color: #fff;
-    border-color: var(--accent);
-    font-weight: 700;
+/* The scroll cue sits on the sage backdrop, so it needs the dark accent
+   rather than inspector.css's light default. */
+.insp-cue {
+    --insp-cue-fg:    rgba(103, 84, 36, 0.8);
+    --insp-cue-hover: #675424;
 }
 
 /* The label sits on top of a filled bar, and difference-blending against a

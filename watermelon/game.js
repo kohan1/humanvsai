@@ -762,6 +762,7 @@
         },
         valueLabel: "expected score from here",
         valueHint: "the critic's estimate, in reward units (~score / 10)",
+        onReveal: loadCritic,
     });
 
     /* The critic is a SEPARATE 22.6 MB model, loaded the first time the panel
@@ -783,17 +784,6 @@
                 console.warn("Watermelon critic unavailable — value readout hidden.", err);
             });
         return criticPending;
-    }
-
-    const inspToggle = document.getElementById("insp-toggle-ai");
-    if (inspToggle) {
-        inspToggle.addEventListener("click", () => {
-            const on = inspToggle.getAttribute("aria-pressed") !== "true";
-            inspToggle.setAttribute("aria-pressed", String(on));
-            inspToggle.textContent = on ? "hide what it sees" : "what it sees";
-            inspector.setOpen(on);
-            if (on) loadCritic();
-        });
     }
 
     const aiStatusEl = document.getElementById("status-ai");

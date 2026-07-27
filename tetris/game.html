@@ -36,6 +36,7 @@
 
         <a class="back-nav" href="../select.html">← back</a>
 
+        <div class="screen">
         <div id="arena">
 
             <!-- ── Human board ── -->
@@ -98,13 +99,14 @@
                     <button type="button" data-speed="1.75">1.75x</button>
                     <button type="button" data-speed="2">2x</button>
                 </div>
-
-                <!-- Neural-network inspector, closed by default. -->
-                <button type="button" class="insp-toggle" id="insp-toggle-ai"
-                        aria-pressed="false">what it sees</button>
-                <div id="insp-mount-ai"></div>
             </div>
 
         </div>
+        </div>
+    <!-- The inspector lives below the fold; the scroll cue that
+         points at it is created by inspector.js. -->
+    <section class="insp-section">
+        <div id="insp-mount-ai"></div>
+    </section>
     </body>
 </html>

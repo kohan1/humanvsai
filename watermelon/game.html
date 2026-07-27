@@ -35,6 +35,7 @@
 
         <a class="back-nav" href="../select.html">← back</a>
 
+        <div class="screen">
         <div id="arena">
 
             <!-- ── Human board ── -->
@@ -140,14 +141,6 @@
                             <button type="button" data-speed="1.75">1.75x</button>
                             <button type="button" data-speed="2">2x</button>
                         </div>
-
-                        <!-- Opens the neural-network inspector. Off by
-                             default: it costs nothing while closed, but it is
-                             a lot of detail to put in front of someone who
-                             just wants to play. -->
-                        <button type="button" class="insp-toggle" id="insp-toggle-ai"
-                                aria-pressed="false">what it sees</button>
-                        <div id="insp-mount-ai"></div>
                     </div>
 
                     <!-- Mirrors the human board's left column, so the two
@@ -175,5 +168,11 @@
             </div>
 
         </div>
+        </div>
+    <!-- The inspector lives below the fold; the scroll cue that
+         points at it is created by inspector.js. -->
+    <section class="insp-section">
+        <div id="insp-mount-ai"></div>
+    </section>
     </body>
 </html>

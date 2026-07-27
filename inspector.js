@@ -10,9 +10,15 @@
  *   - confidence, as normalised entropy over that distribution.
  *   - the critic's value estimate, if the loaded model exports one.
  *
- * COST WHEN OFF IS ZERO. update() returns on the first line unless the panel
- * is open, so a page nobody inspects pays nothing. That matters here: these
- * games already run two boards and a WASM inference loop.
+ * IT LIVES BELOW THE FOLD, always present, reached by the scroll cue pinned to
+ * the bottom of the first screen. There is no toggle button.
+ *
+ * COST WHEN OFF SCREEN IS ZERO. An IntersectionObserver tracks whether the
+ * panel is actually in view, and update() returns on its first line when it is
+ * not — so playing without ever scrolling costs nothing. That matters: these
+ * games already run two boards and a WASM inference loop. The same signal
+ * triggers the one-off critic download, so a visitor who never scrolls never
+ * fetches it.
  *
  * THEMING. Snake and Tetris are near-black, Watermelon is cream and sage, so
  * every colour comes from a CSS custom property with a dark default. Each
@@ -27,14 +33,15 @@ function createInspector(config) {
         scalars,        // optional: (obs) -> [{ label, value }]
         valueLabel = 'position value',
         valueHint = '',
+        onReveal,       // called once, the first time the panel comes into view
     } = config;
 
     let open = false;
+    let revealed = false;
     let lastPayload = null;
 
     const root = document.createElement('div');
     root.className = 'insp';
-    root.hidden = true;
 
     const chanWrap = document.createElement('div');
     chanWrap.className = 'insp-channels';
@@ -189,16 +196,52 @@ function createInspector(config) {
         paintValue(value);
     }
 
+    /* ── Scroll cue ─────────────────────────────────────────────────────────
+       Pinned to the bottom of the viewport rather than placed in the flow,
+       because the three games have different page heights and anything in the
+       flow would land in the wrong place on at least one of them. It fades
+       out as soon as the reader starts scrolling — it has done its job. */
+    const cue = document.createElement('button');
+    cue.type = 'button';
+    cue.className = 'insp-cue';
+    cue.innerHTML =
+        '<span class="insp-cue-text">scroll down to see inside</span>' +
+        '<svg class="insp-cue-arrow" viewBox="0 0 24 14" aria-hidden="true">' +
+        '<path d="M1 1 L12 12 L23 1" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    cue.addEventListener('click', () => {
+        root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    document.body.append(cue);
+
+    const onScroll = () => {
+        cue.classList.toggle('is-gone', window.scrollY > 60);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    /* Only paint while the panel is actually on screen. rootMargin gives it a
+       screen of warning so it is already populated by the time it scrolls in,
+       rather than appearing blank for one AI decision. */
+    if ('IntersectionObserver' in window) {
+        new IntersectionObserver((entries) => {
+            open = entries[0].isIntersecting;
+            if (open && !revealed) {
+                revealed = true;
+                if (onReveal) onReveal();
+            }
+            render();
+        }, { rootMargin: '400px 0px' }).observe(root);
+    } else {
+        open = true;                       // no observer: just keep it live
+        if (onReveal) onReveal();
+    }
+
     return {
-        /* Called on every AI decision. Cheap no-op while closed. */
+        /* Called on every AI decision. Returns immediately while off screen. */
         update(payload) {
             if (!open) return;
             lastPayload = payload;
-            render();
-        },
-        setOpen(v) {
-            open = v;
-            root.hidden = !v;
             render();
         },
         get isOpen() { return open; },

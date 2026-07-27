@@ -471,7 +471,8 @@
             ];
         },
         valueLabel: "expected score from here",
-        valueHint: "the critic's estimate, in reward units"
+        valueHint: "the critic's estimate, in reward units",
+        onReveal: loadCritic
     });
 
     /* Fetched only when the panel is first opened. Blocked under file://,
@@ -488,17 +489,6 @@
                 console.warn("Tetris critic unavailable — value readout hidden.", err);
             });
         return criticPending;
-    }
-
-    var inspToggle = document.getElementById("insp-toggle-ai");
-    if (inspToggle) {
-        inspToggle.addEventListener("click", function () {
-            var on = inspToggle.getAttribute("aria-pressed") !== "true";
-            inspToggle.setAttribute("aria-pressed", String(on));
-            inspToggle.textContent = on ? "hide what it sees" : "what it sees";
-            inspector.setOpen(on);
-            if (on) loadCritic();
-        });
     }
 
     // ─── AI player ───────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@
 
         <a class="back-nav" href="../select.html">← back</a>
 
+        <div class="screen">
         <div id="arena">
 
             <!-- ── Human board ── -->
@@ -52,14 +53,14 @@
                     </button>
                     <div class="ai-status" id="ai-status"></div>
                 </main>
-
-                <!-- Neural-network inspector. Closed by default; update() is
-                     a no-op while closed, so it costs nothing unopened. -->
-                <button type="button" class="insp-toggle" id="insp-toggle-ai"
-                        aria-pressed="false">what it sees</button>
-                <div id="insp-mount-ai"></div>
             </div>
 
         </div>
+        </div>
+    <!-- The inspector lives below the fold; the scroll cue that
+         points at it is created by inspector.js. -->
+    <section class="insp-section">
+        <div id="insp-mount-ai"></div>
+    </section>
     </body>
 </html>
