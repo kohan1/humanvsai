@@ -324,6 +324,10 @@ def extract_brain(path: pathlib.Path, sample=(18, 18, 18, 14)):
         "file": path.name,
         "layers": layers,
         "nodes": [len(p) for p in picks],
+        # The exact neurons sampled, so capture_brain_activity.py can record
+        # activations for THESE and no others — the animation has to light up
+        # the same neurons the edges were drawn between.
+        "picks": [[int(v) for v in p] for p in picks],
         "edges": edges_out,
     }
 
@@ -584,6 +588,14 @@ def main():
     dist_file = ROOT / "inside" / "distributions.json"
     if dist_file.exists():
         payload["distributions"] = json.loads(dist_file.read_text(encoding="utf-8"))
+
+    # Recorded activations, so the diagram can show the network actually
+    # firing. Written by capture_brain_activity.py, which must run AFTER this
+    # script has emitted brain.picks — hence a separate file rather than being
+    # generated inline here.
+    act_file = ROOT / "inside" / "activity.json"
+    if act_file.exists() and payload.get("brain"):
+        payload["activity"] = json.loads(act_file.read_text(encoding="utf-8"))
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(
