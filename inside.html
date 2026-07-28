@@ -673,7 +673,7 @@
         const has = (r, m) => r.series.some(p => p[m] !== undefined);
         const shown = () => runs.filter(r =>
             (game === 'all' || r.game === game) && has(r, metric));
-        const visible = () => shown().filter(r => !hidden.has(r.file));
+        const visible = () => shown().filter(r => !hidden.has(r.key));
 
         /* ── Legend ─────────────────────────────────────────────────────── */
         function renderLegend() {
@@ -700,7 +700,7 @@
             }
 
             document.getElementById('legend').innerHTML = shown().map(r => `
-                <button class="leg${hidden.has(r.file) ? ' off' : ''}" data-file="${r.file}">
+                <button class="leg${hidden.has(r.key) ? ' off' : ''}" data-file="${r.key}">
                     <span class="leg-swatch" style="background:${r.color}"></span>
                     <span>${r.game} · ${r.label}</span>
                     <span class="leg-score">${r.evalScore ? r.evalScore.toFixed(0) : ''}</span>
@@ -1001,7 +1001,7 @@
              <span class="num">score</span><span>outcome</span></div>` +
             runs.slice().reverse().map(r => {
                 const [cls, text] = OUTCOME[r.outcome] || ['o-unknown', 'not evaluated'];
-                return `<div class="row" data-file="${r.file}">
+                return `<div class="row" data-file="${r.key}">
                     <span class="row-dot" style="background:${r.color}"></span>
                     <span class="row-name">${r.game} · ${r.label}</span>
                     <span class="num">${fmtSteps(r.steps)}</span>
@@ -1013,7 +1013,7 @@
 
         ledger.addEventListener('click', e => {
             const row = e.target.closest('.row[data-file]'); if (!row) return;
-            const r = runs.find(x => x.file === row.dataset.file);
+            const r = runs.find(x => x.key === row.dataset.file);
             const open = row.nextElementSibling && row.nextElementSibling.classList.contains('row-note');
             ledger.querySelectorAll('.row-note').forEach(n => n.remove());
             if (open || !r.note) return;
@@ -1162,7 +1162,7 @@
             // gets a lane of its own so its branch is visibly a dead end.
             let deadLane = 0;
             const lane = new Map();
-            list.forEach(r => lane.set(r.file, r.outcome === 'rejected' ? ++deadLane : 0));
+            list.forEach(r => lane.set(r.key, r.outcome === 'rejected' ? ++deadLane : 0));
             const maxLane = Math.max(...lane.values());
 
             const xMax = Math.max(...list.map(r => r.cumulativeSteps));
@@ -1181,12 +1181,12 @@
                 ctx.fillText(fmtSteps(v), xs(v), h - PAD.b + 14);
             });
 
-            const byFile = Object.fromEntries(list.map(r => [r.file, r]));
+            const byFile = Object.fromEntries(list.map(r => [r.key, r]));
             list.forEach(r => {
                 const p = byFile[r.parent];
                 if (!p) return;
-                const x1 = xs(p.cumulativeSteps), y1 = ys(lane.get(p.file));
-                const x2 = xs(r.cumulativeSteps), y2 = ys(lane.get(r.file));
+                const x1 = xs(p.cumulativeSteps), y1 = ys(lane.get(p.key));
+                const x2 = xs(r.cumulativeSteps), y2 = ys(lane.get(r.key));
                 const dead = r.outcome === 'rejected';
                 ctx.strokeStyle = dead ? '#5a3a3a' : '#3f5670';
                 ctx.lineWidth = dead ? 1 : 2;
@@ -1199,7 +1199,7 @@
             });
 
             list.forEach(r => {
-                const x = xs(r.cumulativeSteps), y = ys(lane.get(r.file));
+                const x = xs(r.cumulativeSteps), y = ys(lane.get(r.key));
                 const c = { shipped: '#fff', improved: '#8fd6a8',
                             rejected: '#d98a8a', running: '#e0c07a' }[r.outcome] || '#4a4a4a';
                 ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
@@ -1218,7 +1218,7 @@
                 let best = null, bd = Infinity;
                 treeGeom.list.forEach(r => {
                     const dx = treeGeom.xs(r.cumulativeSteps) - mx;
-                    const dy = treeGeom.ys(treeGeom.lane.get(r.file)) - my;
+                    const dy = treeGeom.ys(treeGeom.lane.get(r.key)) - my;
                     const d = dx * dx + dy * dy;
                     if (d < bd) { bd = d; best = r; }
                 });

@@ -38,7 +38,7 @@ MAX_POINTS = 400
 # docstring. Keep this honest: only add a number that was actually measured.
 RUN_NOTES = {
     # ── Snake ────────────────────────────────────────────────────────────
-    "train_day1.log": dict(
+    "snake/train_day1.log": dict(
         game="snake", label="resume · GPU", evalScore=135.78,
         outcome="improved",
         checkpoint="snake/training/archive/models/snake_final.135pt78.zip",
@@ -47,64 +47,64 @@ RUN_NOTES = {
              "728 of 728 iterations, 716 of them at epoch 0 of 10.",
     ),
     # ── Watermelon ───────────────────────────────────────────────────────
-    "pipeline_entropy_regression.log": dict(
+    "watermelon/pipeline_entropy_regression.log": dict(
         game="watermelon", label="BC + PPO with entropy", evalScore=614.40,
         outcome="rejected",
         checkpoint="watermelon/training/archive/models/watermelon_ppo_614.zip",
         note="ent_coef=0.01 on top of a good behavioural-cloning start "
              "dragged a confident policy back toward uniform.",
     ),
-    "train_v2_bad_critic.log": dict(
+    "watermelon/train_v2_bad_critic.log": dict(
         game="watermelon", label="PPO · untrained critic", outcome="rejected",
         note="The critic reached PPO at random initialisation — "
              "explained_variance -0.016. Fixed by fitting the value function "
              "during pretraining.",
     ),
-    "train_v3_kl_throttled.log": dict(
+    "watermelon/train_v3_kl_throttled.log": dict(
         game="watermelon", label="PPO · KL throttled", outcome="rejected",
         note="Shared feature extractor let the value loss (~82) dominate the "
              "policy gradient (~1e-4) and rewrite the policy's own features.",
     ),
-    "pipeline_v2_done.log": dict(
+    "watermelon/pipeline_v2_done.log": dict(
         game="watermelon", label="BC + PPO · separate extractors",
         evalScore=841.87, outcome="improved",
         checkpoint="watermelon/training/archive/models/watermelon_final.841pt87.zip",
         note="share_features_extractor=False. First run where fitting the "
              "critic could no longer damage the policy.",
     ),
-    "train_v3_resume_done.log": dict(
+    "watermelon/train_v3_resume_done.log": dict(
         game="watermelon", label="resume", evalScore=902.10,
         outcome="shipped",
-        parent="pipeline_v2_done.log",
+        parent="watermelon/pipeline_v2_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.902pt10.zip",
         note="The model currently live on the site.",
     ),
-    "train_v4_done.log": dict(
+    "watermelon/train_v4_done.log": dict(
         game="watermelon", label="resume", evalScore=872.00,
         outcome="rejected",
-        parent="train_v3_resume_done.log",
+        parent="watermelon/train_v3_resume_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.872_rejected.zip",
         note="Below the shipped 902.10, so the install guard refused it.",
     ),
-    "train_day1_893.log": dict(
+    "watermelon/train_day1_893.log": dict(
         game="watermelon", label="resume", evalScore=893.03,
         outcome="rejected",
-        parent="train_v3_resume_done.log",
+        parent="watermelon/train_v3_resume_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.893_rejected.zip",
         note="Third consecutive rejection. Preserved rather than installed.",
     ),
-    "train_day2.log": dict(
+    "watermelon/train_day2.log": dict(
         game="watermelon", label="resume · CPU", evalScore=936.70,
         outcome="improved",
-        parent="train_v3_resume_done.log",
+        parent="watermelon/train_v3_resume_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.936pt70.zip",
         note="Beat the shipped model at last, but took 3h45m on CPU for "
              "+3.8%, and early-stopped on 49 of 49 iterations.",
     ),
-    "train_day3_gpu.log": dict(
+    "watermelon/train_day3_gpu.log": dict(
         game="watermelon", label="resume · GPU, wider trust region",
         evalScore=1032.43, outcome="improved",
-        parent="train_day2.log",
+        parent="watermelon/train_day2.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.1032pt43.zip",
         note="20M steps on the GPU in 6h51m, with 20 envs, target_kl 0.05 and "
              "best-checkpoint tracking — only 3 early stops in 489 iterations, "
@@ -113,10 +113,18 @@ RUN_NOTES = {
              "it ENDED on scores 959.93. Keeping the best rather than the last "
              "is worth 72 points here, and this is the run that proved it.",
     ),
-    "train_100m.log": dict(
+    "watermelon/train_100m.log": dict(
+        game="watermelon", label="100M resume · GPU", outcome="running",
+        parent="watermelon/train_day3_gpu.log",
+        note="Resumed from the 1032.43 best checkpoint. Snake's 100M run "
+             "plateaued after 55M, so this one is likely to flatten well "
+             "before it finishes too — best-checkpoint tracking means nothing "
+             "is lost either way.",
+    ),
+    "snake/train_100m.log": dict(
         game="snake", label="100M resume · GPU", evalScore=145.70,
         outcome="improved",
-        parent="train_day1.log",
+        parent="snake/train_day1.log",
         checkpoint="snake/training/archive/models/snake_final.145pt70_best.zip",
         note="100 million steps in 12h58m. Almost all of the gain arrived "
              "early: 133 to 151 in the first 7M steps, then only +3.7 across "
@@ -446,6 +454,7 @@ def parse_tetris_tensorboard():
     return {
         "game": "tetris",
         "file": "tensorboard",
+        "key": "tetris/tensorboard",
         "label": "PPO · 26 sessions",
         "note": "Trained long before the other two and by far the longest run "
                 "on the project — a billion steps across 26 sessions. It left "
@@ -500,10 +509,10 @@ def main():
             if len(series) < 3:
                 continue  # pretrain logs and failed starts have no curve
 
-            note = RUN_NOTES.get(path.name, {})
-            if note.get("game") and note["game"] != game:
-                print(f"  ! {path.name}: RUN_NOTES says {note['game']}, "
-                      f"found under {game} — check build_training_data.py")
+            # Keyed by game AND filename: both Snake and Watermelon have a
+            # train_100m.log, and keying on the filename alone attached
+            # Snake's measured score to Watermelon's in-progress run.
+            note = RUN_NOTES.get(f"{game}/{path.name}", {})
 
             last = series[-1]
             ended = datetime.fromtimestamp(path.stat().st_mtime)
@@ -512,6 +521,9 @@ def main():
             runs.append({
                 "game": game,
                 "file": path.name,
+                # Unique across games; "file" alone is not, and the
+                # lineage and the page both need a stable identity.
+                "key": f"{game}/{path.name}",
                 "label": note.get("label", path.stem.replace("_", " ")),
                 "note": note.get("note"),
                 "outcome": note.get("outcome"),
@@ -547,15 +559,17 @@ def main():
     # Cumulative steps along each lineage. A resume inherits everything its
     # parent had already trained, so the progression track can plot skill
     # against total experience rather than against one run's own counter.
-    by_file = {r["file"]: r for r in runs}
+    by_file = {r["key"]: r for r in runs}
     def cumulative(run, seen=None):
         seen = seen or set()
-        if run["file"] in seen:          # a mis-typed parent must not hang here
+        if run["key"] in seen:           # a mis-typed parent must not hang here
             return run["steps"]
-        seen.add(run["file"])
+        seen.add(run["key"])
         parent = by_file.get(run.get("parent"))
         return run["steps"] + (cumulative(parent, seen) if parent else 0)
     for r in runs:
+        if r.get("parent") and r["parent"] not in by_file:
+            print(f"  ! {r['key']}: parent {r['parent']} not found")
         r["cumulativeSteps"] = cumulative(r)
         # Score gained per million steps of THIS run — the sample-efficiency
         # figure. Only meaningful when both this run and its parent were
