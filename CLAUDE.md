@@ -40,6 +40,61 @@ a run that overshoots and regresses no longer costs anything.
 
 ---
 
+## Resume from the run-end model, ship the best one
+
+These are two different jobs and the same file cannot do both.
+
+`BestScoreCallback` picks the checkpoint that scored highest on fifteen fixed
+seeds. Part of that is real skill and part is selection noise — it is, by
+construction, the luckiest point on a noisy curve. That is exactly what you
+want to *ship*, and a bad place to *resume* from.
+
+Measured, on Watermelon:
+
+| resumed from | result |
+|---|---|
+| 936.70's run-end model | climbed to 1123.47 over 20M steps |
+| 1123.47 best checkpoint | **0 of 39 checks beat it over 39M steps** |
+
+The second run dropped ~20% within 4M steps and never recovered — first-half
+mean 922, second-half mean 926, dead flat. Twelve hours of GPU for nothing.
+Regression to the mean is the obvious explanation with hindsight: perturbing a
+point selected for being unusually good moves it back toward ordinary.
+
+**So:** keep `<game>_best.zip` for shipping, and set `<game>_final.zip` to the
+run-end model before resuming.
+
+---
+
+## Potential-based shaping, not bonuses
+
+Watermelon's reward was redesigned on 2026-07-29. The shaping is
+`gamma * phi(next) - phi(now)` (Ng, Harada & Russell 1999), which provably
+leaves the optimal policy unchanged — it can only change how fast the agent
+gets there. A plain bonus does not have that property, and this project has
+already lost runs to an entropy bonus quietly destroying a good policy.
+
+`phi` rewards a low stack, a level surface, and big fruit kept at the bottom.
+
+Two invariants, both now asserted in `sanity_check.py`:
+
+- **phi(terminal) must be 0.** A non-zero terminal potential is a disguised
+  bonus for dying in a particular position, and the guarantee is void.
+- **The shaping must telescope to about zero over an episode.** Measured -0.71
+  against a merge component of +83.45. If that number drifts, either a
+  terminal state has a potential or `phi` is not reset between episodes.
+
+Why it was worth doing at all: **49% of drops produce no merge**, so under the
+old reward half of every game's decisions returned nothing. Those steps now
+carry a signal spanning -0.34 to +0.03, which is the difference between
+ranking a placement and guessing.
+
+A potential-based reward change does NOT require retraining from scratch, unlike
+an observation change: returns shift by under 1%, so the critic stays valid and
+a resume is safe.
+
+---
+
 ## Before you start a training run
 
 Snake v2 burned several hours across three separate failures, and **every one

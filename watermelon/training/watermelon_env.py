@@ -91,10 +91,39 @@ SETTLE_MAX_STEPS = 600         # 10s of sim; hard ceiling per drop
 SETTLE_VELOCITY = 12.0         # px/s below which a body counts as at rest
 SETTLE_QUIET_STEPS = 6         # consecutive quiet frames required
 
-# Rewards
-REWARD_MERGE_SCALE = 0.1       # POINTS[t] * this
+# ── Rewards ─────────────────────────────────────────────────────────────────
+#
+# The score itself, plus POTENTIAL-BASED shaping.
+#
+# WHY POTENTIAL-BASED, AND NOT JUST A PILE OF BONUSES
+# A bonus added straight to the reward changes which policy is optimal, so the
+# agent can end up maximising the bonus instead of the game. Potential-based
+# shaping — reward += gamma * phi(next) - phi(now), Ng, Harada & Russell 1999 —
+# is the one form that provably leaves the optimal policy untouched. It can
+# only change how fast the agent finds it, never what it finds. Given this
+# project has already lost runs to an entropy bonus quietly destroying a good
+# policy, that guarantee is worth having.
+#
+# phi rewards the board being in a state a good Suika player wants:
+#   - a low stack, with room left
+#   - a level surface, not spikes and canyons
+#   - big fruit at the bottom, small on top
+#
+# The previous reward gave none of this. Its only structural term fired once
+# the stack was ALREADY over the loss line, which is far too late to steer
+# anything — by then the game is close to over.
+REWARD_MERGE_SCALE = 0.1       # POINTS[t] * this — the real objective
 REWARD_LOSS = -1.0
-REWARD_HEIGHT_PENALTY = 0.05   # scaled by how far the stack rises past the line
+
+# Weights inside the potential. Kept small on purpose: across a ~100-drop game
+# the shaping contributes roughly a tenth of what merging does, so it guides
+# without drowning out the score.
+PHI_HEIGHT = 0.60              # how full the well is, squared
+PHI_BUMPINESS = 0.30           # unevenness of the surface
+PHI_TOPHEAVY = 0.35            # big fruit sitting high
+PHI_GAMMA = 0.99               # must match the discount used in training
+
+SURFACE_COLUMNS = 10           # resolution of the surface profile
 
 COLLISION_TYPE_FRUIT = 1
 
@@ -134,6 +163,13 @@ class WatermelonEnv(gym.Env):
         self.score = 0
         self.done = False
 
+        # Potential of the starting board. The well is empty, so this is 0 —
+        # but it is set explicitly rather than assumed, because the first
+        # step's shaping term subtracts it and a stale value from the previous
+        # episode would silently pay or charge for a transition that never
+        # happened.
+        self._phi = self._potential()
+
         self.held_tier = self._weighted_tier()
         self.next_tier = self._weighted_tier()
 
@@ -160,18 +196,21 @@ class WatermelonEnv(gym.Env):
 
         reward = gained * REWARD_MERGE_SCALE
 
-        # Structural penalty: punish a stack creeping over the loss line rather
-        # than waiting for the death it eventually causes. Same reasoning as
-        # Tetris's per-hole penalty.
-        top = self._stack_top_y()
-        if top < LOSS_LINE_Y:
-            overshoot = (LOSS_LINE_Y - top) / max(1.0, LOSS_LINE_Y)
-            reward -= REWARD_HEIGHT_PENALTY * min(1.0, overshoot)
-
         self.held_tier = self.next_tier
         self.next_tier = self._weighted_tier()
 
         terminated = self._is_lost()
+
+        # Potential-based shaping: gamma * phi(next) - phi(now).
+        #
+        # phi of a terminal state MUST be 0, or the guarantee that shaping
+        # cannot change the optimal policy no longer holds — a non-zero
+        # terminal potential is just a disguised bonus for dying in a
+        # particular position.
+        next_phi = 0.0 if terminated else self._potential()
+        reward += PHI_GAMMA * next_phi - self._phi
+        self._phi = next_phi
+
         if terminated:
             reward += REWARD_LOSS
             self.done = True
@@ -295,6 +334,69 @@ class WatermelonEnv(gym.Env):
         for body, tier in self.fruits.items():
             top = min(top, body.position.y - DIAMETERS[tier] / 2.0)
         return top
+
+    def _surface_profile(self):
+        """
+        Highest occupied point in each of SURFACE_COLUMNS vertical slices.
+
+        Returned as depth from the top of the well, so 0 is an empty column and
+        larger means fuller. A fruit is counted in every column its circle
+        overlaps, not just the one its centre sits in — a 290px watermelon
+        spans most of a 448px board, and attributing it to one column would
+        report canyons either side of it that do not exist.
+        """
+        col_w = CANVAS_W / SURFACE_COLUMNS
+        tops = [float(CANVAS_H)] * SURFACE_COLUMNS
+        for body, tier in self.fruits.items():
+            r = DIAMETERS[tier] / 2.0
+            x, y = body.position.x, body.position.y
+            lo = max(0, int((x - r) / col_w))
+            hi = min(SURFACE_COLUMNS - 1, int((x + r) / col_w))
+            for c in range(lo, hi + 1):
+                tops[c] = min(tops[c], y - r)
+        return [CANVAS_H - t for t in tops]
+
+    def _potential(self):
+        """
+        How good this board is to be in, ignoring score. Always <= 0, so a
+        perfectly empty well is 0 and everything else is worse.
+
+        Read the three terms as: how full, how uneven, how top-heavy.
+        """
+        if not self.fruits:
+            return 0.0
+
+        usable = max(1.0, CANVAS_H - LOSS_LINE_Y)
+
+        # 1. Fullness. Squared, so early drops cost almost nothing and the
+        #    pressure rises sharply as the stack approaches the line.
+        top = self._stack_top_y()
+        fill = min(1.0, max(0.0, (CANVAS_H - top) / usable))
+        height_term = fill * fill
+
+        # 2. Unevenness — mean step between neighbouring columns. A flat
+        #    surface gives every fruit somewhere to land; a spiky one wastes
+        #    the space beside each spike.
+        prof = self._surface_profile()
+        steps = [abs(prof[i + 1] - prof[i]) for i in range(len(prof) - 1)]
+        bump_term = (sum(steps) / len(steps)) / usable if steps else 0.0
+        bump_term = min(1.0, bump_term)
+
+        # 3. Top-heaviness — a tier-weighted mean height. Big fruit resting
+        #    high is the position Suika players lose from, because nothing
+        #    below can ever merge up past them.
+        weight_sum = 0.0
+        weighted_height = 0.0
+        for body, tier in self.fruits.items():
+            w = (tier / MAX_TIER) ** 2          # squared: only real giants count
+            h = max(0.0, (CANVAS_H - body.position.y) / CANVAS_H)
+            weight_sum += w
+            weighted_height += w * h
+        heavy_term = (weighted_height / weight_sum) if weight_sum > 1e-6 else 0.0
+
+        return -(PHI_HEIGHT * height_term
+                 + PHI_BUMPINESS * bump_term
+                 + PHI_TOPHEAVY * heavy_term)
 
     def _is_lost(self):
         """Lost when a settled fruit sits above the loss line."""

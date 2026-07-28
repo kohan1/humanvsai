@@ -76,7 +76,14 @@ if [ "$SAVED" -gt 0 ] && [ "$PARENT" -eq 0 ]; then
     echo "FINISHED $GAME"
 elif [ "$PARENT" -eq 0 ]; then
     echo "DEAD $GAME"
-elif [ "$STEPS" -le "$PREV" ] && [ "$PREV" -gt 0 ]; then
+elif [ "$STEPS" -lt "$PREV" ]; then
+    # The counter went BACKWARDS, so this is a different run of the same game
+    # that has started from zero — not a stall. Guarding only against the game
+    # changing was not enough: Watermelon's reward-redesign run replaced a 39M
+    # run with a fresh one and read as frozen.
+    echo "counter reset ($PREV -> $STEPS): a new run has started"
+    echo "OK $GAME"
+elif [ "$STEPS" -eq "$PREV" ] && [ "$PREV" -gt 0 ]; then
     # Alive but no progress since the previous check. Evaluations pause the
     # step counter, so this is only meaningful across checks minutes apart.
     echo "no movement since last check (was $PREV)"

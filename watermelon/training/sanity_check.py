@@ -99,12 +99,30 @@ else:
     check("playing well beats losing immediately", mean_ret > WE.REWARD_LOSS,
           f"good game {mean_ret:+.2f} vs instant loss {WE.REWARD_LOSS:+.2f}")
 
-    # The height penalty applies per drop. If it dominates the merge reward it
-    # becomes a per-step tax, which is exactly how Snake's reward inverted.
+    # The shaping must not become a per-step tax, which is exactly how Snake's
+    # reward inverted and cost days of compute.
     merge_upper = mean_score * WE.REWARD_MERGE_SCALE
-    check("merge reward dominates the height penalty", mean_ret > merge_upper * 0.5,
+    check("merge reward dominates the shaping", mean_ret > merge_upper * 0.5,
           f"return {mean_ret:+.2f} vs merge component ~{merge_upper:+.2f}",
           fatal=False)
+
+    # POTENTIAL-BASED SHAPING TELESCOPES. Over an episode that starts and ends
+    # at phi = 0, the shaping terms cancel to nearly nothing — that cancellation
+    # IS the proof it cannot have changed which policy is optimal. If this
+    # drifts far from zero, either a terminal state is being given a non-zero
+    # potential or phi is not being reset between episodes, and the shaping has
+    # quietly become an ordinary bonus with all the hazards that carries.
+    shaping = mean_ret - merge_upper
+    check("shaping telescopes to about zero over an episode",
+          abs(shaping) < max(1.0, merge_upper * 0.08),
+          f"shaping total {shaping:+.2f} against merge {merge_upper:+.2f}")
+
+    # An empty well is the reference point and must score exactly 0, or every
+    # episode starts by paying or collecting a constant.
+    fresh = WE.WatermelonEnv()
+    fresh.reset(seed=0)
+    check("empty board has zero potential", abs(fresh._potential()) < 1e-9,
+          f"phi(empty) = {fresh._potential():+.6f}")
 
 # ── 3. Teacher quality ───────────────────────────────────────────────────
 print("\n[3] teacher")

@@ -113,13 +113,25 @@ RUN_NOTES = {
              "it ENDED on scores 959.93. Keeping the best rather than the last "
              "is worth 72 points here, and this is the run that proved it.",
     ),
-    "watermelon/train_100m.log": dict(
-        game="watermelon", label="100M resume · GPU", outcome="running",
+    "watermelon/train_100m_regressed.log": dict(
+        game="watermelon", label="100M resume from the peak — abandoned",
+        outcome="rejected",
         parent="watermelon/train_day3_gpu.log",
-        note="Resumed from the 1032.43 best checkpoint. Snake's 100M run "
-             "plateaued after 55M, so this one is likely to flatten well "
-             "before it finishes too — best-checkpoint tracking means nothing "
-             "is lost either way.",
+        note="Stopped at 39M of 100M after producing nothing in twelve hours: "
+             "0 of 39 checkpoint evaluations beat the model it started from. "
+             "It resumed from a BEST checkpoint rather than a run-end model, "
+             "and a best checkpoint is by construction the luckiest point on a "
+             "noisy curve — perturbing it moved it back toward ordinary and it "
+             "never recovered. Keep the best for shipping; resume from the "
+             "run-end model.",
+    ),
+    "watermelon/train_reward_v2.log": dict(
+        game="watermelon", label="redesigned reward · GPU", outcome="running",
+        parent="watermelon/train_day2.log",
+        note="First run on the rebuilt reward: potential-based shaping for a "
+             "low stack, a level surface and big fruit kept low. 49% of drops "
+             "score nothing at all, and under the old reward those steps gave "
+             "no feedback whatsoever.",
     ),
     "snake/train_100m.log": dict(
         game="snake", label="100M resume · GPU", evalScore=145.70,
