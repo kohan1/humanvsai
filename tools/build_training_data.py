@@ -114,10 +114,18 @@ RUN_NOTES = {
              "is worth 72 points here, and this is the run that proved it.",
     ),
     "train_100m.log": dict(
-        game="snake", label="100M resume · GPU", outcome="running",
+        game="snake", label="100M resume · GPU", evalScore=145.70,
+        outcome="improved",
         parent="train_day1.log",
-        note="First Snake run with best-checkpoint tracking and the wider "
-             "trust region that worked on Watermelon.",
+        checkpoint="snake/training/archive/models/snake_final.145pt70_best.zip",
+        note="100 million steps in 12h58m. Almost all of the gain arrived "
+             "early: 133 to 151 in the first 7M steps, then only +3.7 across "
+             "the next 48M, and nothing at all after 55M. It early-stopped on "
+             "1,526 of 1,526 iterations, so unlike Watermelon the wider trust "
+             "region did not loosen Snake's updates. The best checkpoint and "
+             "the final model tie on average (145.70 against 145.46) but not "
+             "on their worst game — 80 against 29 — so the best was kept for "
+             "being far less prone to collapse.",
     ),
 }
 

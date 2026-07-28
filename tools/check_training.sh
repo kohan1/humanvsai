@@ -58,8 +58,17 @@ echo "process:  $PARENT trainer(s) running"
 echo "steps:    $STEPS"
 echo "best:     $BEST"
 
+# Only compare against the previous check when it was watching the SAME game.
+# When one run finishes and the next starts, the new run's counter begins near
+# zero while the state file still holds the old run's tens of millions — which
+# reads as "no movement" and would trigger a restart of a perfectly healthy
+# job. Observed doing exactly that on the Snake -> Watermelon handover.
 PREV=0
-[ -f "$STATE" ] && PREV=$(cut -d' ' -f2 "$STATE" 2>/dev/null || echo 0)
+PREV_GAME=""
+if [ -f "$STATE" ]; then
+    PREV_GAME=$(cut -d' ' -f1 "$STATE" 2>/dev/null || echo "")
+    [ "$PREV_GAME" = "$GAME" ] && PREV=$(cut -d' ' -f2 "$STATE" 2>/dev/null || echo 0)
+fi
 PREV=${PREV:-0}
 echo "$GAME $STEPS $(date +%s)" > "$STATE"
 
