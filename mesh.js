@@ -34,9 +34,16 @@ function initMesh(canvasId, opts) {
     function mount() {
         if (stop) { stop(); stop = null; }
         const t = themeOf();
-        // Both minimal themes share one restrained interaction.
-        stop = (t === 'paper' || t === 'carbon') ? initReveal(cvs, opts)
-             :                                     initLattice(cvs, opts);
+        // Renderers live in backgrounds.js; the lattice stays here as the
+        // default and as the fallback if that file fails to load.
+        const R = {
+            flow:          typeof initFlow          === 'function' && initFlow,
+            filings:       typeof initFilings       === 'function' && initFilings,
+            sand:          typeof initSand          === 'function' && initSand,
+            constellation: typeof initConstellation === 'function' && initConstellation,
+            dispersion:    typeof initDispersion    === 'function' && initDispersion,
+        };
+        stop = (R[t] || initLattice)(cvs, opts);
     }
 
     new MutationObserver(mount).observe(document.documentElement,

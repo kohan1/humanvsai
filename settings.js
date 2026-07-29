@@ -100,12 +100,18 @@
     /* Each theme is a palette (themes.css) plus a background renderer
      * (mesh.js). The swatch colours here are only for the picker. */
     var THEMES = [
-        { id: 'mesh',   label: 'Mesh',
+        { id: 'mesh',          label: 'Mesh',
           swatch: 'linear-gradient(135deg,#080808 0%,#141a24 60%,#cfe4ff 190%)' },
-        { id: 'paper',  label: 'Paper',
-          swatch: 'linear-gradient(90deg,#ffffff 0%,#ffffff 72%,#000000 72%)' },
-        { id: 'carbon', label: 'Carbon',
-          swatch: 'linear-gradient(90deg,#000000 0%,#000000 72%,#ffffff 72%)' },
+        { id: 'flow',          label: 'Flow',
+          swatch: 'linear-gradient(135deg,#0b0c10 0%,#2a2c33 55%,#ece7d4 165%)' },
+        { id: 'filings',       label: 'Filings',
+          swatch: 'linear-gradient(135deg,#f4f3ef 0%,#d8d6cd 55%,#111111 165%)' },
+        { id: 'sand',          label: 'Sand',
+          swatch: 'linear-gradient(135deg,#000000 0%,#1a1a1a 55%,#ffffff 175%)' },
+        { id: 'constellation', label: 'Constellation',
+          swatch: 'linear-gradient(135deg,#070b18 0%,#16224a 55%,#9db9ff 175%)' },
+        { id: 'dispersion',    label: 'Dispersion',
+          swatch: 'linear-gradient(135deg,#ffffff 0%,#e8e8e8 55%,#000000 175%)' },
     ];
 
     var DEFAULTS = {

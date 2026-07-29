@@ -148,140 +148,213 @@ h2 { color: var(--fg); font-family: var(--serif); }
 }
 .theme-swatch.on b { color: var(--fg); }
 
-/* ── Paper ──────────────────────────────────────────────────────────────────
-   Pure white, pure black, and almost nothing else.
 
-   Measured off Cecilie Bahnsen (Awwwards minimal): #fff on #000, greys at
-   #666 and #101010, ONE neo-grotesque at 11-16px, weights 400-600, and
-   letter-spacing between 0 and 0.75px. That last figure is the one that
-   matters — real minimalist sites set type nearly solid. Wide tracking,
-   mixed serif-and-sans, texture and glow are what this theme removes. */
-[data-theme="paper"] {
+/* ═══ Five motion themes ════════════════════════════════════════════════════
+   Each pairs a restrained palette with one cursor-reactive motion. The
+   palette stays minimal — two or three greys and no accent colour in the
+   motion itself — so the interest comes from movement rather than decoration.
+   That balance is the thing the earlier attempts got wrong in both directions.
+
+   --particle-rgb is what the renderers draw with; --bg-rgb is what Flow fades
+   its trails toward. Both must be bare "r, g, b" triples, not hex. */
+
+/* Flow — warm off-white drifting over cold near-black. */
+[data-theme="flow"] {
+    --bg:          #0b0c10;
+    --bg-soft:     #0b0c10;
+    --panel:       #101116;
+    --panel-hi:    #16171d;
+    --fg:          #ece7d4;
+    --fg-muted:    #c3bfb0;
+    --dim:         #7b786e;
+    --dimmer:      #55534c;
+    --faint:       rgba(236, 231, 212, 0.14);
+    --line:        #1c1d24;
+    --line-soft:   #15161c;
+    --accent:      #ece7d4;
+    --accent-2:    #b8b3a2;
+    --warn:        #8a857a;
+    --chart-grid:  #171820;
+    --chart-axis:  #7b786e;
+    --chart-ink:   #ece7d4;
+    --chart-track: #191a21;
+    --particle-rgb: 236, 231, 212;
+    --bg-rgb:       11, 12, 16;
+}
+
+/* Filings — ink on warm paper. */
+[data-theme="filings"] {
+    --bg:          #f4f3ef;
+    --bg-soft:     #f4f3ef;
+    --panel:       #ffffff;
+    --panel-hi:    #eceae4;
+    --fg:          #111111;
+    --fg-muted:    #2b2b2b;
+    --dim:         #6d6c66;
+    --dimmer:      #9c9b94;
+    --faint:       #cfcdc5;
+    --line:        #dddbd3;
+    --line-soft:   #e8e6de;
+    --accent:      #111111;
+    --accent-2:    #4a4a46;
+    --warn:        #8a8880;
+    --chart-grid:  #e4e2da;
+    --chart-axis:  #9c9b94;
+    --chart-ink:   #111111;
+    --chart-track: #e4e2da;
+    --particle-rgb: 17, 17, 17;
+    --bg-rgb:       244, 243, 239;
+}
+
+/* Sand — white grains on true black. */
+[data-theme="sand"] {
+    --bg:          #000000;
+    --bg-soft:     #000000;
+    --panel:       #0a0a0a;
+    --panel-hi:    #131313;
+    --fg:          #ffffff;
+    --fg-muted:    #e0e0e0;
+    --dim:         #7d7d7d;
+    --dimmer:      #565656;
+    --faint:       #2e2e2e;
+    --line:        #1c1c1c;
+    --line-soft:   #141414;
+    --accent:      #ffffff;
+    --accent-2:    #a8a8a8;
+    --warn:        #6f6f6f;
+    --chart-grid:  #171717;
+    --chart-axis:  #565656;
+    --chart-ink:   #ffffff;
+    --chart-track: #171717;
+    --particle-rgb: 255, 255, 255;
+    --bg-rgb:       0, 0, 0;
+}
+
+/* Constellation — cool blue-white on deep navy. */
+[data-theme="constellation"] {
+    --bg:          #070b18;
+    --bg-soft:     #070b18;
+    --panel:       #0b1124;
+    --panel-hi:    #111a36;
+    --fg:          #dfe8ff;
+    --fg-muted:    #b3c1e4;
+    --dim:         #6f7ea6;
+    --dimmer:      #4c587a;
+    --faint:       rgba(223, 232, 255, 0.14);
+    --line:        #16203f;
+    --line-soft:   #111930;
+    --accent:      #9db9ff;
+    --accent-2:    #7f93c4;
+    --warn:        #6f7ea6;
+    --chart-grid:  #141d3a;
+    --chart-axis:  #6f7ea6;
+    --chart-ink:   #9db9ff;
+    --chart-track: #16203f;
+    --particle-rgb: 157, 185, 255;
+    --bg-rgb:       7, 11, 24;
+}
+
+/* Dispersion — black particles on white. */
+[data-theme="dispersion"] {
     --bg:          #ffffff;
     --bg-soft:     #ffffff;
     --panel:       #ffffff;
-    --panel-hi:    #f6f6f6;
+    --panel-hi:    #f4f4f4;
     --fg:          #000000;
-    --fg-muted:    #101010;
-    --dim:         #666666;
-    --dimmer:      #999999;
-    --faint:       #cccccc;
-    --line:        #e3e3e3;
-    --line-soft:   #efefef;
+    --fg-muted:    #141414;
+    --dim:         #6a6a6a;
+    --dimmer:      #9a9a9a;
+    --faint:       #d0d0d0;
+    --line:        #e2e2e2;
+    --line-soft:   #eeeeee;
     --accent:      #000000;
-    --accent-2:    #666666;
-    --warn:        #999999;
-
-    --chart-grid:  #ededed;
-    --chart-axis:  #999999;
+    --accent-2:    #555555;
+    --warn:        #909090;
+    --chart-grid:  #ececec;
+    --chart-axis:  #9a9a9a;
     --chart-ink:   #000000;
-    --chart-track: #ededed;
-    --grid-ink:    17, 17, 17;
+    --chart-track: #ececec;
+    --particle-rgb: 0, 0, 0;
+    --bg-rgb:       255, 255, 255;
 }
 
-/* ── Carbon ─────────────────────────────────────────────────────────────────
-   The same restraint inverted. True black, not the near-black the default
-   theme uses, and white rather than blue-white. */
-[data-theme="carbon"] {
-    --bg:          #000000;
-    --bg-soft:     #000000;
-    --panel:       #000000;
-    --panel-hi:    #0d0d0d;
-    --fg:          #ffffff;
-    --fg-muted:    #e8e8e8;
-    --dim:         #808080;
-    --dimmer:      #5a5a5a;
-    --faint:       #333333;
-    --line:        #1f1f1f;
-    --line-soft:   #161616;
-    --accent:      #ffffff;
-    --accent-2:    #a0a0a0;
-    --warn:        #707070;
-
-    --chart-grid:  #1a1a1a;
-    --chart-axis:  #5a5a5a;
-    --chart-ink:   #ffffff;
-    --chart-track: #1a1a1a;
-    --grid-ink:    255, 255, 255;
+/* Shared treatment for all five: one typeface, tight tracking, no texture.
+   The palettes differ; the typography does not. */
+[data-theme="flow"], [data-theme="filings"], [data-theme="sand"],
+[data-theme="constellation"], [data-theme="dispersion"] {
+    --serif: inherit;
 }
-
-/* ═══ What the minimal themes take away ═════════════════════════════════════
-   Restraint is the whole design, so these rules are mostly subtraction. */
-
-/* One typeface everywhere. The default theme sets headings in Georgia; a
-   minimal system does not mix a display serif with a UI sans. */
-[data-theme="paper"], [data-theme="carbon"] { --serif: inherit; }
-[data-theme="paper"] h1, [data-theme="carbon"] h1,
-[data-theme="paper"] h2, [data-theme="carbon"] h2,
-[data-theme="paper"] .title, [data-theme="carbon"] .title,
-[data-theme="paper"] .card-name, [data-theme="carbon"] .card-name,
-[data-theme="paper"] .stat-num, [data-theme="carbon"] .stat-num,
-[data-theme="paper"] .arch-summary b, [data-theme="carbon"] .arch-summary b {
+[data-theme="flow"] h1, [data-theme="filings"] h1, [data-theme="sand"] h1,
+[data-theme="constellation"] h1, [data-theme="dispersion"] h1,
+[data-theme="flow"] h2, [data-theme="filings"] h2, [data-theme="sand"] h2,
+[data-theme="constellation"] h2, [data-theme="dispersion"] h2,
+[data-theme="flow"] .title, [data-theme="filings"] .title, [data-theme="sand"] .title,
+[data-theme="constellation"] .title, [data-theme="dispersion"] .title,
+[data-theme="flow"] .card-name, [data-theme="filings"] .card-name,
+[data-theme="sand"] .card-name, [data-theme="constellation"] .card-name,
+[data-theme="dispersion"] .card-name,
+[data-theme="flow"] .stat-num, [data-theme="filings"] .stat-num,
+[data-theme="sand"] .stat-num, [data-theme="constellation"] .stat-num,
+[data-theme="dispersion"] .stat-num {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     font-weight: 500;
-    letter-spacing: -0.02em;      /* tight, the way large grotesque is set */
+    letter-spacing: -0.02em;
+}
+[data-theme="flow"] .eyebrow, [data-theme="filings"] .eyebrow,
+[data-theme="sand"] .eyebrow, [data-theme="constellation"] .eyebrow,
+[data-theme="dispersion"] .eyebrow,
+[data-theme="flow"] .card-num, [data-theme="filings"] .card-num,
+[data-theme="sand"] .card-num, [data-theme="constellation"] .card-num,
+[data-theme="dispersion"] .card-num,
+[data-theme="flow"] .card-tag, [data-theme="filings"] .card-tag,
+[data-theme="sand"] .card-tag, [data-theme="constellation"] .card-tag,
+[data-theme="dispersion"] .card-tag,
+[data-theme="flow"] .stat-label, [data-theme="filings"] .stat-label,
+[data-theme="sand"] .stat-label, [data-theme="constellation"] .stat-label,
+[data-theme="dispersion"] .stat-label,
+[data-theme="flow"] .ctl, [data-theme="filings"] .ctl, [data-theme="sand"] .ctl,
+[data-theme="constellation"] .ctl, [data-theme="dispersion"] .ctl,
+[data-theme="flow"] .back, [data-theme="filings"] .back, [data-theme="sand"] .back,
+[data-theme="constellation"] .back, [data-theme="dispersion"] .back,
+[data-theme="flow"] .back-nav, [data-theme="filings"] .back-nav,
+[data-theme="sand"] .back-nav, [data-theme="constellation"] .back-nav,
+[data-theme="dispersion"] .back-nav,
+[data-theme="flow"] .board-label, [data-theme="filings"] .board-label,
+[data-theme="sand"] .board-label, [data-theme="constellation"] .board-label,
+[data-theme="dispersion"] .board-label {
+    letter-spacing: 0.05em;
 }
 
-/* Tracking. The site's micro-labels sit at 0.16-0.24em, which reads as a
-   2015 startup rather than as editorial. Measured references sit under
-   0.05em even on uppercase. */
-[data-theme="paper"] .eyebrow,    [data-theme="carbon"] .eyebrow,
-[data-theme="paper"] .card-num,   [data-theme="carbon"] .card-num,
-[data-theme="paper"] .card-tag,   [data-theme="carbon"] .card-tag,
-[data-theme="paper"] .stat-label, [data-theme="carbon"] .stat-label,
-[data-theme="paper"] .ctl,        [data-theme="carbon"] .ctl,
-[data-theme="paper"] .back,       [data-theme="carbon"] .back,
-[data-theme="paper"] .back-nav,   [data-theme="carbon"] .back-nav,
-[data-theme="paper"] .board-label,[data-theme="carbon"] .board-label,
-[data-theme="paper"] .foot,       [data-theme="carbon"] .foot,
-[data-theme="paper"] .settings-title, [data-theme="carbon"] .settings-title,
-[data-theme="paper"] .row.head,   [data-theme="carbon"] .row.head,
-[data-theme="paper"] .heat-label, [data-theme="carbon"] .heat-label,
-[data-theme="paper"] .arch-kind,  [data-theme="carbon"] .arch-kind,
-[data-theme="paper"] .row-outcome,[data-theme="carbon"] .row-outcome {
-    letter-spacing: 0.04em;
-}
-
-/* No texture, no glow, no colour-coded status. Outcomes are distinguished by
-   weight and position instead. */
-[data-theme="paper"] body::after, [data-theme="carbon"] body::after { display: none; }
-[data-theme="paper"] .o-shipped,  [data-theme="carbon"] .o-shipped  { color: var(--fg); }
-[data-theme="paper"] .o-improved, [data-theme="carbon"] .o-improved { color: var(--fg-muted); }
-[data-theme="paper"] .o-rejected, [data-theme="carbon"] .o-rejected { color: var(--dimmer); }
-
-/* Hairline rules rather than filled panels. */
-[data-theme="paper"] .card, [data-theme="carbon"] .card,
-[data-theme="paper"] .stat, [data-theme="carbon"] .stat { background: var(--bg); }
-[data-theme="paper"] .card:hover, [data-theme="carbon"] .card:hover {
-    background: var(--bg); color: var(--fg);
-}
-[data-theme="paper"] .card:hover::after, [data-theme="carbon"] .card:hover::after {
-    border-color: var(--fg);
-}
-[data-theme="paper"] .chart-wrap, [data-theme="carbon"] .chart-wrap { background: var(--bg); }
-[data-theme="paper"] .row-note, [data-theme="carbon"] .row-note { background: var(--panel-hi); }
-
-/* Watermelon's sage backdrop is the loudest surface on the site. Under a
-   minimal theme it becomes the theme's own background; the BOARD keeps its
-   original cream, which is the game's identity rather than site chrome. */
-[data-theme="paper"] .insp, [data-theme="carbon"] .insp {
+/* Game chrome follows the theme; the boards do not. */
+[data-theme="flow"] .insp, [data-theme="filings"] .insp, [data-theme="sand"] .insp,
+[data-theme="constellation"] .insp, [data-theme="dispersion"] .insp {
     --insp-fg: var(--fg-muted); --insp-dim: var(--dim); --insp-line: var(--line);
-    --insp-panel: var(--bg); --insp-accent: var(--fg);
-    --insp-cell-bg: var(--bg); --insp-track: var(--line);
-    --insp-cell-rgb: var(--grid-ink);
+    --insp-panel: var(--panel); --insp-accent: var(--accent);
+    --insp-cell-bg: var(--bg-soft); --insp-track: var(--line-soft);
+    --insp-cell-rgb: var(--particle-rgb);
 }
-[data-theme="paper"] .insp-cue, [data-theme="carbon"] .insp-cue {
+[data-theme="flow"] .insp-cue, [data-theme="filings"] .insp-cue,
+[data-theme="sand"] .insp-cue, [data-theme="constellation"] .insp-cue,
+[data-theme="dispersion"] .insp-cue {
     --insp-cue-fg: var(--dim); --insp-cue-hover: var(--fg);
 }
-[data-theme="paper"] .speed-controls button, [data-theme="carbon"] .speed-controls button {
-    background: var(--bg); border-color: var(--line); color: var(--dim);
-    border-radius: 0;
+[data-theme="flow"] .speed-controls button, [data-theme="filings"] .speed-controls button,
+[data-theme="sand"] .speed-controls button, [data-theme="constellation"] .speed-controls button,
+[data-theme="dispersion"] .speed-controls button {
+    background: var(--panel); border-color: var(--line); color: var(--dim);
 }
-[data-theme="paper"] .speed-controls button.active,
-[data-theme="carbon"] .speed-controls button.active {
-    background: var(--fg); border-color: var(--fg); color: var(--bg);
+[data-theme="flow"] .speed-controls button.active,
+[data-theme="filings"] .speed-controls button.active,
+[data-theme="sand"] .speed-controls button.active,
+[data-theme="constellation"] .speed-controls button.active,
+[data-theme="dispersion"] .speed-controls button.active {
+    background: var(--panel-hi); border-color: var(--accent); color: var(--fg);
 }
-[data-theme="paper"] #vs, [data-theme="carbon"] #vs { color: var(--faint); }
-[data-theme="paper"] .board-label, [data-theme="carbon"] .board-label { color: var(--dim); }
-[data-theme="paper"] .ai-status, [data-theme="carbon"] .ai-status { color: var(--dim); }
-[data-theme="paper"] button, [data-theme="carbon"] button { border-radius: 0; }
+[data-theme="flow"] #vs, [data-theme="filings"] #vs, [data-theme="sand"] #vs,
+[data-theme="constellation"] #vs, [data-theme="dispersion"] #vs { color: var(--faint); }
+[data-theme="flow"] .board-label, [data-theme="filings"] .board-label,
+[data-theme="sand"] .board-label, [data-theme="constellation"] .board-label,
+[data-theme="dispersion"] .board-label { color: var(--dim); }
+[data-theme="flow"] .ai-status, [data-theme="filings"] .ai-status,
+[data-theme="sand"] .ai-status, [data-theme="constellation"] .ai-status,
+[data-theme="dispersion"] .ai-status { color: var(--dim); }
