@@ -57,6 +57,16 @@ echo "=== exporting to ONNX ==="
 
 cp "$DIR/$ONNX" "$GAME/$ONNX" || exit 1
 
+# The critic ships as a separate file for the inspector's value readout, and it
+# MUST travel with its policy. Leaving the old one behind would pair a new
+# policy with the previous model's value head — plausible numbers from a
+# network that never saw these weights.
+CRITIC="${GAME}_critic.onnx"
+if [ -f "$DIR/$CRITIC" ]; then
+    cp "$DIR/$CRITIC" "$GAME/$CRITIC" || exit 1
+    echo "  critic updated alongside the policy"
+fi
+
 echo
 echo "=== embedding as base64 for file:// ==="
 ( cd "$GAME" && python -u embed_model.py ) || { echo "embed failed"; exit 1; }
