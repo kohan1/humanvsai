@@ -95,6 +95,36 @@ a resume is safe.
 
 ---
 
+## Safe shaping cannot raise a ceiling — that is the point of it
+
+Watermelon's reward was rebuilt on 2026-07-29 with potential-based shaping and
+it DID NOT PAY OFF. Measured over 30 games from comparable starting points:
+
+| reward | start | result | gain |
+|---|---|---|---|
+| old | 936.70's model | **1032.43** | +95.73 |
+| redesigned | 959.93's model | 1014.47 | +54.54 |
+
+The new reward gained less, from a higher start. The shaping worked exactly as
+designed — the telescoping check passed, no early-stopping problem, 41 stops in
+489 iterations — and the result was still worse.
+
+The reason is the property it was chosen for. Potential-based shaping is
+provably unable to change which policy is optimal; it can only change how fast
+that policy is found. So it can never raise the ceiling, only the speed of
+approach — and with 20M steps there was no speed problem to solve. Choosing it
+for safety meant choosing something that could not deliver what was wanted.
+
+**If the goal is a better ceiling, change the observation, the architecture or
+the action space. If the goal is faster convergence to the ceiling you already
+have, shape the reward.** Those are different problems and this run confirmed
+they need different tools.
+
+Watermelon's real limit is most likely the 22x30 observation grid — roughly
+20px cells against a 40px smallest fruit — not its reward.
+
+---
+
 ## Before you start a training run
 
 Snake v2 burned several hours across three separate failures, and **every one

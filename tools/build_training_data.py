@@ -126,12 +126,20 @@ RUN_NOTES = {
              "run-end model.",
     ),
     "watermelon/train_reward_v2.log": dict(
-        game="watermelon", label="redesigned reward · GPU", outcome="running",
+        game="watermelon", label="redesigned reward · GPU", evalScore=1014.47,
+        outcome="improved",
         parent="watermelon/train_day2.log",
-        note="First run on the rebuilt reward: potential-based shaping for a "
-             "low stack, a level surface and big fruit kept low. 49% of drops "
-             "score nothing at all, and under the old reward those steps gave "
-             "no feedback whatsoever.",
+        checkpoint="watermelon/training/archive/models/watermelon_rewardv2.1014pt47.zip",
+        note="The rebuilt reward added potential-based shaping for a low "
+             "stack, a level surface and big fruit kept low — because 49% of "
+             "drops score nothing and used to give no feedback at all. It "
+             "reached 1014.47, which beats the model it started from but is "
+             "BELOW the 1032.43 the old reward had already reached from a "
+             "lower starting point. The redesign did not pay off, and the "
+             "reason is in the choice itself: potential-based shaping is "
+             "provably unable to change which policy is optimal, so it can "
+             "only reach the same ceiling faster. Raising the ceiling needs a "
+             "different observation or architecture, not a safer reward.",
     ),
     "snake/train_100m.log": dict(
         game="snake", label="100M resume · GPU", evalScore=145.70,
