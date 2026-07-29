@@ -58,15 +58,30 @@
      * Note how little it takes: changing 8% of moves halves the score. That is
      * also why "just make it play worse" is hard to do by hand.
      *
-     * Tetris and Watermelon are still ESTIMATES pending their own sweep. Both
-     * survive a bad move far better than Snake, so they should tolerate higher
-     * temperatures for the same drop in strength — the values below assume
-     * that and have not yet been verified.
+     * Watermelon is MEASURED too, and needs FAR higher temperatures for the
+     * same effect:
+     *
+     *     T 0   1019  100%      T 6    624   61%
+     *     T 3    807   76%      T 9    444   44%
+     *     T 4    652   64%      T 20   432   42%
+     *
+     * At T=2 it was still at 96% with a quarter of its moves randomised. Suika
+     * forgives a bad drop in a way Snake does not — column 11 instead of 12
+     * rarely matters — so randomising the choice costs much less.
+     *
+     * It also has a FLOOR at about 42%: even at T=20, with 92% of moves
+     * effectively random, fruit still merge by accident and the score still
+     * accumulates. Watermelon therefore cannot be made as weak as Snake this
+     * way, and "Gentle" here means noticeably worse rather than bad. Making it
+     * genuinely easy needs an early, actually-weaker checkpoint.
+     *
+     * Tetris is still an ESTIMATE — it is the one game whose training
+     * checkpoint no longer exists, so it cannot be swept with the same script.
      */
     var TEMPERATURES = {
         snake:      { full: 0, strong: 0.75, fair: 1.50, gentle: 3.00 },
         tetris:     { full: 0, strong: 1.00, fair: 2.00, gentle: 3.50 },
-        watermelon: { full: 0, strong: 1.00, fair: 2.00, gentle: 3.50 },
+        watermelon: { full: 0, strong: 3.00, fair: 6.00, gentle: 10.00 },
     };
 
     var DEFAULTS = {

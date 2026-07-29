@@ -30,6 +30,10 @@ GAMES = {
     "snake": dict(module="snake_env", cls="SnakeEnv", model="snake_final.zip"),
     "watermelon": dict(module="watermelon_env", cls="WatermelonEnv",
                        model="watermelon_final.zip"),
+    # Tetris has no SB3 checkpoint left — only the exported .onnx the site
+    # serves — so it is driven through onnxruntime instead. Same weights, same
+    # logits; only the way they are obtained differs.
+    "tetris": dict(module="tetris_env", cls="TetrisEnv", onnx="tetris_ai.onnx"),
 }
 
 
@@ -40,28 +44,43 @@ def main():
 
     training = ROOT / game / "training"
     sys.path.insert(0, str(training))
-    from stable_baselines3 import PPO
     env_mod = __import__(cfg["module"])
     env = getattr(env_mod, cfg["cls"])()
-    model = PPO.load(str(training / cfg["model"]), device="cpu")
 
-    # Pull the raw logits rather than letting SB3 sample, so temperature is
-    # applied exactly the way game.js would have to apply it.
-    import torch
+    # Pull the raw logits rather than letting the policy sample, so temperature
+    # is applied exactly the way game.js applies it.
+    if cfg.get("onnx"):
+        import onnxruntime as ort
+        sess = ort.InferenceSession(str(training / cfg["onnx"]),
+                                    providers=["CPUExecutionProvider"])
 
-    def logits_for(obs):
-        with torch.no_grad():
-            t = torch.as_tensor(obs).float().unsqueeze(0)
-            dist = model.policy.get_distribution(t)
-            return dist.distribution.logits.numpy()[0]
+        def logits_for(obs):
+            return sess.run(None, {"observation":
+                                   obs.reshape(1, -1).astype(np.float32)})[0][0]
+    else:
+        from stable_baselines3 import PPO
+        import torch
+        model = PPO.load(str(training / cfg["model"]), device="cpu")
+
+        def logits_for(obs):
+            with torch.no_grad():
+                t = torch.as_tensor(obs).float().unsqueeze(0)
+                dist = model.policy.get_distribution(t)
+                return dist.distribution.logits.numpy()[0]
 
     print(f"{game}, {episodes} fixed-seed games per temperature\n")
     print(f"{'T':>6} {'mean':>9} {'median':>8} {'min':>7} {'max':>7} "
           f"{'vs argmax':>10} {'differs':>9}")
 
+    # Optional third argument: a comma-separated list of temperatures.
+    # Watermelon barely weakens across the default range, so finding a
+    # usable spread for it means probing much higher.
+    temps = ([float(x) for x in sys.argv[3].split(",")] if len(sys.argv) > 3
+             else [0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0])
+
     rng = np.random.default_rng(0)
     baseline = None
-    for T in (0.0, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0):
+    for T in temps:
         scores, changed, total = [], 0, 0
         for ep in range(episodes):
             obs, _ = env.reset(seed=ep)
