@@ -102,10 +102,10 @@
     var THEMES = [
         { id: 'mesh',   label: 'Mesh',
           swatch: 'linear-gradient(135deg,#080808 0%,#141a24 60%,#cfe4ff 190%)' },
-        { id: 'ember',  label: 'Ember',
-          swatch: 'linear-gradient(135deg,#06080f 0%,#c5283d 78%,#f5e6c8 130%)' },
-        { id: 'halide', label: 'Halide',
-          swatch: 'linear-gradient(135deg,#eeece4 0%,#eeece4 48%,#0d0d0c 52%)' },
+        { id: 'paper',  label: 'Paper',
+          swatch: 'linear-gradient(90deg,#ffffff 0%,#ffffff 72%,#000000 72%)' },
+        { id: 'carbon', label: 'Carbon',
+          swatch: 'linear-gradient(90deg,#000000 0%,#000000 72%,#ffffff 72%)' },
     ];
 
     var DEFAULTS = {

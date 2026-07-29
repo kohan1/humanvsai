@@ -39,73 +39,14 @@
     --glow:        207, 228, 255;
 }
 
-/* ── Ember: ink navy, WARM CREAM text, one hot crimson. ─────────────────
-   The move worth stealing from bamlab.ch is refusing white-on-grey. Cream on
-   a cold near-black reads editorial rather than "dark mode", and a single
-   saturated red carries every accent on the site. */
-[data-theme="ember"] {
-    --bg:          #06080f;
-    --bg-soft:     #0a0d1a;
-    --panel:       #0c1020;
-    --panel-hi:    #141a2e;
-    --fg:          #ece7d4;
-    --fg-muted:    #b9b4a1;
-    --dim:         #7d7a6e;
-    --dimmer:      #565448;
-    --faint:       rgba(236, 231, 212, 0.12);
-    --line:        #1a1f33;
-    --line-soft:   #131829;
-    --accent:      #c5283d;
-    --accent-2:    #f5e6c8;
-    --warn:        #e08a5a;
-    --serif:       Georgia, 'Times New Roman', serif;
-    --mono:        'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-
-    --chart-grid:  #161c2e;
-    --chart-axis:  #7d7a6e;
-    --chart-ink:   #c5283d;
-    --chart-track: #151a2b;
-
-    --grain:       0.055;
-    --glow:        197, 40, 61;
-}
-
-/* ── Halide: paper white, hard black, acid lime. Brutalist editorial. ─────
-   The opposite bet to Ember — no gradients, no softness, maximum contrast,
-   and one colour that is almost rude. */
-[data-theme="halide"] {
-    --bg:          #eeece4;
-    --bg-soft:     #e4e1d6;
-    --panel:       #ffffff;
-    --panel-hi:    #f7f5ee;
-    --fg:          #0d0d0c;
-    --fg-muted:    #2e2e2b;
-    --dim:         #6f6e66;
-    --dimmer:      #9b9a90;
-    --faint:       rgba(13, 13, 12, 0.18);
-    --line:        #0d0d0c;
-    --line-soft:   #c9c6ba;
-    --accent:      #1a1a18;
-    --accent-2:    #4b7f52;
-    --warn:        #b4331f;
-    --serif:       Georgia, 'Times New Roman', serif;
-    --mono:        ui-monospace, SFMono-Regular, Menlo, monospace;
-
-    --chart-grid:  #d4d1c5;
-    --chart-axis:  #6f6e66;
-    --chart-ink:   #0d0d0c;
-    --chart-track: #d4d1c5;
-
-    --grain:       0.09;
-    --glow:        13, 13, 12;
-}
 
 /* ═══ Shared chrome ═════════════════════════════════════════════════════════
-   Everything below maps the pages' existing classes onto the palette. The
-   selectors match what index.html, select.html and inside.html already use. */
+   Maps the pages' existing classes onto the palette, so no page had to be
+   rewritten in variables. Loaded after each page's own <style>, so these win
+   at equal specificity. The default theme's values are the original colours,
+   so leaving the theme alone changes nothing. */
 
 html, body { background: var(--bg); color: var(--fg); }
-body { transition: background 0.4s ease, color 0.4s ease; }
 
 .back, .back-nav { color: var(--dim); }
 .back:hover, .back-nav:hover { color: var(--fg-muted); }
@@ -120,13 +61,13 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .omitted { color: var(--dimmer); }
 .foot { color: var(--faint); }
 
-/* ── index ──────────────────────────────────────────────────────────────── */
+/* index */
 .title .vs { color: var(--dim); }
 .rule { background: var(--line); }
 .enter { color: var(--fg-muted); border-color: var(--faint); }
 .enter:hover { color: var(--fg); border-color: var(--accent); background: var(--panel-hi); }
 
-/* ── select ─────────────────────────────────────────────────────────────── */
+/* select */
 .grid { background: var(--line); border-color: var(--line); }
 .card { background: var(--bg); color: var(--fg-muted); }
 .card:hover { background: var(--panel-hi); color: var(--fg); }
@@ -145,27 +86,23 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .settings-opt span { color: var(--dim); }
 .settings-opt.on span { color: var(--accent); }
 
-/* ── inside ─────────────────────────────────────────────────────────────── */
+/* inside */
 .stats { background: var(--line); border-color: var(--line); }
 .stat { background: var(--bg); }
 .stat-num { color: var(--fg); font-family: var(--serif); }
 .stat-label { color: var(--dim); }
-
 .ctl-group { background: var(--line); border-color: var(--line); }
 .ctl { background: var(--bg); color: var(--dim); }
 .ctl:hover { color: var(--fg-muted); background: var(--panel-hi); }
 .ctl.on { color: var(--fg); background: var(--panel-hi); }
-
 .chart-wrap { background: var(--bg-soft); border-color: var(--line); }
 .tip { background: var(--panel); border-color: var(--line); }
 .tip .tip-run { color: var(--fg); }
 .tip .tip-row { color: var(--dim); }
 .tip .tip-row b { color: var(--fg-muted); }
-
 .leg { color: var(--dim); }
 .leg:hover { color: var(--fg); }
 .leg-score { color: var(--dimmer); }
-
 .ledger { border-color: var(--line); }
 .row { color: var(--dim); border-top-color: var(--line-soft); }
 .row:hover { background: var(--panel-hi); color: var(--fg-muted); }
@@ -176,130 +113,175 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .o-improved { color: var(--accent-2); }
 .o-rejected { color: var(--warn); }
 .o-unknown { color: var(--dimmer); }
-
 .arch-flow { background: var(--bg-soft); border-color: var(--line); }
 .arch-step { border-right-color: var(--line-soft); }
 .arch-kind { color: var(--dimmer); }
 .arch-shape { color: var(--accent); }
 .arch-params, .arch-summary { color: var(--dim); }
 .arch-summary b { color: var(--fg); font-family: var(--serif); }
-
 .heat-row { background: var(--line); border-color: var(--line); }
 .heat-cell { background: var(--bg-soft); }
 .heat-cell canvas { border-color: var(--line); }
 .heat-label { color: var(--dimmer); }
 .heat-label b { color: var(--fg-muted); }
-
 .h2h-empty, .h2h-row { background: var(--bg-soft); border-color: var(--line); }
 .h2h-name { color: var(--fg-muted); }
 .h2h-tally { color: var(--dim); }
 .h2h-tally b { color: var(--accent-2); }
 .h2h-tally i { color: var(--warn); }
-.h2h-bar { background: var(--warn); }
-.h2h-bar span { background: var(--accent-2); }
+.h2h-bar { background: var(--faint); }
+.h2h-bar span { background: var(--fg); }
 
-/* ── Theme picker in the settings panel ─────────────────────────────────── */
+/* Theme picker */
 .theme-row { display: flex; gap: 4px; margin-top: 0.35rem; }
 .theme-swatch {
     flex: 1 1 0; cursor: pointer; padding: 0; border: 1px solid var(--line);
     background: none; font-family: inherit; overflow: hidden;
-    transition: border-color 0.14s, transform 0.14s;
+    transition: border-color 0.14s;
 }
-.theme-swatch:hover { transform: translateY(-2px); }
 .theme-swatch.on { border-color: var(--accent); }
 .theme-swatch i { display: block; height: 34px; }
 .theme-swatch b {
     display: block; font-weight: 400; font-size: 0.58rem;
-    letter-spacing: 0.1em; text-transform: uppercase;
+    letter-spacing: 0.06em; text-transform: uppercase;
     padding: 0.4rem 0.2rem; color: var(--dim);
 }
 .theme-swatch.on b { color: var(--fg); }
 
-/* ═══ Texture, type and motion ══════════════════════════════════════════════
-   The parts that stop a palette from being just a palette. */
+/* ── Paper ──────────────────────────────────────────────────────────────────
+   Pure white, pure black, and almost nothing else.
 
-/* Film grain over everything. A tiny SVG turbulence tiled by the browser —
-   no image request, no CSS filter on the whole page (which would force every
-   layer onto the GPU and wreck the games' frame rate). Pointer-events none, so
-   it never intercepts a click. */
-body::after {
-    content: '';
-    position: fixed; inset: -50%;
-    pointer-events: none; z-index: 9999;
-    opacity: var(--grain, 0);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-    animation: grain-shift 700ms steps(2) infinite;
-}
-body::after { display: var(--grain-on, block); }
-:root { --grain-on: none; }              /* default theme stays perfectly clean */
-[data-theme="ember"], [data-theme="halide"] { --grain-on: block; }
+   Measured off Cecilie Bahnsen (Awwwards minimal): #fff on #000, greys at
+   #666 and #101010, ONE neo-grotesque at 11-16px, weights 400-600, and
+   letter-spacing between 0 and 0.75px. That last figure is the one that
+   matters — real minimalist sites set type nearly solid. Wide tracking,
+   mixed serif-and-sans, texture and glow are what this theme removes. */
+[data-theme="paper"] {
+    --bg:          #ffffff;
+    --bg-soft:     #ffffff;
+    --panel:       #ffffff;
+    --panel-hi:    #f6f6f6;
+    --fg:          #000000;
+    --fg-muted:    #101010;
+    --dim:         #666666;
+    --dimmer:      #999999;
+    --faint:       #cccccc;
+    --line:        #e3e3e3;
+    --line-soft:   #efefef;
+    --accent:      #000000;
+    --accent-2:    #666666;
+    --warn:        #999999;
 
-@keyframes grain-shift {
-    0%   { transform: translate(0, 0); }
-    50%  { transform: translate(-2%, 1.5%); }
-    100% { transform: translate(1.5%, -1%); }
-}
-@media (prefers-reduced-motion: reduce) {
-    body::after { animation: none; }
-}
-
-/* Micro-labels in mono, which is what makes the type feel designed rather
-   than defaulted. Only on the new themes — Mesh keeps its original look. */
-[data-theme="ember"] .eyebrow,   [data-theme="halide"] .eyebrow,
-[data-theme="ember"] .card-num,  [data-theme="halide"] .card-num,
-[data-theme="ember"] .card-tag,  [data-theme="halide"] .card-tag,
-[data-theme="ember"] .stat-label,[data-theme="halide"] .stat-label,
-[data-theme="ember"] .ctl,       [data-theme="halide"] .ctl,
-[data-theme="ember"] .back,      [data-theme="halide"] .back,
-[data-theme="ember"] .back-nav,  [data-theme="halide"] .back-nav,
-[data-theme="ember"] .settings-title, [data-theme="halide"] .settings-title,
-[data-theme="ember"] .board-label,    [data-theme="halide"] .board-label {
-    font-family: var(--mono);
-    letter-spacing: 0.12em;
+    --chart-grid:  #ededed;
+    --chart-axis:  #999999;
+    --chart-ink:   #000000;
+    --chart-track: #ededed;
+    --grid-ink:    17, 17, 17;
 }
 
-/* Halide is brutalist: hard 1px black rules, no soft borders anywhere. */
-[data-theme="halide"] .grid,
-[data-theme="halide"] .stats,
-[data-theme="halide"] .ledger,
-[data-theme="halide"] .chart-wrap,
-[data-theme="halide"] .arch-flow,
-[data-theme="halide"] .settings-panel { border-width: 1px; border-color: var(--fg); }
-[data-theme="halide"] .card:hover { background: var(--fg); color: var(--bg); }
-[data-theme="halide"] .card:hover .card-num,
-[data-theme="halide"] .card:hover .card-tag,
-[data-theme="halide"] .card:hover .card-arrow { color: var(--bg); }
+/* ── Carbon ─────────────────────────────────────────────────────────────────
+   The same restraint inverted. True black, not the near-black the default
+   theme uses, and white rather than blue-white. */
+[data-theme="carbon"] {
+    --bg:          #000000;
+    --bg-soft:     #000000;
+    --panel:       #000000;
+    --panel-hi:    #0d0d0d;
+    --fg:          #ffffff;
+    --fg-muted:    #e8e8e8;
+    --dim:         #808080;
+    --dimmer:      #5a5a5a;
+    --faint:       #333333;
+    --line:        #1f1f1f;
+    --line-soft:   #161616;
+    --accent:      #ffffff;
+    --accent-2:    #a0a0a0;
+    --warn:        #707070;
 
-/* Ember gives the headline a warm glow and the accent real presence. */
-[data-theme="ember"] h1, [data-theme="ember"] .title {
-    text-shadow: 0 0 42px rgba(var(--glow), 0.28);
+    --chart-grid:  #1a1a1a;
+    --chart-axis:  #5a5a5a;
+    --chart-ink:   #ffffff;
+    --chart-track: #1a1a1a;
+    --grid-ink:    255, 255, 255;
 }
-[data-theme="ember"] .card:hover::after { border-color: var(--accent); }
-[data-theme="ember"] .enter:hover { border-color: var(--accent); color: var(--accent-2); }
 
-/* ═══ Game pages ════════════════════════════════════════════════════════════
-   The chrome around the boards follows the theme. The BOARDS themselves do
-   not: Watermelon's cream canvas and fruit art are the original game's look,
-   and Snake and Tetris draw their cells from JS constants the model was
-   trained to expect. Theming the frame is safe; repainting the playfield is
-   not what was asked for. */
-[data-theme="ember"] #vs, [data-theme="halide"] #vs { color: var(--dim); }
-[data-theme="ember"] .board-label, [data-theme="halide"] .board-label { color: var(--dim); }
-[data-theme="ember"] .ai-status, [data-theme="halide"] .ai-status { color: var(--dim); }
+/* ═══ What the minimal themes take away ═════════════════════════════════════
+   Restraint is the whole design, so these rules are mostly subtraction. */
 
-[data-theme="ember"] .speed-controls button,
-[data-theme="halide"] .speed-controls button {
-    background: var(--panel); border-color: var(--line); color: var(--dim);
+/* One typeface everywhere. The default theme sets headings in Georgia; a
+   minimal system does not mix a display serif with a UI sans. */
+[data-theme="paper"], [data-theme="carbon"] { --serif: inherit; }
+[data-theme="paper"] h1, [data-theme="carbon"] h1,
+[data-theme="paper"] h2, [data-theme="carbon"] h2,
+[data-theme="paper"] .title, [data-theme="carbon"] .title,
+[data-theme="paper"] .card-name, [data-theme="carbon"] .card-name,
+[data-theme="paper"] .stat-num, [data-theme="carbon"] .stat-num,
+[data-theme="paper"] .arch-summary b, [data-theme="carbon"] .arch-summary b {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    letter-spacing: -0.02em;      /* tight, the way large grotesque is set */
 }
-[data-theme="ember"] .speed-controls button.active,
-[data-theme="halide"] .speed-controls button.active {
-    background: var(--panel-hi); border-color: var(--accent); color: var(--fg);
+
+/* Tracking. The site's micro-labels sit at 0.16-0.24em, which reads as a
+   2015 startup rather than as editorial. Measured references sit under
+   0.05em even on uppercase. */
+[data-theme="paper"] .eyebrow,    [data-theme="carbon"] .eyebrow,
+[data-theme="paper"] .card-num,   [data-theme="carbon"] .card-num,
+[data-theme="paper"] .card-tag,   [data-theme="carbon"] .card-tag,
+[data-theme="paper"] .stat-label, [data-theme="carbon"] .stat-label,
+[data-theme="paper"] .ctl,        [data-theme="carbon"] .ctl,
+[data-theme="paper"] .back,       [data-theme="carbon"] .back,
+[data-theme="paper"] .back-nav,   [data-theme="carbon"] .back-nav,
+[data-theme="paper"] .board-label,[data-theme="carbon"] .board-label,
+[data-theme="paper"] .foot,       [data-theme="carbon"] .foot,
+[data-theme="paper"] .settings-title, [data-theme="carbon"] .settings-title,
+[data-theme="paper"] .row.head,   [data-theme="carbon"] .row.head,
+[data-theme="paper"] .heat-label, [data-theme="carbon"] .heat-label,
+[data-theme="paper"] .arch-kind,  [data-theme="carbon"] .arch-kind,
+[data-theme="paper"] .row-outcome,[data-theme="carbon"] .row-outcome {
+    letter-spacing: 0.04em;
 }
-[data-theme="ember"] .insp, [data-theme="halide"] .insp {
+
+/* No texture, no glow, no colour-coded status. Outcomes are distinguished by
+   weight and position instead. */
+[data-theme="paper"] body::after, [data-theme="carbon"] body::after { display: none; }
+[data-theme="paper"] .o-shipped,  [data-theme="carbon"] .o-shipped  { color: var(--fg); }
+[data-theme="paper"] .o-improved, [data-theme="carbon"] .o-improved { color: var(--fg-muted); }
+[data-theme="paper"] .o-rejected, [data-theme="carbon"] .o-rejected { color: var(--dimmer); }
+
+/* Hairline rules rather than filled panels. */
+[data-theme="paper"] .card, [data-theme="carbon"] .card,
+[data-theme="paper"] .stat, [data-theme="carbon"] .stat { background: var(--bg); }
+[data-theme="paper"] .card:hover, [data-theme="carbon"] .card:hover {
+    background: var(--bg); color: var(--fg);
+}
+[data-theme="paper"] .card:hover::after, [data-theme="carbon"] .card:hover::after {
+    border-color: var(--fg);
+}
+[data-theme="paper"] .chart-wrap, [data-theme="carbon"] .chart-wrap { background: var(--bg); }
+[data-theme="paper"] .row-note, [data-theme="carbon"] .row-note { background: var(--panel-hi); }
+
+/* Watermelon's sage backdrop is the loudest surface on the site. Under a
+   minimal theme it becomes the theme's own background; the BOARD keeps its
+   original cream, which is the game's identity rather than site chrome. */
+[data-theme="paper"] .insp, [data-theme="carbon"] .insp {
     --insp-fg: var(--fg-muted); --insp-dim: var(--dim); --insp-line: var(--line);
-    --insp-panel: var(--panel); --insp-accent: var(--accent);
-    --insp-cell-bg: var(--bg-soft); --insp-track: var(--line-soft);
+    --insp-panel: var(--bg); --insp-accent: var(--fg);
+    --insp-cell-bg: var(--bg); --insp-track: var(--line);
+    --insp-cell-rgb: var(--grid-ink);
 }
-[data-theme="ember"] .insp-cue, [data-theme="halide"] .insp-cue {
+[data-theme="paper"] .insp-cue, [data-theme="carbon"] .insp-cue {
     --insp-cue-fg: var(--dim); --insp-cue-hover: var(--fg);
 }
+[data-theme="paper"] .speed-controls button, [data-theme="carbon"] .speed-controls button {
+    background: var(--bg); border-color: var(--line); color: var(--dim);
+    border-radius: 0;
+}
+[data-theme="paper"] .speed-controls button.active,
+[data-theme="carbon"] .speed-controls button.active {
+    background: var(--fg); border-color: var(--fg); color: var(--bg);
+}
+[data-theme="paper"] #vs, [data-theme="carbon"] #vs { color: var(--faint); }
+[data-theme="paper"] .board-label, [data-theme="carbon"] .board-label { color: var(--dim); }
+[data-theme="paper"] .ai-status, [data-theme="carbon"] .ai-status { color: var(--dim); }
+[data-theme="paper"] button, [data-theme="carbon"] button { border-radius: 0; }
