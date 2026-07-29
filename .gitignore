@@ -54,3 +54,7 @@ desktop.ini
 
 # per-game record of what is live on the site
 .shipped_score
+
+# Transient state for tools/check_training.sh — a step counter from the last
+# health check, meaningless on another machine and rewritten every 30 minutes.
+tools/.check_state
