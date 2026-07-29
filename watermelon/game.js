@@ -865,6 +865,8 @@
             inspector.update({ obs, logits, value });
         }
 
+        // Difficulty — see settings.js. Full strength is the original argmax.
+        if (typeof Settings !== "undefined") return Settings.chooseAction("watermelon", logits);
         let best = 0;
         for (let i = 1; i < logits.length; i++) if (logits[i] > logits[best]) best = i;
         return best;

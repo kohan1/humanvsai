@@ -531,10 +531,18 @@
                 inspector.update({ obs: obs, logits: logits, value: value });
             }
 
-            // Pick highest-scoring valid placement (cap at placements.length)
-            var bestScore = -Infinity, bestIdx = 0;
-            for (var i = 0; i < Math.min(logits.length, placements.length); i++) {
-                if (logits[i] > bestScore) { bestScore = logits[i]; bestIdx = i; }
+            // Pick a valid placement. Only the first placements.length logits
+            // are legal, so the choice is capped there — at full strength this
+            // is the original argmax; easing off samples. See settings.js.
+            var bestIdx;
+            if (typeof Settings !== "undefined") {
+                bestIdx = Settings.chooseAction("tetris", logits, placements.length);
+            } else {
+                var bestScore = -Infinity;
+                bestIdx = 0;
+                for (var i = 0; i < Math.min(logits.length, placements.length); i++) {
+                    if (logits[i] > bestScore) { bestScore = logits[i]; bestIdx = i; }
+                }
             }
 
             // NOTE: busy stays true here on purpose — applyMove() now kicks off

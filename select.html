@@ -89,6 +89,57 @@
             color: rgba(255,255,255,0.1); text-transform: uppercase;
             opacity: 0; animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.45s forwards;
         }
+        /* ── Settings ───────────────────────────────────────────────────────
+           Opposite corner to the back link, so the two never crowd. */
+        .settings-btn {
+            position: fixed; top: 1.5rem; right: 1.8rem; z-index: 120;
+            display: inline-flex; align-items: center; gap: 0.5em;
+            background: none; border: 0; cursor: pointer;
+            font-family: inherit; font-size: 0.6rem;
+            letter-spacing: 0.2em; text-transform: uppercase;
+            color: #555; transition: color 0.15s;
+        }
+        .settings-btn:hover, .settings-btn[aria-expanded="true"] { color: #ddd; }
+        .settings-btn svg { width: 13px; height: 13px; }
+
+        .settings-panel {
+            position: fixed; top: 3.6rem; right: 1.8rem; z-index: 119;
+            width: min(320px, calc(100vw - 3rem));
+            background: #0c0c0c; border: 1px solid #222;
+            padding: 1.3rem 1.3rem 1.1rem;
+            opacity: 0; transform: translateY(-6px); pointer-events: none;
+            transition: opacity 0.18s, transform 0.18s;
+        }
+        .settings-panel.open { opacity: 1; transform: none; pointer-events: auto; }
+        .settings-panel[hidden] { display: none; }
+
+        .settings-title {
+            font-size: 0.53rem; letter-spacing: 0.2em; text-transform: uppercase;
+            color: #4a4a4a; margin-bottom: 0.5rem;
+        }
+        .settings-blurb {
+            font-size: 0.68rem; line-height: 1.7; color: #6a6a6a;
+            margin-bottom: 1rem;
+        }
+        .settings-opt {
+            display: block; width: 100%; text-align: left;
+            background: #080808; border: 1px solid #1c1c1c;
+            color: #999; font-family: inherit; cursor: pointer;
+            padding: 0.6rem 0.75rem; margin-bottom: 4px;
+            transition: border-color 0.14s, color 0.14s, background 0.14s;
+        }
+        .settings-opt:hover { color: #fff; border-color: #333; background: #101010; }
+        .settings-opt.on { color: #fff; border-color: #cfe4ff; background: #101418; }
+        .settings-opt b {
+            display: block; font-size: 0.74rem; font-weight: 400;
+            margin-bottom: 0.15rem;
+        }
+        .settings-opt span { font-size: 0.62rem; color: #5f5f5f; line-height: 1.5; }
+        .settings-opt.on span { color: #7e94ab; }
+        .settings-foot {
+            margin-top: 0.9rem; font-size: 0.6rem; line-height: 1.6; color: #4a4a4a;
+        }
+
         @keyframes up { to { opacity: 1; transform: translateY(0); } }
         @media (prefers-reduced-motion: reduce) {
             .header, .grid, .foot { animation: none; opacity: 1; transform: none; }
@@ -98,6 +149,29 @@
 <body>
     <canvas id="mesh"></canvas>
     <a class="back" href="index.html">← back</a>
+
+    <button class="settings-btn" id="settings-btn" aria-expanded="false"
+            aria-controls="settings-panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span id="settings-label">settings</span>
+    </button>
+
+    <div class="settings-panel" id="settings-panel" hidden>
+        <p class="settings-title">AI difficulty</p>
+        <p class="settings-blurb">
+            Every opponent picks its move from a score it gives each option.
+            Easing off does not slow it down or make it act at random — it lets
+            it take a move it rated second best. Same model, weaker play.
+        </p>
+        <div id="settings-difficulty"></div>
+        <p class="settings-foot">
+            Applies to all three games and is remembered on this device.
+        </p>
+    </div>
     <div class="page">
         <div class="header">
             <p class="eyebrow">select a game</p>
@@ -143,6 +217,65 @@
 
     <!-- The mesh background is shared with inside.html. -->
     <script src="mesh.js"></script>
-    <script>initMesh('mesh');</script>
+    <script src="settings.js"></script>
+    <script>
+    initMesh('mesh');
+
+    (() => {
+        const btn = document.getElementById('settings-btn');
+        const panel = document.getElementById('settings-panel');
+        const label = document.getElementById('settings-label');
+        const list = document.getElementById('settings-difficulty');
+
+        function render() {
+            const current = Settings.get().difficulty;
+            list.innerHTML = Settings.DIFFICULTY.map(d => `
+                <button class="settings-opt${d.id === current ? ' on' : ''}"
+                        data-id="${d.id}">
+                    <b>${d.label}</b><span>${d.hint}</span>
+                </button>`).join('');
+            // Surface the choice on the button itself, so a weakened opponent
+            // is never a surprise the player has forgotten about.
+            const chosen = Settings.DIFFICULTY.find(d => d.id === current);
+            label.textContent = current === 'full'
+                ? 'settings' : `settings · ${chosen.label.toLowerCase()}`;
+        }
+
+        list.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-id]');
+            if (!b) return;
+            Settings.set({ difficulty: b.dataset.id });
+            render();
+        });
+
+        function open(v) {
+            btn.setAttribute('aria-expanded', String(v));
+            panel.hidden = false;
+            // Force a reflow between un-hiding and adding the class, so the
+            // transition still runs from the right starting point. This used
+            // to be a requestAnimationFrame, which never fires while the tab
+            // is not compositing — the panel then simply never opened.
+            void panel.offsetHeight;
+            panel.classList.toggle('open', v);
+            if (!v) setTimeout(() => {
+                if (!panel.classList.contains('open')) panel.hidden = true;
+            }, 200);
+        }
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            open(btn.getAttribute('aria-expanded') !== 'true');
+        });
+        panel.addEventListener('click', (e) => e.stopPropagation());
+        document.addEventListener('click', () => {
+            if (btn.getAttribute('aria-expanded') === 'true') open(false);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') open(false);
+        });
+
+        render();
+    })();
+    </script>
 </body>
 </html>

@@ -487,11 +487,18 @@
             inspector.update({ obs, logits, value });
         }
 
-        let bestIdx = 0, bestVal = -Infinity;
-        for (let i = 0; i < logits.length; i++) {
-            if (logits[i] > bestVal) { bestVal = logits[i]; bestIdx = i; }
-        }
-        return bestIdx;
+        // Difficulty: at full strength this is the old argmax; easing off
+        // samples from softmax(logits / T) so the AI sometimes takes a move it
+        // rated second best. See settings.js.
+        return (typeof Settings !== "undefined")
+            ? Settings.chooseAction("snake", logits)
+            : (() => {
+                let bestIdx = 0, bestVal = -Infinity;
+                for (let i = 0; i < logits.length; i++) {
+                    if (logits[i] > bestVal) { bestVal = logits[i]; bestIdx = i; }
+                }
+                return bestIdx;
+            })();
     }
 
     function applyAiAction(action) {
