@@ -32,6 +32,15 @@
         <script src="../results.js"></script>
         <script src="../inspector.js"></script>
         <script src="game.js" defer></script>
+        <link rel="stylesheet" href="../themes.css" />
+        <script>
+        // Applied before first paint so a themed page never flashes
+        // the default palette while the scripts load.
+        try {
+            var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+            document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+        } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+        </script>
     </head>
     <body>
 

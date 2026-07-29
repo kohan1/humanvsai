@@ -100,12 +100,12 @@
     /* Each theme is a palette (themes.css) plus a background renderer
      * (mesh.js). The swatch colours here are only for the picker. */
     var THEMES = [
-        { id: 'mesh',     label: 'Mesh',
+        { id: 'mesh',   label: 'Mesh',
           swatch: 'linear-gradient(135deg,#080808 0%,#141a24 60%,#cfe4ff 190%)' },
-        { id: 'aspen',    label: 'Aspen',
-          swatch: 'linear-gradient(135deg,#f3f2ed 0%,#dcdad1 55%,#0f5f8f 190%)' },
-        { id: 'nocturne', label: 'Nocturne',
-          swatch: 'linear-gradient(135deg,#060a18 0%,#1b2a5e 55%,#5eead4 175%)' },
+        { id: 'ember',  label: 'Ember',
+          swatch: 'linear-gradient(135deg,#06080f 0%,#c5283d 78%,#f5e6c8 130%)' },
+        { id: 'halide', label: 'Halide',
+          swatch: 'linear-gradient(135deg,#eeece4 0%,#eeece4 48%,#0d0d0c 52%)' },
     ];
 
     var DEFAULTS = {

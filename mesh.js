@@ -16,9 +16,10 @@
  * not a picture with a mouse over it.
  *
  *   mesh      the original: a triangular lattice that flexes and pushes away
- *   ripple    concentric waves running outward from the pointer over a fine
- *             dot field, as if the page were water
- *   aurora    slow flowing bands that bend around the pointer
+ *   embers    sparks rising through the dark, pulled into a vortex by the
+ *             pointer — tangential force, so they orbit rather than scatter
+ *   lens      a hard grid with an inverting disc around the pointer, drawn
+ *             with difference blending so it punches through rather than glows
  *
  * initMesh() dispatches on document.documentElement.dataset.theme, and
  * re-dispatches when that changes, so switching theme swaps the renderer
@@ -34,9 +35,9 @@ function initMesh(canvasId, opts) {
     function mount() {
         if (stop) { stop(); stop = null; }
         const t = themeOf();
-        stop = t === 'aspen'    ? initRipple(cvs, opts)
-             : t === 'nocturne' ? initAurora(cvs, opts)
-             :                    initLattice(cvs, opts);
+        stop = t === 'ember'  ? initEmbers(cvs, opts)
+             : t === 'halide' ? initLens(cvs, opts)
+             :                  initLattice(cvs, opts);
     }
 
     new MutationObserver(mount).observe(document.documentElement,
@@ -44,75 +45,121 @@ function initMesh(canvasId, opts) {
     mount();
 }
 
-/* ── Ripple ─────────────────────────────────────────────────────────────────
- * A dot grid displaced by concentric sine waves centred on the pointer. The
- * waves keep travelling after the cursor stops, which is what stops it feeling
- * like a spotlight following the mouse. */
-function initRipple(cvs, opts) {
+/* ── Embers ─────────────────────────────────────────────────────────────────
+ * Sparks rising through the dark, dragged into a vortex around the pointer.
+ *
+ * The cursor does not merely push them away — it applies a TANGENTIAL force,
+ * so they orbit rather than scatter. That is the difference between "particles
+ * avoiding the mouse", which everyone has seen, and something that reads as
+ * heat actually moving. */
+function initEmbers(cvs, opts) {
     const ctx = cvs.getContext('2d');
     const o = opts || {};
     const INTENSITY = o.intensity === undefined ? 1 : o.intensity;
-    const SPACING = 26;
-    const WAVELENGTH = 130;
-    const SPEED = 190;          // px per second the wavefront travels
-    const REACH = 420;
+    const COUNT = Math.round(150 * (o.intensity === undefined ? 1 : o.intensity));
+    const SWIRL = 190;
 
-    let W, H, raf;
+    let W, H, raf, parts = [];
     let mx = -9999, my = -9999;
-    let t0 = performance.now();
+    let last = performance.now();
 
     const onMove = (e) => { mx = e.clientX; my = e.clientY; };
     const onTouch = (e) => { mx = e.touches[0].clientX; my = e.touches[0].clientY; };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('touchmove', onTouch, { passive: true });
 
-    function resize() { W = cvs.width = innerWidth; H = cvs.height = innerHeight; }
+    function spawn(anywhere) {
+        return {
+            x: Math.random() * W,
+            y: anywhere ? Math.random() * H : H + Math.random() * 60,
+            vx: (Math.random() - 0.5) * 6,
+            vy: -(8 + Math.random() * 26),
+            r: 0.6 + Math.random() * 1.9,
+            life: Math.random(),
+            hot: Math.random(),          // how far toward cream this one burns
+        };
+    }
+
+    function resize() {
+        W = cvs.width = window.innerWidth;
+        H = cvs.height = window.innerHeight;
+        parts = Array.from({ length: COUNT }, () => spawn(true));
+    }
     window.addEventListener('resize', resize);
     resize();
 
-    function ink() {
+    function hexToRgb(h) {
+        const v = h.replace('#', '').trim();
+        const full = v.length === 3 ? v[0] + v[0] + v[1] + v[1] + v[2] + v[2] : v;
+        const n = parseInt(full, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+
+    function palette() {
         const s = getComputedStyle(document.documentElement);
-        return (s.getPropertyValue('--fg').trim() || '#232323');
+        const a = s.getPropertyValue('--accent').trim() || '#c5283d';
+        const b = s.getPropertyValue('--accent-2').trim() || '#f5e6c8';
+        return [hexToRgb(a), hexToRgb(b)];
     }
 
     function draw(now) {
-        const time = (now - t0) / 1000;
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
         ctx.clearRect(0, 0, W, H);
-        const colour = ink();
 
-        for (let y = SPACING / 2; y < H + SPACING; y += SPACING) {
-            for (let x = SPACING / 2; x < W + SPACING; x += SPACING) {
-                const dx = x - mx, dy = y - my;
-                const d = Math.sqrt(dx * dx + dy * dy);
+        const pal = palette();
+        const a = pal[0], b = pal[1];
 
-                // Travelling wave, faded out with distance so the far field
-                // stays a calm grid rather than a full-screen ripple.
-                const falloff = Math.max(0, 1 - d / REACH);
-                const phase = (d - time * SPEED) / WAVELENGTH * Math.PI * 2;
-                const wave = Math.sin(phase) * falloff * falloff;
+        for (let i = 0; i < parts.length; i++) {
+            const p = parts[i];
+            const dx = p.x - mx, dy = p.y - my;
+            const d = Math.sqrt(dx * dx + dy * dy);
 
-                // A slow ambient breath keeps the grid alive with no pointer.
-                const amb = Math.sin(x * 0.008 + y * 0.011 + time * 0.5) * 0.12;
-                const lift = wave + amb;
-
-                const r = 0.9 + Math.abs(lift) * 2.2;
-                const a = (0.10 + Math.abs(lift) * 0.55) * INTENSITY;
-                if (a < 0.012) continue;
-
-                ctx.globalAlpha = Math.min(0.75, a);
-                ctx.fillStyle = colour;
-                ctx.beginPath();
-                ctx.arc(x + dx / (d || 1) * lift * 5, y + dy / (d || 1) * lift * 5,
-                        r, 0, Math.PI * 2);
-                ctx.fill();
+            if (d < SWIRL && d > 0.5) {
+                const f = (1 - d / SWIRL) * (1 - d / SWIRL);
+                // Tangential first — this is what makes them orbit rather
+                // than simply flee.
+                p.vx += (-dy / d) * f * 260 * dt;
+                p.vy += (dx / d) * f * 260 * dt;
+                p.vx += (dx / d) * f * 60 * dt;
+                p.vy += (dy / d) * f * 60 * dt;
             }
+
+            p.vy -= 9 * dt;                    // buoyancy
+            p.vx *= 0.985;
+            p.vy *= 0.985;
+            p.x += p.vx * dt * 6;
+            p.y += p.vy * dt * 6;
+            p.life += dt * 0.22;
+
+            if (p.y < -40 || p.life > 1.6 || p.x < -60 || p.x > W + 60) {
+                const fresh = spawn(false);
+                p.x = fresh.x; p.y = fresh.y; p.vx = fresh.vx; p.vy = fresh.vy;
+                p.r = fresh.r; p.life = 0; p.hot = fresh.hot;
+            }
+
+            const fade = Math.max(0, 1 - Math.abs(p.life - 0.5) * 1.4);
+            const mix = p.hot;
+            const cr = Math.round(a[0] + (b[0] - a[0]) * mix);
+            const cg = Math.round(a[1] + (b[1] - a[1]) * mix);
+            const cb = Math.round(a[2] + (b[2] - a[2]) * mix);
+            const alpha = fade * (0.35 + p.hot * 0.5) * INTENSITY;
+            if (alpha < 0.01) continue;
+
+            const rad = p.r * 5;
+            const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rad);
+            g.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ',' + alpha.toFixed(3) + ')');
+            g.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ',0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+            ctx.fill();
         }
-        ctx.globalAlpha = 1;
         raf = requestAnimationFrame(draw);
     }
     raf = requestAnimationFrame(draw);
 
-    return () => {
+    return function () {
         cancelAnimationFrame(raf);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('touchmove', onTouch);
@@ -121,20 +168,20 @@ function initRipple(cvs, opts) {
     };
 }
 
-/* ── Aurora ─────────────────────────────────────────────────────────────────
- * Layered flowing bands. The pointer bends the bands near it rather than
- * lighting them, so the interaction reads as displacement, matching the other
- * two backgrounds. */
-function initAurora(cvs, opts) {
+/* ── Lens ───────────────────────────────────────────────────────────────────
+ * A hard engineering grid, and a disc around the pointer where everything
+ * INVERTS. No glow, no falloff — a clean edge, composited with difference
+ * blending, so it reads as a hole punched through the page rather than a light
+ * shone on it. Deliberately the opposite of Embers. */
+function initLens(cvs, opts) {
     const ctx = cvs.getContext('2d');
     const o = opts || {};
     const INTENSITY = o.intensity === undefined ? 1 : o.intensity;
-    const BANDS = 5;
-    const STEP = 14;
-    const BEND = 130;
+    const CELL = 46;
+    const R = 120;
 
     let W, H, raf;
-    let mx = -9999, my = -9999;
+    let mx = -9999, my = -9999, cx = -9999, cy = -9999;
     const t0 = performance.now();
 
     const onMove = (e) => { mx = e.clientX; my = e.clientY; };
@@ -142,57 +189,75 @@ function initAurora(cvs, opts) {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('touchmove', onTouch, { passive: true });
 
-    function resize() { W = cvs.width = innerWidth; H = cvs.height = innerHeight; }
+    function resize() {
+        W = cvs.width = window.innerWidth;
+        H = cvs.height = window.innerHeight;
+    }
     window.addEventListener('resize', resize);
     resize();
 
-    function palette() {
+    function ink() {
         const s = getComputedStyle(document.documentElement);
-        return [s.getPropertyValue('--accent').trim() || '#5eead4',
-                s.getPropertyValue('--accent-2').trim() || '#a78bfa'];
+        return s.getPropertyValue('--fg').trim() || '#0d0d0c';
+    }
+
+    function grid(alpha, phase) {
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = phase % CELL; x < W; x += CELL) {
+            ctx.moveTo(Math.round(x) + 0.5, 0);
+            ctx.lineTo(Math.round(x) + 0.5, H);
+        }
+        for (let y = phase % CELL; y < H; y += CELL) {
+            ctx.moveTo(0, Math.round(y) + 0.5);
+            ctx.lineTo(W, Math.round(y) + 0.5);
+        }
+        ctx.stroke();
     }
 
     function draw(now) {
         const time = (now - t0) / 1000;
+        // Ease toward the pointer so the disc trails very slightly behind it.
+        cx += (mx - cx) * 0.16;
+        cy += (my - cy) * 0.16;
+
         ctx.clearRect(0, 0, W, H);
-        const [c1, c2] = palette();
+        ctx.strokeStyle = ink();
 
-        for (let b = 0; b < BANDS; b++) {
-            const f = b / (BANDS - 1 || 1);
-            const baseY = H * (0.18 + f * 0.68);
-            const amp = 38 + b * 16;
-            const speed = 0.16 + b * 0.05;
+        grid(0.10 * INTENSITY, time * 6);
 
-            const grad = ctx.createLinearGradient(0, 0, W, 0);
-            grad.addColorStop(0, c1);
-            grad.addColorStop(1, c2);
-            ctx.strokeStyle = grad;
-            ctx.globalAlpha = (0.13 + f * 0.10) * INTENSITY;
-            ctx.lineWidth = 1 + f * 1.6;
-
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.globalCompositeOperation = 'difference';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = ink();
+        ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+        ctx.strokeStyle = ink();
+        grid(1, time * 6);
+        for (let r = 18; r < R; r += 18) {
+            ctx.globalAlpha = 0.9;
             ctx.beginPath();
-            for (let x = -STEP; x <= W + STEP; x += STEP) {
-                let y = baseY
-                    + Math.sin(x * 0.0042 + time * speed + b) * amp
-                    + Math.sin(x * 0.0011 - time * speed * 0.7 + b * 2) * amp * 0.6;
-
-                // Push the band away from the pointer, falling off smoothly.
-                const dx = x - mx, dy = y - my;
-                const d = Math.sqrt(dx * dx + dy * dy);
-                if (d < BEND) {
-                    const push = (1 - d / BEND) ** 2 * BEND * 0.55;
-                    y += (dy / (d || 1)) * push;
-                }
-                x === -STEP ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-            }
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
             ctx.stroke();
         }
+        ctx.restore();
+
+        ctx.globalAlpha = 0.55 * INTENSITY;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = ink();
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.globalAlpha = 1;
+
         raf = requestAnimationFrame(draw);
     }
     raf = requestAnimationFrame(draw);
 
-    return () => {
+    return function () {
         cancelAnimationFrame(raf);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('touchmove', onTouch);
