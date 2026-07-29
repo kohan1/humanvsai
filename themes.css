@@ -1,0 +1,200 @@
+/* Site-wide themes.
+ *
+ * Loaded AFTER each page's own <style> block, so these rules win at equal
+ * specificity without every page having to be rewritten in variables. The
+ * default theme's values are the site's original colours exactly, so leaving
+ * the theme alone changes nothing.
+ *
+ * A theme is a palette plus a background renderer — mesh.js reads
+ * data-theme and draws accordingly. The backgrounds all react to the cursor,
+ * because that is the part of the reference site that made it worth copying:
+ * the page feeling like a surface you are disturbing rather than a picture.
+ */
+
+:root {
+    /* ── Mesh: the original. Near-black, cool blue-white mesh. ───────────── */
+    --bg:          #080808;
+    --bg-soft:     #0a0a0a;
+    --panel:       #0c0c0c;
+    --panel-hi:    #111;
+    --fg:          #ffffff;
+    --fg-muted:    #aaaaaa;
+    --dim:         #6a6a6a;
+    --dimmer:      #4a4a4a;
+    --faint:       rgba(255, 255, 255, 0.1);
+    --line:        #1e1e1e;
+    --line-soft:   #141414;
+    --accent:      #cfe4ff;
+    --accent-2:    #8fd6a8;
+    --warn:        #d98a8a;
+    --serif:       Georgia, 'Times New Roman', serif;
+
+    /* Read by the canvas charts on the Inside page, which cannot use CSS. */
+    --chart-grid:  #161616;
+    --chart-axis:  #4a4a4a;
+    --chart-ink:   #cfe4ff;
+    --chart-track: #1a1a1a;
+}
+
+/* ── Aspen: light, editorial, Swiss. Ink on warm paper. ─────────────────── */
+[data-theme="aspen"] {
+    --bg:          #f3f2ed;
+    --bg-soft:     #eceae3;
+    --panel:       #ffffff;
+    --panel-hi:    #f8f7f3;
+    --fg:          #232323;
+    --fg-muted:    #4a4a48;
+    --dim:         #86857e;
+    --dimmer:      #a8a79f;
+    --faint:       rgba(35, 35, 35, 0.14);
+    --line:        #dcdad1;
+    --line-soft:   #e6e4dc;
+    --accent:      #0f5f8f;
+    --accent-2:    #12876a;
+    --warn:        #b4483f;
+    --serif:       Georgia, 'Times New Roman', serif;
+
+    --chart-grid:  #e2e0d7;
+    --chart-axis:  #86857e;
+    --chart-ink:   #0f5f8f;
+    --chart-track: #e6e4dc;
+}
+
+/* ── Nocturne: deep indigo, aurora. Rich rather than monochrome. ────────── */
+[data-theme="nocturne"] {
+    --bg:          #060a18;
+    --bg-soft:     #080d21;
+    --panel:       #0a1128;
+    --panel-hi:    #101838;
+    --fg:          #eef3ff;
+    --fg-muted:    #a9b6d6;
+    --dim:         #6d7ba0;
+    --dimmer:      #4a5578;
+    --faint:       rgba(238, 243, 255, 0.12);
+    --line:        #17203f;
+    --line-soft:   #121936;
+    --accent:      #5eead4;
+    --accent-2:    #a78bfa;
+    --warn:        #fb7185;
+    --serif:       Georgia, 'Times New Roman', serif;
+
+    --chart-grid:  #141d3c;
+    --chart-axis:  #6d7ba0;
+    --chart-ink:   #5eead4;
+    --chart-track: #16204a;
+}
+
+/* ═══ Shared chrome ═════════════════════════════════════════════════════════
+   Everything below maps the pages' existing classes onto the palette. The
+   selectors match what index.html, select.html and inside.html already use. */
+
+html, body { background: var(--bg); color: var(--fg); }
+body { transition: background 0.4s ease, color 0.4s ease; }
+
+.back, .back-nav { color: var(--dim); }
+.back:hover, .back-nav:hover { color: var(--fg-muted); }
+
+.eyebrow, .header .eyebrow { color: var(--dim); }
+h1, .header h1, .title { color: var(--fg); font-family: var(--serif); }
+h2 { color: var(--fg); font-family: var(--serif); }
+.lede { color: var(--fg-muted); }
+.block-note, .how-to-read { color: var(--dim); }
+.how-to-read b { color: var(--fg-muted); }
+.chart-key { color: var(--dim); }
+.omitted { color: var(--dimmer); }
+.foot { color: var(--faint); }
+
+/* ── index ──────────────────────────────────────────────────────────────── */
+.title .vs { color: var(--dim); }
+.rule { background: var(--line); }
+.enter { color: var(--fg-muted); border-color: var(--faint); }
+.enter:hover { color: var(--fg); border-color: var(--accent); background: var(--panel-hi); }
+
+/* ── select ─────────────────────────────────────────────────────────────── */
+.grid { background: var(--line); border-color: var(--line); }
+.card { background: var(--bg); color: var(--fg-muted); }
+.card:hover { background: var(--panel-hi); color: var(--fg); }
+.card:hover::after { border-color: var(--accent); }
+.card-num, .card-tag, .card-arrow { color: var(--dimmer); }
+.card:hover .card-arrow { color: var(--fg-muted); }
+
+.settings-btn { color: var(--dim); }
+.settings-btn:hover, .settings-btn[aria-expanded="true"] { color: var(--fg); }
+.settings-panel { background: var(--panel); border-color: var(--line); }
+.settings-title { color: var(--dimmer); }
+.settings-blurb, .settings-foot { color: var(--dim); }
+.settings-opt { background: var(--bg); border-color: var(--line); color: var(--fg-muted); }
+.settings-opt:hover { background: var(--panel-hi); color: var(--fg); border-color: var(--dimmer); }
+.settings-opt.on { background: var(--panel-hi); color: var(--fg); border-color: var(--accent); }
+.settings-opt span { color: var(--dim); }
+.settings-opt.on span { color: var(--accent); }
+
+/* ── inside ─────────────────────────────────────────────────────────────── */
+.stats { background: var(--line); border-color: var(--line); }
+.stat { background: var(--bg); }
+.stat-num { color: var(--fg); font-family: var(--serif); }
+.stat-label { color: var(--dim); }
+
+.ctl-group { background: var(--line); border-color: var(--line); }
+.ctl { background: var(--bg); color: var(--dim); }
+.ctl:hover { color: var(--fg-muted); background: var(--panel-hi); }
+.ctl.on { color: var(--fg); background: var(--panel-hi); }
+
+.chart-wrap { background: var(--bg-soft); border-color: var(--line); }
+.tip { background: var(--panel); border-color: var(--line); }
+.tip .tip-run { color: var(--fg); }
+.tip .tip-row { color: var(--dim); }
+.tip .tip-row b { color: var(--fg-muted); }
+
+.leg { color: var(--dim); }
+.leg:hover { color: var(--fg); }
+.leg-score { color: var(--dimmer); }
+
+.ledger { border-color: var(--line); }
+.row { color: var(--dim); border-top-color: var(--line-soft); }
+.row:hover { background: var(--panel-hi); color: var(--fg-muted); }
+.row.head, .row.head:hover { background: var(--bg-soft); color: var(--dimmer); }
+.row-name { color: var(--fg-muted); }
+.row-note { background: var(--panel-hi); color: var(--dim); }
+.o-shipped { color: var(--accent); }
+.o-improved { color: var(--accent-2); }
+.o-rejected { color: var(--warn); }
+.o-unknown { color: var(--dimmer); }
+
+.arch-flow { background: var(--bg-soft); border-color: var(--line); }
+.arch-step { border-right-color: var(--line-soft); }
+.arch-kind { color: var(--dimmer); }
+.arch-shape { color: var(--accent); }
+.arch-params, .arch-summary { color: var(--dim); }
+.arch-summary b { color: var(--fg); font-family: var(--serif); }
+
+.heat-row { background: var(--line); border-color: var(--line); }
+.heat-cell { background: var(--bg-soft); }
+.heat-cell canvas { border-color: var(--line); }
+.heat-label { color: var(--dimmer); }
+.heat-label b { color: var(--fg-muted); }
+
+.h2h-empty, .h2h-row { background: var(--bg-soft); border-color: var(--line); }
+.h2h-name { color: var(--fg-muted); }
+.h2h-tally { color: var(--dim); }
+.h2h-tally b { color: var(--accent-2); }
+.h2h-tally i { color: var(--warn); }
+.h2h-bar { background: var(--warn); }
+.h2h-bar span { background: var(--accent-2); }
+
+/* ── Theme picker in the settings panel ─────────────────────────────────── */
+.theme-row { display: flex; gap: 4px; margin-top: 0.35rem; }
+.theme-swatch {
+    flex: 1 1 0; cursor: pointer; padding: 0; border: 1px solid var(--line);
+    background: none; font-family: inherit; overflow: hidden;
+    transition: border-color 0.14s, transform 0.14s;
+}
+.theme-swatch:hover { transform: translateY(-2px); }
+.theme-swatch.on { border-color: var(--accent); }
+.theme-swatch i { display: block; height: 34px; }
+.theme-swatch b {
+    display: block; font-weight: 400; font-size: 0.58rem;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 0.4rem 0.2rem; color: var(--dim);
+}
+.theme-swatch.on b { color: var(--fg); }

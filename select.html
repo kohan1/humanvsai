@@ -145,6 +145,15 @@
             .header, .grid, .foot { animation: none; opacity: 1; transform: none; }
         }
     </style>
+    <link rel="stylesheet" href="themes.css" />
+    <script>
+    // Before first paint: a themed page must not flash the default
+    // palette while settings.js loads.
+    try {
+        var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+        document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+    </script>
 </head>
 <body>
     <canvas id="mesh"></canvas>
@@ -161,7 +170,10 @@
     </button>
 
     <div class="settings-panel" id="settings-panel" hidden>
-        <p class="settings-title">AI difficulty</p>
+        <p class="settings-title">Theme</p>
+        <div class="theme-row" id="settings-theme"></div>
+
+        <p class="settings-title" style="margin-top:1.3rem">AI difficulty</p>
         <p class="settings-blurb">
             Every opponent picks its move from a score it gives each option.
             Easing off does not slow it down or make it act at random — it lets
@@ -227,6 +239,24 @@
         const label = document.getElementById('settings-label');
         const list = document.getElementById('settings-difficulty');
 
+        const themeRow = document.getElementById('settings-theme');
+
+        function renderThemes() {
+            const t = Settings.get().theme;
+            themeRow.innerHTML = Settings.THEMES.map(x => `
+                <button class="theme-swatch${x.id === t ? ' on' : ''}" data-theme-id="${x.id}"
+                        title="${x.label}">
+                    <i style="background:${x.swatch}"></i><b>${x.label}</b>
+                </button>`).join('');
+        }
+        themeRow.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-theme-id]');
+            if (!b) return;
+            Settings.set({ theme: b.dataset.themeId });
+            Settings.applyTheme(b.dataset.themeId);
+            renderThemes();
+        });
+
         function render() {
             const current = Settings.get().difficulty;
             list.innerHTML = Settings.DIFFICULTY.map(d => `
@@ -274,6 +304,7 @@
             if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') open(false);
         });
 
+        renderThemes();
         render();
     })();
     </script>

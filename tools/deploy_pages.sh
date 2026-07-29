@@ -54,7 +54,7 @@ echo "staging the site in $STAGE"
 
 # Entry pages, the shared mesh background, and the Inside page with its
 # generated training data.
-cp index.html select.html inside.html mesh.js "$STAGE/"
+cp index.html select.html inside.html mesh.js themes.css "$STAGE/"
 cp inspector.css inspector.js results.js settings.js "$STAGE/"
 mkdir -p "$STAGE/inside"
 cp inside/data.js "$STAGE/inside/"

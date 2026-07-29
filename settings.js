@@ -75,14 +75,38 @@
      * way, and "Gentle" here means noticeably worse rather than bad. Making it
      * genuinely easy needs an early, actually-weaker checkpoint.
      *
-     * Tetris is still an ESTIMATE — it is the one game whose training
-     * checkpoint no longer exists, so it cannot be swept with the same script.
+     * Tetris is measured too, through onnxruntime — its training checkpoint no
+     * longer exists, so the exported .onnx is the only copy left:
+     *
+     *     T 0     119.0k  100%     T 0.75   40.0k   34%
+     *     T 0.25   98.8k   83%     T 1.50   13.8k   12%
+     *     T 0.50   86.9k   73%     T 3.00    2.9k    2%
+     *
+     * It is the most fragile of the three — 16% of moves changed costs it 88%
+     * of its score. A tetris board punishes one bad placement for the rest of
+     * the game, where Snake at least dies cleanly and Watermelon shrugs.
+     * Its scores are also wildly skewed (mean 119k against a median of 57k),
+     * so treat these percentages as a shape, not as precise figures.
+     *
+     * Three games, three completely different curves — which is exactly why
+     * one shared temperature ladder would have been wrong.
      */
     var TEMPERATURES = {
         snake:      { full: 0, strong: 0.75, fair: 1.50, gentle: 3.00 },
-        tetris:     { full: 0, strong: 1.00, fair: 2.00, gentle: 3.50 },
+        tetris:     { full: 0, strong: 0.35, fair: 0.70, gentle: 1.50 },
         watermelon: { full: 0, strong: 3.00, fair: 6.00, gentle: 10.00 },
     };
+
+    /* Each theme is a palette (themes.css) plus a background renderer
+     * (mesh.js). The swatch colours here are only for the picker. */
+    var THEMES = [
+        { id: 'mesh',     label: 'Mesh',
+          swatch: 'linear-gradient(135deg,#080808 0%,#141a24 60%,#cfe4ff 190%)' },
+        { id: 'aspen',    label: 'Aspen',
+          swatch: 'linear-gradient(135deg,#f3f2ed 0%,#dcdad1 55%,#0f5f8f 190%)' },
+        { id: 'nocturne', label: 'Nocturne',
+          swatch: 'linear-gradient(135deg,#060a18 0%,#1b2a5e 55%,#5eead4 175%)' },
+    ];
 
     var DEFAULTS = {
         // Full strength by default: the site has always played this way, and
@@ -90,6 +114,7 @@
         // of the site is busy explaining. The control is one click away.
         difficulty: 'full',
         inspector: true,
+        theme: 'mesh',
     };
 
     function read() {
@@ -158,7 +183,18 @@
         return best;
     }
 
+    /* Applied to <html> so CSS and mesh.js both see it. Called on every page
+     * as early as possible — see the inline snippet in each <head>, which runs
+     * before first paint so a non-default theme never flashes the dark one. */
+    function applyTheme(id) {
+        var t = id || read().theme;
+        document.documentElement.setAttribute('data-theme', t);
+        return t;
+    }
+
     global.Settings = {
+        THEMES: THEMES,
+        applyTheme: applyTheme,
         DIFFICULTY: DIFFICULTY,
         TEMPERATURES: TEMPERATURES,
         DEFAULTS: DEFAULTS,

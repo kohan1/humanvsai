@@ -58,6 +58,16 @@
             .title, .rule, .enter, .foot { animation: none; opacity: 1; transform: none; }
         }
     </style>
+    <link rel="stylesheet" href="themes.css" />
+    <script src="settings.js"></script>
+    <script>
+    // Before first paint: a themed page must not flash the default
+    // palette while settings.js loads.
+    try {
+        var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+        document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+    </script>
 </head>
 <body>
     <canvas id="mesh"></canvas>

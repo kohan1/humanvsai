@@ -272,6 +272,16 @@
             color: rgba(255,255,255,0.14); text-transform: uppercase;
         }
     </style>
+    <link rel="stylesheet" href="themes.css" />
+    <script src="settings.js"></script>
+    <script>
+    // Before first paint: a themed page must not flash the default
+    // palette while settings.js loads.
+    try {
+        var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+        document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+    </script>
 </head>
 <body>
     <canvas id="mesh"></canvas>
@@ -586,6 +596,28 @@
     (() => {
         initMesh('mesh', { intensity: 0.42 });
 
+        /* Canvas cannot use CSS, so the charts read the theme's variables and
+           re-read them whenever the theme changes. Without this every chart
+           would stay dark-on-dark after switching to a light theme. */
+        const PAL = {};
+        function readPalette() {
+            const cs = getComputedStyle(document.documentElement);
+            const v = (n, fallback) => (cs.getPropertyValue(n).trim() || fallback);
+            PAL.grid   = v('--chart-grid', '#161616');
+            PAL.axis   = v('--chart-axis', '#4a4a4a');
+            PAL.ink    = v('--chart-ink', '#cfe4ff');
+            PAL.track  = v('--chart-track', '#1a1a1a');
+            PAL.bg     = v('--bg-soft', '#0a0a0a');
+            PAL.fg     = v('--fg', '#ffffff');
+            PAL.dim    = v('--dim', '#6a6a6a');
+            PAL.good   = v('--accent-2', '#8fd6a8');
+            PAL.bad    = v('--warn', '#d98a8a');
+        }
+        readPalette();
+        new MutationObserver(() => { readPalette(); redraw(); })
+            .observe(document.documentElement,
+                     { attributes: true, attributeFilter: ['data-theme'] });
+
         const runs = TRAINING_DATA.runs;
         const shipped = TRAINING_DATA.shipped;
 
@@ -744,19 +776,19 @@
 
             ys.forEach(v => {
                 const y = ys.scale(v);
-                ctx.strokeStyle = '#161616';
+                ctx.strokeStyle = PAL.grid;
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.moveTo(PAD.l, y + 0.5); ctx.lineTo(w - PAD.r, y + 0.5);
                 ctx.stroke();
-                ctx.fillStyle = '#4a4a4a';
+                ctx.fillStyle = PAL.axis;
                 ctx.textAlign = 'right';
                 ctx.fillText(yFmt(v), PAD.l - 9, y);
             });
 
             xs.forEach(v => {
                 const x = xs.scale(v);
-                ctx.fillStyle = '#4a4a4a';
+                ctx.fillStyle = PAL.axis;
                 ctx.textAlign = 'center';
                 ctx.fillText(xFmt(v), x, h - PAD.b + 14);
             });
@@ -765,7 +797,7 @@
             ctx.translate(13, (h - PAD.b + PAD.t) / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#3d3d3d';
+            ctx.fillStyle = PAL.axis;
             ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
             ctx.fillText(yAxisLabel.toUpperCase(), 0, 0);
             ctx.restore();
@@ -809,7 +841,7 @@
 
             if (!list.length) {
                 ctx.clearRect(0, 0, w, h);
-                ctx.fillStyle = '#3d3d3d';
+                ctx.fillStyle = PAL.axis;
                 ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('no runs recorded this metric', w / 2, h / 2);
@@ -919,7 +951,7 @@
 
             // The bar the run had to beat: the model it started from.
             const base = pts[0].score;
-            ctx.strokeStyle = '#3a3a3a';
+            ctx.strokeStyle = PAL.axis;
             ctx.setLineDash([3, 4]);
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -936,14 +968,14 @@
             ctx.textBaseline = near ? 'top' : 'alphabetic';
             const label = 'THE MODEL THIS RUN STARTED FROM — ' + base.toFixed(0);
             const lw = ctx.measureText(label).width;
-            ctx.fillStyle = '#0a0a0a';
+            ctx.fillStyle = PAL.bg;
             ctx.fillRect(PAD.l + 4, ys(base) + (near ? 6 : -19), lw + 8, 14);
-            ctx.fillStyle = '#6a6a6a';
+            ctx.fillStyle = PAL.dim;
             ctx.fillText(label, PAD.l + 8, ys(base) + (near ? 9 : -8));
             ctx.textBaseline = 'middle';
 
             // Running best — the thing actually kept.
-            ctx.strokeStyle = '#cfe4ff';
+            ctx.strokeStyle = PAL.ink;
             ctx.lineWidth = 1.6;
             ctx.beginPath();
             let run = -Infinity;
@@ -958,7 +990,7 @@
             pts.forEach(p => {
                 ctx.beginPath();
                 ctx.arc(xs(p.t), ys(p.score), p.best ? 4 : 2.6, 0, Math.PI * 2);
-                ctx.fillStyle = p.best ? '#cfe4ff' : '#4d5a6a';
+                ctx.fillStyle = p.best ? PAL.ink : PAL.axis;
                 ctx.fill();
             });
 
@@ -1084,7 +1116,7 @@
             // The surviving line only. Rejected runs are drawn as strays,
             // because joining them would imply the next run built on them.
             const kept = list.filter(r => r.outcome !== 'rejected');
-            ctx.strokeStyle = '#cfe4ff';
+            ctx.strokeStyle = PAL.ink;
             ctx.lineWidth = 1.8;
             ctx.lineJoin = ctx.lineCap = 'round';
             ctx.beginPath();
@@ -1098,7 +1130,7 @@
                 const x = xs(r.cumulativeSteps), y = ys(r.evalScore);
                 const rejected = r.outcome === 'rejected';
                 if (rejected) {
-                    ctx.strokeStyle = '#d98a8a';
+                    ctx.strokeStyle = PAL.bad;
                     ctx.lineWidth = 1;
                     ctx.setLineDash([2, 3]);
                     ctx.beginPath();
@@ -1108,8 +1140,8 @@
                 }
                 ctx.beginPath();
                 ctx.arc(x, y, r.checkpoint ? 5 : 3.5, 0, Math.PI * 2);
-                ctx.fillStyle = rejected ? '#d98a8a'
-                              : r.outcome === 'shipped' ? '#fff' : '#cfe4ff';
+                ctx.fillStyle = rejected ? PAL.bad
+                              : r.outcome === 'shipped' ? PAL.fg : PAL.ink;
                 ctx.fill();
                 // A ring marks a version whose weights still exist, so it
                 // could be played.
@@ -1176,7 +1208,7 @@
 
             const xt = niceTicks(0, xMax, 6);
             xt.forEach(v => {
-                ctx.fillStyle = '#4a4a4a';
+                ctx.fillStyle = PAL.axis;
                 ctx.textAlign = 'center';
                 ctx.fillText(fmtSteps(v), xs(v), h - PAD.b + 14);
             });
@@ -1188,7 +1220,7 @@
                 const x1 = xs(p.cumulativeSteps), y1 = ys(lane.get(p.key));
                 const x2 = xs(r.cumulativeSteps), y2 = ys(lane.get(r.key));
                 const dead = r.outcome === 'rejected';
-                ctx.strokeStyle = dead ? '#5a3a3a' : '#3f5670';
+                ctx.strokeStyle = dead ? PAL.bad : PAL.ink;
                 ctx.lineWidth = dead ? 1 : 2;
                 ctx.setLineDash(dead ? [3, 3] : []);
                 ctx.beginPath();
@@ -1200,11 +1232,11 @@
 
             list.forEach(r => {
                 const x = xs(r.cumulativeSteps), y = ys(lane.get(r.key));
-                const c = { shipped: '#fff', improved: '#8fd6a8',
-                            rejected: '#d98a8a', running: '#e0c07a' }[r.outcome] || '#4a4a4a';
+                const c = { shipped: PAL.fg, improved: PAL.good,
+                            rejected: PAL.bad, running: '#e0c07a' }[r.outcome] || PAL.axis;
                 ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
                 ctx.fillStyle = c; ctx.fill();
-                ctx.fillStyle = r.outcome === 'rejected' ? '#8a6a6a' : '#9a9a9a';
+                ctx.fillStyle = r.outcome === 'rejected' ? PAL.bad : PAL.dim;
                 ctx.textAlign = 'center';
                 ctx.fillText(r.evalScore ? r.evalScore.toFixed(0) : '—', x, y - 15);
             });
@@ -1242,7 +1274,7 @@
             const d = dists[distGame];
             if (!d) {
                 ctx.clearRect(0, 0, w, h);
-                ctx.fillStyle = '#3d3d3d';
+                ctx.fillStyle = PAL.axis;
                 ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText('not measured yet — run tools/eval_distribution.py', w / 2, h / 2);
@@ -1269,11 +1301,11 @@
             bins.forEach((n, i) => {
                 if (!n) return;
                 const x = xs(lo + i * width);
-                ctx.fillStyle = 'rgba(207,228,255,0.42)';
+                ctx.fillStyle = PAL.ink + '6b';
                 ctx.fillRect(x + 1, ys(n), bw - 2, ys(0) - ys(n));
             });
 
-            [['mean', d.mean, '#cfe4ff'], ['median', d.median, '#8fd6a8']].forEach(([label, v, col], i) => {
+            [['mean', d.mean, PAL.ink], ['median', d.median, PAL.good]].forEach(([label, v, col], i) => {
                 ctx.strokeStyle = col; ctx.lineWidth = 1.4;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath(); ctx.moveTo(xs(v), PAD.t); ctx.lineTo(xs(v), ys(0)); ctx.stroke();
@@ -1365,12 +1397,12 @@
             rows.forEach((r, i) => {
                 const y = top + rowH * (i + 0.5);
                 const bw = (r.fps / xMax) * (right - left);
-                ctx.fillStyle = r.device === 'cpu' ? 'rgba(217,138,138,0.5)' : 'rgba(207,228,255,0.42)';
+                ctx.fillStyle = (r.device === 'cpu' ? PAL.bad : PAL.ink) + '7a';
                 ctx.fillRect(left, y - rowH * 0.3, bw, rowH * 0.6);
-                ctx.fillStyle = '#5a5a5a';
+                ctx.fillStyle = PAL.dim;
                 ctx.textAlign = 'right';
                 ctx.fillText(`${r.envs} envs · ${r.device}`, left - 8, y);
-                ctx.fillStyle = r.device === 'cpu' ? '#d98a8a' : '#cfe4ff';
+                ctx.fillStyle = r.device === 'cpu' ? PAL.bad : PAL.ink;
                 ctx.textAlign = 'left';
                 ctx.fillText(r.fps.toLocaleString(), left + bw + 6, y);
             });
@@ -1416,9 +1448,9 @@
             const day = 86400000;
             for (let t = new Date(lo).setHours(0, 0, 0, 0); t <= hi; t += day) {
                 if (t < lo) continue;
-                ctx.strokeStyle = '#161616'; ctx.lineWidth = 1;
+                ctx.strokeStyle = PAL.grid; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.moveTo(xs(t), PAD.t); ctx.lineTo(xs(t), h - PAD.b); ctx.stroke();
-                ctx.fillStyle = '#4a4a4a'; ctx.textAlign = 'center';
+                ctx.fillStyle = PAL.axis; ctx.textAlign = 'center';
                 ctx.fillText(new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
                              xs(t), h - PAD.b + 14);
             }
@@ -1638,7 +1670,7 @@
                     }
                     ctx.fill();
                 }
-                ctx.fillStyle = '#4a4a4a';
+                ctx.fillStyle = PAL.axis;
                 ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText((LABELS[c] || '').toUpperCase(), colX(c), h - 10);
