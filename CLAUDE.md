@@ -40,6 +40,39 @@ a run that overshoots and regresses no longer costs anything.
 
 ---
 
+## BestScoreCallback's 15 episodes cannot rank Watermelon models
+
+Measured over 136 evaluations across 33.75M steps of the 100M run:
+
+    spread   751.5 - 1130.8   (379 points)
+    stdev    70.8             (7.5% of the mean)
+
+At that variance a 15-episode evaluation cannot distinguish two similar
+policies, and `BestScoreCallback` will happily save a *lucky sample* as a new
+best. It did exactly that here: it recorded "new best 1130.80" against a
+baseline of 1123.47 — a gap of 7.3 points, about one tenth of a standard
+deviation — and the model it saved then measured **1015.80 over 30 episodes**,
+i.e. WORSE than the shipped 1032.43 it had been resumed from.
+
+So a "new best" line in a Watermelon log means nothing on its own. Two
+consequences:
+
+1. **Never promote a model on the callback's number.** `install_model.sh` runs
+   its own 30-episode evaluation and refuses a regression, and that check is
+   the only reason the noisy selection has never actually shipped a worse
+   model. Keep it.
+2. **Raise `EVAL_EPISODES` before trusting mid-run selection.** 15 was chosen
+   for cost (~1500 drops per check against 250k of training). The cost was the
+   right thing to optimise; the episode count was not checked against the
+   distribution's spread.
+
+Watermelon's scores are skewed and long-tailed — a single lucky 1585-point game
+moves a 15-episode mean by 40 points. Snake and Tetris were not re-measured
+this way, but Tetris is *more* skewed still (mean 119k against a median 57k),
+so treat its checkpoint numbers with the same suspicion.
+
+---
+
 ## Resume from the run-end model, ship the best one
 
 These are two different jobs and the same file cannot do both.
