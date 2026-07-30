@@ -153,6 +153,14 @@ cost seconds and save hours.
 6. **Float comparisons in shell gates use `awk`, not `bc`** — `bc` is not
    installed here, and `[ "$(… | bc -l)" = "1" ]` fails *open*, silently
    disabling the gate it implements.
+7. **Give the run its own checkpoint subdirectory.** `CheckpointCallback` names
+   its saves `<game>_ckpt_<steps>_steps.zip`, which collides across runs: the
+   100M Watermelon attempt and the reward-v2 run both wrote into
+   `watermelon/training/checkpoints/` and their step ranges overlapped, so the
+   later run silently overwrote the earlier one's files. 156 files that looked
+   like a single 0.25M-39M series were two runs, and only separable at all
+   because they happened on different days. Point `save_path` at a per-run
+   directory before starting.
 
 ---
 
