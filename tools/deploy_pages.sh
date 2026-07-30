@@ -56,6 +56,7 @@ echo "staging the site in $STAGE"
 # generated training data.
 cp index.html select.html inside.html mesh.js backgrounds.js themes.css "$STAGE/"
 cp inspector.css inspector.js results.js settings.js "$STAGE/"
+cp checkpoints.css checkpoint_switcher.js checkpoints.js "$STAGE/"
 mkdir -p "$STAGE/inside"
 cp inside/data.js "$STAGE/inside/"
 
@@ -70,6 +71,12 @@ for game in snake tetris watermelon; do
     for d in assets images lib; do
         [ -d "$game/$d" ] && cp -r "$game/$d" "$STAGE/$game/"
     done
+
+    # The checkpoint ladder — the earlier, weaker models the in-game switcher
+    # offers. These ARE deployed, unlike the .zip checkpoints above, because the
+    # browser fetches them by URL. They are only requested when a visitor picks
+    # a rung, so they cost nothing on a normal load.
+    [ -d "$game/checkpoints" ] && cp -r "$game/checkpoints" "$STAGE/$game/"
 
     # Drop the model_data.js <script> tag. Without this the deployed page
     # requests a file that is not there; the fallback would still work, but it
@@ -107,6 +114,38 @@ if grep -rq '<script src="model_data\.js"' "$STAGE"/*/game.html; then
     exit 1
 fi
 
+# Every rung the switcher offers must actually be served. The manifest is
+# generated separately from the deploy, so the two can drift — and the failure
+# mode is a button that downloads a 404 and leaves the player on the previous
+# model with an error in the console nobody reads.
+python - "$STAGE" <<'PYEOF' || exit 1
+import json, pathlib, sys
+stage = pathlib.Path(sys.argv[1])
+txt = (stage / "checkpoints.js").read_text(encoding="utf-8")
+data = json.loads(txt[txt.index("{"):txt.rindex("}") + 1])
+missing, n = [], 0
+for game, spec in data.items():
+    for rung in spec.get("rungs", []):
+        n += 1
+        p = stage / game / rung["file"]
+        if not p.is_file() or p.stat().st_size == 0:
+            missing.append(f"{game}/{rung['id']} -> {rung['file']}")
+        elif p.stat().st_size != rung["bytes"]:
+            missing.append(f"{game}/{rung['id']} size {p.stat().st_size} "
+                           f"!= manifest {rung['bytes']}")
+if missing:
+    print("ABORT: checkpoint ladder does not match what is staged:")
+    for m in missing:
+        print("  " + m)
+    # checkpoints.js is committed but <game>/checkpoints/*.onnx are gitignored
+    # (large, regenerable), so a fresh clone has the manifest without the
+    # models. That is the likely cause of this abort.
+    print("\nRun:  python tools/build_checkpoints.py")
+    print("(the .onnx rungs are gitignored — the manifest is not)")
+    sys.exit(1)
+print(f"  checkpoint ladder : {n} rungs, all present and the right size")
+PYEOF
+
 # Pages runs Jekyll by default, which ignores files and folders beginning with
 # an underscore and can mangle others. This turns that off.
 touch "$STAGE/.nojekyll"
@@ -117,7 +156,12 @@ echo "=== deploy contents ==="
 du -sh "$STAGE" | awk '{print "size:  " $1}'
 echo
 echo "files over 1 MB (GitHub rejects anything over 100 MB):"
-find "$STAGE" -type f -size +1M -printf "%6.1f MB  %P\n" 2>/dev/null | sort -rn || true
+# %s (size in bytes) then format in awk. NOT -printf "%6.1f MB" — find has no
+# float directive, so %f was read as the basename with a width/precision of
+# 6.1, which truncated every name to one character and printed "w MB", "t MB",
+# "s MB" where the sizes should have been.
+find "$STAGE" -type f -size +1M -printf "%s\t%P\n" 2>/dev/null \
+    | sort -rn | awk -F'\t' '{printf "%7.1f MB  %s\n", $1 / 1048576, $2}' || true
 
 # Refuse to publish anything GitHub will reject outright.
 if find "$STAGE" -type f -size +100M | grep -q .; then

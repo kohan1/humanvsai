@@ -186,7 +186,11 @@ def main():
         print("standard activation modules (ReLU, Tanh, etc).")
 
     # ── Export to ONNX ────────────────────────────────────────────
-    output_path = "tetris_ai.onnx"
+    # A second argument sends the export somewhere else, so a checkpoint can be
+    # exported for the checkpoint switcher without overwriting the model the
+    # site plays with:
+    #     python export.py "backups/70M BACKUP.zip" ../checkpoints/t70m.onnx
+    output_path = sys.argv[2] if len(sys.argv) > 2 else "tetris_ai.onnx"
     print(f"\nExporting to ONNX: {output_path}")
 
     output_names = ["action_logits"] + [f"layer{i+1}_act" for i in range(len(activations))]

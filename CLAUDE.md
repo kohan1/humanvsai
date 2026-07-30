@@ -800,6 +800,50 @@ reference point that makes "is this actually good?" answerable.
 - **Watermelon:** human board fully playable, AI board is a scaffold showing
   "Awaiting model". No training pipeline exists.
 
+## The checkpoint switcher
+
+Each game offers a ladder of earlier models under its AI board, so a visitor can
+play a genuinely weaker network rather than a good one playing badly. It is the
+second difficulty axis; the temperature setting in `settings.js` is the first,
+and `settings.js` explains why one is not enough (Watermelon has a floor of
+about 42% of full strength no matter how high T goes).
+
+- `tools/build_checkpoints.py` — exports each rung, measures it, writes the
+  manifest `checkpoints.js`.
+- `checkpoint_switcher.js` + `checkpoints.css` — the control itself.
+- `<game>/checkpoints/*.onnx` — the rungs. **Gitignored** (`checkpoints/` and
+  `*.onnx` both match), so a fresh clone has the manifest but not the models.
+  `deploy_pages.sh` aborts in that case and tells you to rebuild.
+
+Three things here are easy to get wrong, and all three were:
+
+**Tetris must be evaluated WITH ACTION MASKING.** Its 40 logits are candidate
+placements and only the first `len(placements)` are legal; `tetris/game.js` caps
+the argmax there. `tetris_env.step()` does *not* reject an out-of-range action —
+it wraps it with `action % len(placements)` — so an unmasked argmax silently
+plays an arbitrary legal move instead of raising. Unmasked, the 70M checkpoint
+measured 559 and the 260M measured 211, i.e. the later model looked *worse*.
+Masked: 746 and 1188. Nothing about the first numbers was real.
+
+**`num_timesteps` is per-run, not cumulative.** It resets whenever a run starts
+fresh rather than resuming, so Snake's 71-point rung reports 30.0M steps while
+its stronger 129-point rung reports 6.0M. The manifest carries `stepsMeaning`
+(`"lineage"` vs `"run"`) and the switcher only shows step counts for Tetris,
+whose three rungs really are one continuous run.
+
+**One process per rung.** All three games define a module named `policy_config`,
+and the first imported wins for the life of the interpreter — loading Snake then
+Watermelon silently gave Watermelon's checkpoints Snake's policy class. The env
+modules collide the same way. Every export and evaluation runs in a fresh
+interpreter.
+
+Scores are measured by playing the exact `.onnx` the browser downloads, not
+copied from the archive filenames. That doubles as an export check: Watermelon's
+rungs reproduced their archived scores to the cent (841.87, 936.70, 1032.43),
+because the env is deterministic under a fixed seed.
+
+---
+
 ## Open / next up
 
 - Watermelon AI. A physics-based merge game is a genuinely hard RL problem —
@@ -828,4 +872,10 @@ cd .. && python embed_model.py            # → model_data.js
 
 # Watermelon assets (from watermelon/, after changing assets/)
 python embed_assets.py                    # → image_data.js
+
+# Checkpoint ladders (from the repo root) — rebuilds <game>/checkpoints/*.onnx
+# and the checkpoints.js manifest. Slow: it plays real games to score each rung.
+python tools/build_checkpoints.py                  # all three games
+python tools/build_checkpoints.py snake --episodes 10   # one game, rougher
+python tools/probe_checkpoints.py         # which archived .zip files still load
 ```

@@ -397,6 +397,7 @@
             aiSession = await ort.InferenceSession.create(src, { executionProviders: ["wasm"] });
             aiReady = true;
             aiStatusEl.hidden = true;
+            mountCheckpointSwitcher();
         } catch (err) {
             console.error("Failed to load Snake AI model:", err);
             aiStatusEl.textContent = "model failed to load";
@@ -450,7 +451,16 @@
     let criticSession = null;
     let criticPending = null;
 
+    /* snake_critic.onnx is the value head of the SHIPPED policy. The checkpoint
+       switcher can put an earlier policy in play, and the ladder rungs ship no
+       critic of their own (34 MB each, for one readout). Pairing the shipped
+       critic with an earlier policy would print confident numbers from a
+       network that never saw those weights — so while an earlier rung is
+       selected the readout is suppressed rather than guessed at. */
+    let criticMatchesModel = true;
+
     function loadCritic() {
+        if (!criticMatchesModel) return Promise.resolve();
         if (criticSession || criticPending) return criticPending;
         criticPending = ort.InferenceSession
             .create("snake_critic.onnx", { executionProviders: ["wasm"] })
@@ -459,6 +469,30 @@
                 console.warn("Snake critic unavailable — value readout hidden.", err);
             });
         return criticPending;
+    }
+
+    /* The checkpoint switcher, mounted under the AI board once the shipped
+       model is live — so the control appears already answering "which version
+       is this?" rather than as an empty ladder during the initial download.
+       Called from loadModel() after its await, so the module's own bindings are
+       all initialised by the time this runs. */
+    function mountCheckpointSwitcher() {
+        if (typeof CheckpointSwitcher === "undefined") return;
+        CheckpointSwitcher.mount({
+            game: "snake",
+            container: document.getElementById("board-ai"),
+            initial: aiSession,
+            onSession: (session, rung) => {
+                aiSession = session;
+                criticMatchesModel = rung.shipped;
+                if (!rung.shipped) {
+                    criticSession = null;
+                    criticPending = null;
+                } else if (inspector.isOpen) {
+                    loadCritic();
+                }
+            },
+        });
     }
 
     async function runAiInference() {

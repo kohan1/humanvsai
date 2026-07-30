@@ -29,8 +29,20 @@ from stable_baselines3 import PPO
 # Used to add the value head to the weights already on the site without
 # also swapping in a different (stronger) policy in the same change.
 MODEL_PATH = sys.argv[1] if len(sys.argv) > 1 else "watermelon_final.zip"
-ONNX_PATH = "watermelon_ai.onnx"
-CRITIC_PATH = "watermelon_critic.onnx"
+
+# An explicit output path, so a checkpoint can be exported for the checkpoint
+# switcher WITHOUT overwriting the model the site plays with:
+#     python export.py archive/models/watermelon_ppo_614.zip \
+#                      ../checkpoints/w5m.onnx --no-critic
+# Defaulting to the shipped name keeps the old one-argument behaviour, which
+# install_model.sh relies on.
+ONNX_PATH = sys.argv[2] if len(sys.argv) > 2 else "watermelon_ai.onnx"
+CRITIC_PATH = ONNX_PATH.replace(".onnx", "_critic.onnx") \
+    if len(sys.argv) > 2 else "watermelon_critic.onnx"
+
+# The switcher's rungs do not ship a critic — another 22.6 MB per rung for one
+# readout the inspector already hides when the fetch 404s.
+WANT_CRITIC = "--no-critic" not in sys.argv
 
 
 """
@@ -117,6 +129,8 @@ def main():
     n_actions = int(model.action_space.n)
     print(f"Exported to {ONNX_PATH} (obs {obs_size} -> {n_actions} actions, {mb:.1f} MB)")
 
+    if not WANT_CRITIC:
+        return
     mb = write(CriticWrapper(model.policy).eval(), CRITIC_PATH, obs_size, ["value"])
     print(f"Exported to {CRITIC_PATH} (obs {obs_size} -> value, {mb:.1f} MB) "
           f"— fetched only when the inspector is opened")

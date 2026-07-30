@@ -323,6 +323,31 @@ label { cursor: pointer; }
     max-width: 100%;
 }
 
+/* The checkpoint switcher, same story: checkpoints.css defaults to the dark
+   palette, and this control sits on the sage backdrop under the AI board. Only
+   the custom properties change. */
+.ckpt {
+    --ckpt-fg:     var(--accent);
+    --ckpt-dim:    rgba(103, 84, 36, 0.62);
+    --ckpt-line:   rgba(103, 84, 36, 0.28);
+    --ckpt-panel:  rgba(255, 255, 255, 0.42);
+    --ckpt-accent: #675424;
+
+    /* NARROWER THAN THE BOARD, and centred, which is what keeps it off the
+       "scroll down to see inside" cue.
+       Measured at a 899px viewport: the cue is fixed at x 567-763, y 834-877.
+       At the board's full width this control spanned x 712-1160 and collided
+       with it. The speed controls above never do, because they are only 306px
+       wide and centred in this column — so their left edge clears the cue.
+       Same idea here: at 320px it starts around x 776. */
+    width: min(320px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+}
+/* checkpoints.css fills the active rung with a white wash, which vanishes
+   against cream. */
+.ckpt-btn.is-active { background: rgba(255, 255, 255, 0.75); }
+
 /* The scroll cue sits on the sage backdrop, so it needs the dark accent
    rather than inspector.css's light default. */
 .insp-cue {

@@ -785,7 +785,16 @@
     let criticSession = null;
     let criticPending = null;
 
+    /* watermelon_critic.onnx is the value head of the SHIPPED policy, and the
+       checkpoint switcher can put an earlier policy in play. The ladder rungs
+       carry no critic of their own (another 22.6 MB each for one readout), and
+       showing the shipped critic's opinion of an earlier policy's position
+       would be a confident number from a network that never saw those weights.
+       So the readout is suppressed while an earlier rung is selected. */
+    let criticMatchesModel = true;
+
     function loadCritic() {
+        if (!criticMatchesModel) return Promise.resolve();
         if (criticSession || criticPending) return criticPending;
         criticPending = ort.InferenceSession
             .create("watermelon_critic.onnx", { executionProviders: ["wasm"] })
@@ -834,11 +843,38 @@
                 executionProviders: ["wasm"],
             });
             if (aiStatusEl) aiStatusEl.hidden = true;
+            mountCheckpointSwitcher();
         } catch (err) {
             console.error("Failed to load Watermelon AI model:", err);
             if (aiStatusEl) aiStatusEl.querySelector(".overlay-sub").textContent =
                 "model failed to load";
         }
+    }
+
+    /* Mounted under the AI board once the shipped model is live. Compact here:
+       this column already carries a score bubble, the board, and the speed
+       controls, and the "scroll down to see inside" cue sits just below — a
+       full-height control was what clipped it before. */
+    function mountCheckpointSwitcher() {
+        if (typeof CheckpointSwitcher === "undefined") return;
+        const col = document.querySelector("#board-ai .board-column");
+        if (!col) return;
+        const sw = CheckpointSwitcher.mount({
+            game: "watermelon",
+            container: col,
+            initial: aiSession,
+            onSession: (session, rung) => {
+                aiSession = session;
+                criticMatchesModel = rung.shipped;
+                if (!rung.shipped) {
+                    criticSession = null;
+                    criticPending = null;
+                } else if (inspector.isOpen) {
+                    loadCritic();
+                }
+            },
+        });
+        if (sw) col.querySelector(".ckpt").classList.add("ckpt--compact");
     }
 
     async function chooseColumn(state) {

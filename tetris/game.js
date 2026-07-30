@@ -968,6 +968,24 @@
             // and the two live in separate createGame closures.
             window.__aiGame = aiGame;
             console.log("AI model loaded successfully.");
+
+            /* Checkpoint switcher. Tetris holds its session on the AIPlayer
+               rather than in a module variable, and the game loop reads
+               aiPlayer.session on every decision — so assigning to it is all
+               that a switch needs; the running game picks the new model up on
+               its next move.
+
+               No critic bookkeeping here, unlike the other two: Tetris ships no
+               critic at all (the 1B-step checkpoint that produced its .onnx is
+               gone), so the value readout is already hidden on every rung. */
+            if (typeof CheckpointSwitcher !== "undefined") {
+                CheckpointSwitcher.mount({
+                    game: "tetris",
+                    container: document.getElementById("board-ai"),
+                    initial: session,
+                    onSession: function (s) { aiPlayer.session = s; },
+                });
+            }
         } catch(e) {
             console.warn("AI model failed to load:", e.message);
         }

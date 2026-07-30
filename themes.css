@@ -338,6 +338,20 @@ h2 { color: var(--fg); font-family: var(--serif); }
 [data-theme="dispersion"] .insp-cue {
     --insp-cue-fg: var(--dim); --insp-cue-hover: var(--fg);
 }
+/* The checkpoint switcher, same treatment as the inspector. Its defaults in
+   checkpoints.css are tuned for the dark games, so the light themes (Filings,
+   Dispersion) would otherwise put pale grey text on white. */
+[data-theme="flow"] .ckpt, [data-theme="filings"] .ckpt, [data-theme="sand"] .ckpt,
+[data-theme="constellation"] .ckpt, [data-theme="dispersion"] .ckpt {
+    --ckpt-fg: var(--fg-muted); --ckpt-dim: var(--dim); --ckpt-line: var(--line);
+    --ckpt-panel: var(--panel); --ckpt-accent: var(--accent);
+}
+/* The active rung's fill is a white wash in checkpoints.css, which is invisible
+   on a light theme. */
+[data-theme="filings"] .ckpt-btn.is-active,
+[data-theme="dispersion"] .ckpt-btn.is-active {
+    background: var(--panel-hi);
+}
 [data-theme="flow"] .speed-controls button, [data-theme="filings"] .speed-controls button,
 [data-theme="sand"] .speed-controls button, [data-theme="constellation"] .speed-controls button,
 [data-theme="dispersion"] .speed-controls button {

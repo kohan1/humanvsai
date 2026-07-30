@@ -27,8 +27,21 @@ from stable_baselines3 import PPO
 # Used to add the value head to the weights already on the site without
 # also swapping in a different (stronger) policy in the same change.
 MODEL_PATH = sys.argv[1] if len(sys.argv) > 1 else "snake_final.zip"
-ONNX_PATH = "snake_ai.onnx"
-CRITIC_PATH = "snake_critic.onnx"
+
+# An explicit output path, so a checkpoint can be exported for the checkpoint
+# switcher WITHOUT overwriting the model the site plays with:
+#     python export.py archive/models/snake_final.70pt54.zip \
+#                      ../checkpoints/s30m.onnx --no-critic
+# Defaulting to the shipped name keeps the old one-argument behaviour, which
+# install_model.sh relies on.
+ONNX_PATH = sys.argv[2] if len(sys.argv) > 2 else "snake_ai.onnx"
+CRITIC_PATH = ONNX_PATH.replace(".onnx", "_critic.onnx") \
+    if len(sys.argv) > 2 else "snake_critic.onnx"
+
+# The switcher's rungs do not ship a critic: it is another 34 MB per rung to
+# power one readout, and the inspector already hides that readout when the
+# fetch 404s.
+WANT_CRITIC = "--no-critic" not in sys.argv
 
 
 """
@@ -95,6 +108,8 @@ def main():
     mb = write(PolicyWrapper(model.policy).eval(), ONNX_PATH, obs_size, ["action_logits"])
     print(f"Exported to {ONNX_PATH} (obs {obs_size}, {mb:.1f} MB)")
 
+    if not WANT_CRITIC:
+        return
     mb = write(CriticWrapper(model.policy).eval(), CRITIC_PATH, obs_size, ["value"])
     print(f"Exported to {CRITIC_PATH} (obs {obs_size} -> value, {mb:.1f} MB) "
           f"— fetched only when the inspector is opened")
