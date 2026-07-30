@@ -93,9 +93,22 @@ TARGET_KL = float(os.environ.get("TARGET_KL", 0.05))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 2048))   # bigger batch, GPU-friendly
 
 PRETRAINED_PATH = "watermelon_pretrained.zip"
-RESUME_PATH = "watermelon_final.zip"
-FINAL_PATH = "watermelon_final.zip"   # always this exact name — never rely on
-                                      # sorting numbered checkpoint filenames
+RESUME_PATH = os.environ.get("RESUME_PATH", "watermelon_final.zip")
+
+# Overridable, because the default OVERWRITES the model being resumed from.
+# watermelon_final.zip is both RESUME_PATH and FINAL_PATH, so a run that ends
+# worse than it started silently replaces the better model with the worse one —
+# which is exactly what the reward-v2 run did, dropping the shipped 1032.43 to
+# its own 931.97 ending. Point a long run somewhere else and copy it in
+# deliberately once it has been evaluated.
+FINAL_PATH = os.environ.get("FINAL_PATH", "watermelon_final.zip")
+
+# One directory per run. CheckpointCallback names its saves
+# watermelon_ckpt_<steps>_steps.zip, which collides across runs: the 100M
+# attempt and the reward-v2 run both wrote into checkpoints/ with overlapping
+# step ranges, so the later silently overwrote the earlier one's files.
+CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", "checkpoints/")
+
 TENSORBOARD_LOG = "tb_logs/"
 
 
@@ -239,7 +252,7 @@ def main():
     callback = CallbackList([
         CheckpointCallback(
             save_freq=max(1, 250_000 // N_ENVS),
-            save_path="checkpoints/",
+            save_path=CHECKPOINT_DIR,
             name_prefix="watermelon_ckpt",
         ),
         ScoreLoggingCallback(),

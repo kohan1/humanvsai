@@ -50,6 +50,7 @@ for the cscript cross-check procedure used for Snake.
 """
 
 import math
+import os
 
 import gymnasium as gym
 import numpy as np
@@ -118,9 +119,23 @@ REWARD_LOSS = -1.0
 # Weights inside the potential. Kept small on purpose: across a ~100-drop game
 # the shaping contributes roughly a tenth of what merging does, so it guides
 # without drowning out the score.
-PHI_HEIGHT = 0.60              # how full the well is, squared
-PHI_BUMPINESS = 0.30           # unevenness of the surface
-PHI_TOPHEAVY = 0.35            # big fruit sitting high
+#
+# PHI_SCALE multiplies all three, so the shaping can be switched off without
+# deleting it:
+#
+#     PHI_SCALE=0  ->  phi() is 0 everywhere, the shaping term vanishes, and the
+#                      reward is exactly the pre-redesign one (merge + loss).
+#
+# That matters when RESUMING. The shipped 1032.43 model was trained under the
+# OLD reward; the redesign reached only 1014.47. Resuming the 1032.43 weights
+# with shaping on pairs a value head fitted to one reward scale with a
+# different one, on top of a design that has already been measured as not
+# helping — see "safe shaping cannot raise a ceiling" in CLAUDE.md. So a resume
+# of that model should set PHI_SCALE=0.
+PHI_SCALE = float(os.environ.get("PHI_SCALE", 1.0))
+PHI_HEIGHT = 0.60 * PHI_SCALE      # how full the well is, squared
+PHI_BUMPINESS = 0.30 * PHI_SCALE   # unevenness of the surface
+PHI_TOPHEAVY = 0.35 * PHI_SCALE    # big fruit sitting high
 PHI_GAMMA = 0.99               # must match the discount used in training
 
 SURFACE_COLUMNS = 10           # resolution of the surface profile
