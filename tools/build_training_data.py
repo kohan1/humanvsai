@@ -125,6 +125,24 @@ RUN_NOTES = {
              "never recovered. Keep the best for shipping; resume from the "
              "run-end model.",
     ),
+    "watermelon/train_100m_v2.log": dict(
+        game="watermelon", label="100M second attempt — stopped at 79M",
+        evalScore=996.78, outcome="rejected",
+        parent="watermelon/train_day3_gpu.log",
+        checkpoint="watermelon/training/archive/models/watermelon_100m_v2.996pt78_best.zip",
+        note="A second run at 100M, this time resuming the 1032.43 model with "
+             "the reward redesign switched OFF (PHI_SCALE=0) so the reward "
+             "matched the one those weights were trained under. Stopped at "
+             "78.9M after 26 hours. It is the run that showed the evaluation "
+             "itself was the problem: across 316 checks the 15-episode score "
+             "ranged 751 to 1136 with a standard deviation of 68, so the two "
+             "'new best' models it saved were lucky samples rather than better "
+             "policies. Measured properly over 60 fixed seeds they score "
+             "1015.80 and 996.78 against the shipped model's 1042.38 — both "
+             "WORSE than what the run started from. The lesson is not about "
+             "Watermelon: any model picked by a metric noisier than the "
+             "difference being measured is picked at random.",
+    ),
     "watermelon/train_reward_v2.log": dict(
         game="watermelon", label="redesigned reward · GPU", evalScore=1014.47,
         outcome="improved",
@@ -524,6 +542,15 @@ def main():
         # is written at the top level and moved once it completes.
         base = ROOT / game / "training"
         found = sorted(base.glob("*.log")) + sorted((base / "logs").glob("*.log"))
+
+        # start_training.ps1 always writes remote_training.log, whatever the run
+        # is. Once that run is archived under logs/ the two are the same curve,
+        # and the page listed it twice — once under its real name and once as
+        # "remote_training". The .err.log holds only the progress bar and
+        # warnings, and has no curve at all.
+        found = [p for p in found
+                 if p.name not in ("remote_training.log", "remote_training.err.log")]
+
         for path in found:
             series, evals = parse_log(path)
             if len(series) < 3:
