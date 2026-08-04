@@ -209,11 +209,22 @@
         localStorage.setItem(key, String(v));
     }
 
+
+    /* Board colours come from the theme (see --board-* in shared/themes.css).
+       Read fresh on each frame: the theme can change at runtime and a cached
+       value would leave the play area on the previous palette. */
+    function themeVar(name, fallback) {
+        var v = getComputedStyle(document.documentElement)
+                    .getPropertyValue(name).trim();
+        return v || fallback;
+    }
+    function boardBg() { return themeVar("--board-bg", "#000"); }
+    function boardInk() { return themeVar("--board-ink", "#fff"); }
     // ── Human board ──────────────────────────────────────────────────────
     let food, score = 0, highScore;
 
     function tick() {
-        ctx.fillStyle = "black";
+        ctx.fillStyle = boardBg();
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         food.draw(ctx);
@@ -221,7 +232,7 @@
         snake.draw(ctx);
 
         ctx.font = 1.5 * scl + "px Arial";
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = boardInk();
         ctx.fillText(score, canvas.width / 2 - ctx.measureText(score).width / 2, 2.5 * scl);
 
         ctx.font = 0.5 * scl + "px Arial";
@@ -544,7 +555,7 @@
     }
 
     function tickAi() {
-        ctxAi.fillStyle = "black";
+        ctxAi.fillStyle = boardBg();
         ctxAi.fillRect(0, 0, canvasAi.width, canvasAi.height);
 
         aiFood.draw(ctxAi);
@@ -552,7 +563,7 @@
         aiSnake.draw(ctxAi);
 
         ctxAi.font = 1.5 * scl + "px Arial";
-        ctxAi.fillStyle = "#fff";
+        ctxAi.fillStyle = boardInk();
         ctxAi.fillText(aiScore, canvasAi.width / 2 - ctxAi.measureText(aiScore).width / 2, 2.5 * scl);
 
         ctxAi.font = 0.5 * scl + "px Arial";

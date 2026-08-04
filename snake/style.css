@@ -49,10 +49,16 @@ body {
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 
+/* flex-start, not center — the same fix Tetris already carries. The AI column
+   is taller than the human one (speed/model controls hang below it), and
+   centring each column on its own height pushed the AI board visibly HIGHER
+   than the human board: measured 35px of offset, so the two "YOU" and "AI"
+   labels and the two play areas did not line up. Aligning to the top levels
+   the boards and lets the extra controls hang below where they belong. */
 #arena {
     display: flex;
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     gap: 48px;
 }

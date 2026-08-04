@@ -1,5 +1,20 @@
 (() => {
     "use strict";
+    /* Board colours from the theme (see --board-* in shared/themes.css). Read
+       per frame, so switching theme at runtime repaints the play area too. */
+    function themeVar(name, fallback) {
+        var v = getComputedStyle(document.documentElement)
+                    .getPropertyValue(name).trim();
+        return v || fallback;
+    }
+    function boardBg() { return themeVar("--board-bg", "#000"); }
+    function boardInk() { return themeVar("--board-ink", "#fff"); }
+    /* The overlay scrim sits UNDER boardInk(), so it has to invert with it —
+       a dark scrim under dark ink would be unreadable on the light themes. */
+    function boardScrim(a) {
+        return themeVar("--board-scrim", "0, 0, 0").replace(/^/, "rgba(") + ", " + a + ")";
+    }
+
 
     function shuffle(arr) {
         for (var i = arr.length - 1; i > 0; i--) {
@@ -260,13 +275,13 @@
             size -= 1;
             ctx.font = size + "px " + CONFIG.FONT_FAMILY;
         }
-        ctx.fillStyle = "white";
+        ctx.fillStyle = boardInk();
         ctx.fillText(text, scale * (CONFIG.ARENA_WIDTH / 2), 1.75 * scale);
     }
 
     function drawHighScore(ctx, highScore, scale) {
         ctx.font = (0.6 * scale) + "px " + CONFIG.FONT_FAMILY;
-        ctx.fillStyle = "white";
+        ctx.fillStyle = boardInk();
         ctx.textBaseline = "middle";
         ctx.textAlign = "center";
         ctx.fillText("High score: " + highScore, scale * (CONFIG.ARENA_WIDTH / 2), 4 * scale);
@@ -776,7 +791,7 @@
             }
 
             // ── Render ───────────────────────────────────────────────────────
-            ctx.fillStyle = "#000";
+            ctx.fillStyle = boardBg();
             ctx.fillRect(0, 0, 300, 540);
 
             drawMatrix(ctx, state.arena, 0, 0, CONFIG.SCALE, CONFIG.COLORS);
@@ -817,19 +832,20 @@
 
             // Game over overlay
             if (state.lost) {
-                ctx.fillStyle = "rgba(0,0,0,0.65)";
+                ctx.fillStyle = boardScrim(0.65);
                 ctx.fillRect(0, 0, 300, 540);
-                ctx.fillStyle = "white";
+                ctx.fillStyle = boardInk();
                 ctx.font = "bold " + (1.2 * CONFIG.SCALE) + "px " + CONFIG.FONT_FAMILY;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText(isAI ? "AI DIED" : "GAME OVER", 150, 270 - CONFIG.SCALE);
                 ctx.font = (0.55 * CONFIG.SCALE) + "px " + CONFIG.FONT_FAMILY;
-                ctx.fillStyle = "#ccc";
+                ctx.globalAlpha = 0.75; ctx.fillStyle = boardInk();
                 ctx.fillText(
                     isAI ? "Restarting..." : "Press any key to restart",
                     150, 270 + CONFIG.SCALE * 0.2
                 );
+                ctx.globalAlpha = 1;   // persists across frames if left set
             }
 
             // AI waiting overlay — either the model is still loading, or it is
@@ -837,20 +853,21 @@
             // case the board just sits there looking broken.
             if (isAI && (!aiPlayer || !aiPlayer.session || !matchStarted)) {
                 var loading = !aiPlayer || !aiPlayer.session;
-                ctx.fillStyle = "rgba(0,0,0,0.75)";
+                ctx.fillStyle = boardScrim(0.75);
                 ctx.fillRect(0, 0, 300, 540);
-                ctx.fillStyle = "white";
+                ctx.fillStyle = boardInk();
                 ctx.font = "bold 18px " + CONFIG.FONT_FAMILY;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText(loading ? "Loading AI..." : "Ready", 150, 260);
                 ctx.font = "13px " + CONFIG.FONT_FAMILY;
-                ctx.fillStyle = "#aaa";
+                ctx.globalAlpha = 0.6; ctx.fillStyle = boardInk();
                 ctx.fillText(
                     loading ? "Run embed_model.py, then refresh"
                             : "Press any key to start",
                     150, 285
                 );
+                ctx.globalAlpha = 1;
             }
 
             requestAnimationFrame(loop);

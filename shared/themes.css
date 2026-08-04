@@ -42,6 +42,16 @@
     --mono:        ui-monospace, SFMono-Regular, Menlo, monospace;
     --grain:       0;
     --glow:        207, 228, 255;
+
+    /* THE PLAY AREA ITSELF. Snake and Tetris used to hardcode a black board
+       and white score text, which on the two light themes put a pair of black
+       slabs on a paper-white page — the single ugliest thing in the set. These
+       defaults are the original colours exactly, so the dark themes are
+       unchanged; the light themes override them below. */
+    --board-bg:    #000000;
+    --board-ink:   #ffffff;
+    --board-edge:  #2a2a2a;
+    --board-scrim: 0, 0, 0;
 }
 
 
@@ -148,6 +158,56 @@ h2 { color: var(--fg); font-family: var(--serif); }
     backdrop-filter: blur(2px);
 }
 
+/* The play area's frame. Snake and Tetris outline `main` with a hardcoded
+   #2a2a2a, which is invisible against a light theme's board — so a themed
+   board had no edge at all and bled into the page. */
+[data-theme] #board-human main,
+[data-theme] #board-ai main { outline-color: var(--board-edge); }
+
+/* Watermelon keeps its cream board (the fruit art is drawn for it), but its
+   CHROME was built for a light page and reads badly on the dark themes: the
+   score bubbles are stark white discs and the side controls are unstyled
+   white/grey boxes. Tone the surfaces to the theme and let the text follow. */
+[data-theme="mesh"] .bubble, [data-theme="flow"] .bubble,
+[data-theme="sand"] .bubble, [data-theme="constellation"] .bubble {
+    background: var(--panel-hi);
+    border: 1px solid var(--line);
+    color: var(--fg-muted);
+}
+[data-theme="mesh"] .bubble-title, [data-theme="flow"] .bubble-title,
+[data-theme="sand"] .bubble-title, [data-theme="constellation"] .bubble-title {
+    color: var(--dim);
+}
+[data-theme="mesh"] .highScore, [data-theme="flow"] .highScore,
+[data-theme="sand"] .highScore, [data-theme="constellation"] .highScore,
+[data-theme="mesh"] .shakes, [data-theme="flow"] .shakes,
+[data-theme="sand"] .shakes, [data-theme="constellation"] .shakes {
+    color: var(--fg-muted);
+}
+[data-theme="mesh"] .board-controls button,
+[data-theme="flow"] .board-controls button,
+[data-theme="sand"] .board-controls button,
+[data-theme="constellation"] .board-controls button {
+    background: var(--panel); border: 1px solid var(--line); color: var(--fg-muted);
+}
+[data-theme="mesh"] .board-controls button:hover:not(:disabled),
+[data-theme="flow"] .board-controls button:hover:not(:disabled),
+[data-theme="sand"] .board-controls button:hover:not(:disabled),
+[data-theme="constellation"] .board-controls button:hover:not(:disabled) {
+    background: var(--panel-hi); border-color: var(--accent); color: var(--fg);
+}
+
+/* The in-board controls overlay. Both games hardcode rgba(0,0,0,0.7) with pale
+   text, which on a light theme is a dark grey slab covering most of the play
+   area — the human board looked broken next to a correctly themed AI board.
+   Reuses the same scrim/ink pair as the game-over and waiting overlays, so all
+   three invert together. */
+[data-theme] main div.controls {
+    background: rgba(var(--board-scrim), 0.72);
+    color: var(--board-ink);
+}
+[data-theme] main div.controls p { color: var(--board-ink); }
+
 /* Theme picker */
 .theme-row { display: flex; gap: 4px; margin-top: 0.35rem; }
 .theme-swatch {
@@ -176,6 +236,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Flow — warm off-white drifting over cold near-black. */
 [data-theme="flow"] {
+    --board-edge:  #1c1d24;
     --card-veil:   rgba(11, 12, 16, 0.55);
     --bg:          #0b0c10;
     --bg-soft:     #0b0c10;
@@ -203,6 +264,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Filings — ink on warm paper. */
 [data-theme="filings"] {
+    --board-scrim: 255, 255, 255;
+    --board-bg:    #fffefb;
+    --board-ink:   #141414;
+    --board-edge:  #dddbd3;
     --card-veil:   rgba(244, 243, 239, 0.62);
     --bg:          #f4f3ef;
     --bg-soft:     #f4f3ef;
@@ -228,6 +293,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Sand — white grains on true black. */
 [data-theme="sand"] {
+    --board-edge:  #1c1c1c;
     --card-veil:   rgba(0, 0, 0, 0.50);
     --bg:          #000000;
     --bg-soft:     #000000;
@@ -253,6 +319,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Constellation — cool blue-white on deep navy. */
 [data-theme="constellation"] {
+    --board-edge:  #16203f;
     --card-veil:   rgba(7, 11, 24, 0.55);
     --bg:          #070b18;
     --bg-soft:     #070b18;
@@ -278,6 +345,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Dispersion — black particles on white. */
 [data-theme="dispersion"] {
+    --board-scrim: 255, 255, 255;
+    --board-bg:    #ffffff;
+    --board-ink:   #000000;
+    --board-edge:  #e2e2e2;
     --card-veil:   rgba(255, 255, 255, 0.62);
     --bg:          #ffffff;
     --bg-soft:     #ffffff;
