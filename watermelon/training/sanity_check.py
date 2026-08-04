@@ -112,10 +112,20 @@ else:
     # drifts far from zero, either a terminal state is being given a non-zero
     # potential or phi is not being reset between episodes, and the shaping has
     # quietly become an ordinary bonus with all the hazards that carries.
-    shaping = mean_ret - merge_upper
+    # Subtract EVERY non-shaping term before calling the remainder "shaping".
+    # This used to be `mean_ret - merge_upper`, which was correct only while
+    # merging was the sole source of reward. The env now also pays
+    # REWARD_SURVIVE per drop and REWARD_LOSS on death, so that subtraction
+    # left survival + death in the residual and reported a real shaping total
+    # of 0.00 as +3.86 — a failure that was entirely the check's arithmetic.
+    survive_total = mean_drops * WE.REWARD_SURVIVE
+    death_total = WE.REWARD_LOSS          # every heuristic game ends in a loss
+    shaping = mean_ret - merge_upper - survive_total - death_total
     check("shaping telescopes to about zero over an episode",
           abs(shaping) < max(1.0, merge_upper * 0.08),
-          f"shaping total {shaping:+.2f} against merge {merge_upper:+.2f}")
+          f"shaping total {shaping:+.2f} (return {mean_ret:+.2f} less merge "
+          f"{merge_upper:+.2f}, survival {survive_total:+.2f}, death "
+          f"{death_total:+.2f})")
 
     # An empty well is the reference point and must score exactly 0, or every
     # episode starts by paying or collecting a constant.

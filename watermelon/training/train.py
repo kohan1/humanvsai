@@ -53,7 +53,13 @@ TOTAL_TIMESTEPS = int(os.environ.get("TOTAL_TIMESTEPS", 4_000_000))  # one "step
 # under 1% overhead, and it is the only thing standing between a mid-run peak
 # and losing it.
 EVAL_FREQ = int(os.environ.get("EVAL_FREQ", 250_000))
-EVAL_EPISODES = int(os.environ.get("EVAL_EPISODES", 15))
+# 40, not 15. Measured across 316 evaluations of the last run, the 15-episode
+# score ranged 751 to 1136 with a standard deviation of 68 — so the callback
+# was ranking models on differences far smaller than its own noise, and twice
+# saved a "new best" that was actually WORSE than the model it started from
+# (1015.80 and 996.78 over 60 seeds, against 1042.38). Selection is worthless
+# until the measurement is tighter than the effect.
+EVAL_EPISODES = int(os.environ.get("EVAL_EPISODES", 40))
 
 # Entropy bonus, split by how good the starting policy is.
 #
@@ -89,10 +95,18 @@ LR_RESUME = float(os.environ.get("LR_RESUME", 4e-5))
 # anything, because the best checkpoint along the way is kept. Without that
 # safety net these numbers would be reckless; with it they are a cheap
 # experiment.
+# The discount, and the single most important number for "survive a long time".
+#
+# gamma=0.99 gives an effective horizon of about 1/(1-gamma) = 100 drops. The
+# old policy died at 113. So it could not value surviving past roughly the
+# point it already died — the objective was invisible beyond its own lifetime.
+# 0.997 moves the horizon to ~330 drops.
+GAMMA = float(os.environ.get("GAMMA", 0.997))
+
 TARGET_KL = float(os.environ.get("TARGET_KL", 0.05))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 2048))   # bigger batch, GPU-friendly
 
-PRETRAINED_PATH = "watermelon_pretrained.zip"
+PRETRAINED_PATH = os.environ.get("PRETRAINED_PATH", "watermelon_pretrained.zip")
 RESUME_PATH = os.environ.get("RESUME_PATH", "watermelon_final.zip")
 
 # Overridable, because the default OVERWRITES the model being resumed from.
@@ -177,9 +191,18 @@ class BestScoreCallback(BaseCallback):
         # worse than the model it began from — and call it "best".
         self._next_eval = 0
 
-    def _evaluate(self) -> float:
+    def _evaluate(self):
+        """Returns (drops survived, score), both averaged over the fixed seeds.
+
+        SELECTION IS ON DROPS, NOT SCORE. The objective changed: the env now
+        pays per drop survived rather than per point merged, so ranking
+        checkpoints by score would optimise one thing and select for another.
+        Score is still measured and logged, because it is what the site
+        displays and what install_model.sh gates on.
+        """
         env = WatermelonEnv()
-        total = 0
+        drops = 0
+        score = 0
         for ep in range(self.n_episodes):
             obs, _ = env.reset(seed=ep)
             done, info = False, {"score": 0}
@@ -187,26 +210,30 @@ class BestScoreCallback(BaseCallback):
                 action, _ = self.model.predict(obs, deterministic=True)
                 obs, _, terminated, truncated, info = env.step(int(action))
                 done = terminated or truncated
-            total += info["score"]
-        return total / self.n_episodes
+            drops += env.drops
+            score += info["score"]
+        return drops / self.n_episodes, score / self.n_episodes
 
     def _on_step(self) -> bool:
         if self.num_timesteps < self._next_eval:
             return True
         self._next_eval = self.num_timesteps + self.eval_freq
 
-        score = self._evaluate()
+        drops, score = self._evaluate()
         self.logger.record("eval/score", score)
+        self.logger.record("eval/drops", drops)
 
-        if score > self.best_score:
-            self.best_score = score
+        if drops > self.best_score:
+            self.best_score = drops
             self.model.save(self.save_path)
             if self.verbose:
-                print(f"\n[best] new best {score:.2f} at {self.num_timesteps} "
-                      f"steps -> {self.save_path}", flush=True)
+                print(f"\n[best] new best {drops:.1f} drops (score {score:.0f}) "
+                      f"at {self.num_timesteps} steps -> {self.save_path}",
+                      flush=True)
         elif self.verbose:
-            print(f"\n[best] {score:.2f} at {self.num_timesteps} steps "
-                  f"(best is still {self.best_score:.2f})", flush=True)
+            print(f"\n[best] {drops:.1f} drops (score {score:.0f}) at "
+                  f"{self.num_timesteps} steps "
+                  f"(best is still {self.best_score:.1f} drops)", flush=True)
         return True
 
 
@@ -240,7 +267,7 @@ def main():
             batch_size=1024,
             n_epochs=10,
             learning_rate=linear_schedule(LR_START, LR_END),
-            gamma=0.99,
+            gamma=GAMMA,
             gae_lambda=0.95,
             clip_range=0.2,
             ent_coef=ENT_COEF_FRESH,

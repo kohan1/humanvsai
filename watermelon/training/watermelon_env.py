@@ -76,7 +76,16 @@ DROP_Y = 100          # cloud.y (50) + 50, as in the browser
 GRAVITY = 20 * 60.0   # p5play applies gravity per-frame at 60fps; pymunk is per-second
 
 # ── Env configuration ────────────────────────────────────────────────────────
-N_DROP_COLUMNS = 24
+# 48, not 24. The board is 448px wide, so 24 columns step 18.7px while the
+# smallest fruit is 30px across — the action grid was coarser than the thing it
+# had to line up, and pairing small fruit is precisely what the old policy
+# failed at (43 tier-0 and 39 tier-1 fruit still on the board when it died).
+# 48 columns give 9.3px steps, comfortably under half a small fruit.
+#
+# NOTE: this changes the policy's output width, so a model trained here is NOT
+# interchangeable with the shipped 24-action one, and watermelon/game.js must
+# be updated to match before such a model is installed.
+N_DROP_COLUMNS = int(os.environ.get("N_DROP_COLUMNS", 48))
 GRID_W = 22
 GRID_H = 30
 GRID_CHANNELS = 2
@@ -84,7 +93,11 @@ N_SCALARS = 12
 SPAWN_TIERS = 5        # spawn pool only ever yields tiers 0-4
 
 MAX_FRUIT_NORM = 60.0  # normalising constant for the fruit-count scalar
-MAX_DROPS = 300        # episode cap, so a very good policy still terminates
+# Raised from 300. The point of this run is long games, and a cap of 300 would
+# become the ceiling the moment the agent got good — it currently dies at ~113,
+# so 300 was never reached and never mattered. It has to sit well above the
+# target lifetime or it silently becomes the target.
+MAX_DROPS = int(os.environ.get("MAX_DROPS", 3000))
 
 # Settle detection: after a drop, run physics until everything is nearly still.
 PHYSICS_DT = 1.0 / 60.0
@@ -113,8 +126,25 @@ SETTLE_QUIET_STEPS = 6         # consecutive quiet frames required
 # The previous reward gave none of this. Its only structural term fired once
 # the stack was ALREADY over the loss line, which is far too late to steer
 # anything — by then the game is close to over.
-REWARD_MERGE_SCALE = 0.1       # POINTS[t] * this — the real objective
-REWARD_LOSS = -1.0
+# SURVIVAL IS THE OBJECTIVE NOW, NOT SCORE.
+#
+# The old reward was points x 0.1, so the agent maximised score. Measured over
+# 12 games, the shipped 1032-point policy died after 113 drops with 163 of the
+# ~222 fruit still at tiers 0-4 — it littered the board with small fruit it
+# never paired up, because nothing in the reward cared. Score-maximising and
+# surviving are not the same objective.
+#
+# This is NOT the reward-shaping change that failed before. Potential-based
+# shaping provably cannot change which policy is optimal, which is exactly why
+# it topped out at 1014 against 1032. Changing what is being rewarded does
+# change the optimum.
+#
+# Scale: at 113 drops the old return was ~+103. Here it is 113*0.1 + ~1030*0.01
+# = ~21, and at 300 drops ~55 — the same order, so the critic does not have to
+# relearn a wildly different range.
+REWARD_SURVIVE = float(os.environ.get("REWARD_SURVIVE", 0.1))   # per drop lived
+REWARD_MERGE_SCALE = float(os.environ.get("REWARD_MERGE_SCALE", 0.01))
+REWARD_LOSS = float(os.environ.get("REWARD_LOSS", -5.0))
 
 # Weights inside the potential. Kept small on purpose: across a ~100-drop game
 # the shaping contributes roughly a tenth of what merging does, so it guides
@@ -209,7 +239,10 @@ class WatermelonEnv(gym.Env):
         gained = self._settle()
         self.score += gained
 
-        reward = gained * REWARD_MERGE_SCALE
+        # One drop survived is worth a fixed amount; merging is kept as a
+        # smaller term because it is the MECHANISM of survival and gives the
+        # critic a denser signal than "you are still alive" alone.
+        reward = REWARD_SURVIVE + gained * REWARD_MERGE_SCALE
 
         self.held_tier = self.next_tier
         self.next_tier = self._weighted_tier()
@@ -259,7 +292,18 @@ class WatermelonEnv(gym.Env):
             a, b = arbiter.shapes
             ba, bb = a.body, b.body
             ta, tb = self.fruits.get(ba), self.fruits.get(bb)
-            if ta is None or tb is None or ta != tb or ta >= MAX_TIER:
+            # Two MAX_TIER fruit ARE allowed to pair now. _resolve_merges
+            # removes both and declines to spawn a replacement (its own
+            # `if tier < MAX_TIER` guard), so the pair simply vanishes — the
+            # rule the original game uses.
+            #
+            # Without this the top tier is permanent dead area, and the game is
+            # finite by construction: every drop adds area, the only
+            # area-reducing move is a high-tier merge, and that dead-ends at
+            # tier 10. One tier-10 fruit is 290px across in a 448x484 playable
+            # box — 60% of the usable height — so two cannot coexist. No amount
+            # of training can survive indefinitely while that is true.
+            if ta is None or tb is None or ta != tb:
                 return
             # Defer: mutating the space inside a callback is not allowed.
             self._pending_merges.append((ba, bb, ta))
