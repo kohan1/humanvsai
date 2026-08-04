@@ -80,8 +80,12 @@ function initReveal(cvs, opts) {
     window.addEventListener('touchmove', onTouch, { passive: true });
 
     function resize() {
-        W = cvs.width = window.innerWidth;
-        H = cvs.height = window.innerHeight;
+        // The canvas's OWN box, not window.innerWidth. innerWidth includes the
+        // scrollbar but the fixed, inset:0 canvas does not span it — measured
+        // 1280 against a 1265px box on inside.html — so sizing the bitmap from
+        // innerWidth made the browser rescale the whole background by 0.988.
+        W = cvs.width = cvs.clientWidth || window.innerWidth;
+        H = cvs.height = cvs.clientHeight || window.innerHeight;
     }
     window.addEventListener('resize', resize);
     resize();
@@ -189,8 +193,10 @@ function initLattice(cvs, opts) {
     window.addEventListener('touchmove', onTouch, { passive: true });
 
     function resize() {
-        W = cvs.width  = window.innerWidth;
-        H = cvs.height = window.innerHeight;
+        // See the note in the other resize(): the bitmap must match the canvas
+        // box, or the background is rescaled by the scrollbar's width.
+        W = cvs.width  = cvs.clientWidth || window.innerWidth;
+        H = cvs.height = cvs.clientHeight || window.innerHeight;
         build();
     }
 

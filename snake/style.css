@@ -177,3 +177,27 @@ main div.controls p {
     background: rgba(0, 0, 0, 0.7);
 }
 .ai-status[hidden] { display: none !important; }
+
+/* ── Narrow screens ─────────────────────────────────────────────────────────
+   Without this the two 480px boards plus a 48px gap need ~1010px, and #arena
+   is a non-wrapping flex row that stays centred and overflows BOTH edges.
+   Measured at a 741px viewport: the human board ran from x=-366 to x=114, so
+   the player's own board was mostly off-screen — and because the overflow is
+   symmetric there is no horizontal scroll to reach it.
+
+   Stack below 1040px, and scale the canvases down below 560px so a phone gets
+   two usable boards rather than one clipped one. */
+@media (max-width: 1040px) {
+    #arena { flex-direction: column; align-items: center; gap: 18px; }
+    #vs { margin-top: 0; font-size: 1.5rem; }
+}
+
+@media (max-width: 560px) {
+    body { padding-left: 0.6rem; padding-right: 0.6rem; }
+    /* The 480px board size is set on `main` AND on `main canvas`; both have to
+       give way or the fixed width wins and the board overflows again. The
+       canvas keeps its square aspect so the grid stays undistorted. */
+    main { width: min(88vw, 480px); height: auto; aspect-ratio: 1 / 1; }
+    main canvas { width: 100%; height: 100%; }
+    .board-wrap { width: 100%; }
+}

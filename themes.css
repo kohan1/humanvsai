@@ -19,7 +19,12 @@
     --panel-hi:    #111;
     --fg:          #ffffff;
     --fg-muted:    #aaaaaa;
-    --dim:         #6a6a6a;
+    /* #7d7d7d, not the original #6a6a6a. --dim carries most of the site's
+       small print, and at #6a6a6a it measured 3.72:1 against this theme's
+       #080808 page — and worse, 2.26:1 where that print used --dimmer. Some of
+       it sits on --bg-soft (#0a0a0a) rather than --bg, so the value has to
+       clear 4.5:1 against the lighter of the two: this gives 4.87 and 4.82. */
+    --dim:         #7d7d7d;
     --dimmer:      #4a4a4a;
     --faint:       rgba(255, 255, 255, 0.1);
     --line:        #1e1e1e;
@@ -58,7 +63,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .block-note, .how-to-read { color: var(--dim); }
 .how-to-read b { color: var(--fg-muted); }
 .chart-key { color: var(--dim); }
-.omitted { color: var(--dimmer); }
+.omitted { color: var(--dim); }
 .foot { color: var(--faint); }
 
 /* index */
@@ -72,13 +77,13 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .card { background: var(--bg); color: var(--fg-muted); }
 .card:hover { background: var(--panel-hi); color: var(--fg); }
 .card:hover::after { border-color: var(--accent); }
-.card-num, .card-tag, .card-arrow { color: var(--dimmer); }
+.card-num, .card-tag, .card-arrow { color: var(--dim); }
 .card:hover .card-arrow { color: var(--fg-muted); }
 
 .settings-btn { color: var(--dim); }
 .settings-btn:hover, .settings-btn[aria-expanded="true"] { color: var(--fg); }
 .settings-panel { background: var(--panel); border-color: var(--line); }
-.settings-title { color: var(--dimmer); }
+.settings-title { color: var(--dim); }
 .settings-blurb, .settings-foot { color: var(--dim); }
 .settings-opt { background: var(--bg); border-color: var(--line); color: var(--fg-muted); }
 .settings-opt:hover { background: var(--panel-hi); color: var(--fg); border-color: var(--dimmer); }
@@ -102,27 +107,27 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .tip .tip-row b { color: var(--fg-muted); }
 .leg { color: var(--dim); }
 .leg:hover { color: var(--fg); }
-.leg-score { color: var(--dimmer); }
+.leg-score { color: var(--dim); }
 .ledger { border-color: var(--line); }
 .row { color: var(--dim); border-top-color: var(--line-soft); }
 .row:hover { background: var(--panel-hi); color: var(--fg-muted); }
-.row.head, .row.head:hover { background: var(--bg-soft); color: var(--dimmer); }
+.row.head, .row.head:hover { background: var(--bg-soft); color: var(--dim); }
 .row-name { color: var(--fg-muted); }
 .row-note { background: var(--panel-hi); color: var(--dim); }
 .o-shipped { color: var(--accent); }
 .o-improved { color: var(--accent-2); }
 .o-rejected { color: var(--warn); }
-.o-unknown { color: var(--dimmer); }
+.o-unknown { color: var(--dim); }
 .arch-flow { background: var(--bg-soft); border-color: var(--line); }
 .arch-step { border-right-color: var(--line-soft); }
-.arch-kind { color: var(--dimmer); }
+.arch-kind { color: var(--dim); }
 .arch-shape { color: var(--accent); }
 .arch-params, .arch-summary { color: var(--dim); }
 .arch-summary b { color: var(--fg); font-family: var(--serif); }
 .heat-row { background: var(--line); border-color: var(--line); }
 .heat-cell { background: var(--bg-soft); }
 .heat-cell canvas { border-color: var(--line); }
-.heat-label { color: var(--dimmer); }
+.heat-label { color: var(--dim); }
 .heat-label b { color: var(--fg-muted); }
 .h2h-empty, .h2h-row { background: var(--bg-soft); border-color: var(--line); }
 .h2h-name { color: var(--fg-muted); }
@@ -131,6 +136,17 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .h2h-tally i { color: var(--warn); }
 .h2h-bar { background: var(--faint); }
 .h2h-bar span { background: var(--fg); }
+
+/* Cards sit ON TOP of the particle field, and an opaque background punches a
+   rectangle out of it. On Dispersion the card background is the same #ffffff
+   as the page, so the four cards read as blank gaps rather than as cards —
+   the motion simply stops where they are. A veil keeps the text legible while
+   letting the background through. The default Mesh theme is left alone: its
+   cards were designed against that background. */
+[data-theme="flow"] .card, [data-theme="filings"] .card, [data-theme="sand"] .card, [data-theme="constellation"] .card, [data-theme="dispersion"] .card {
+    background: var(--card-veil);
+    backdrop-filter: blur(2px);
+}
 
 /* Theme picker */
 .theme-row { display: flex; gap: 4px; margin-top: 0.35rem; }
@@ -160,13 +176,16 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Flow — warm off-white drifting over cold near-black. */
 [data-theme="flow"] {
+    --card-veil:   rgba(11, 12, 16, 0.55);
     --bg:          #0b0c10;
     --bg-soft:     #0b0c10;
     --panel:       #101116;
     --panel-hi:    #16171d;
     --fg:          #ece7d4;
     --fg-muted:    #c3bfb0;
-    --dim:         #7b786e;
+    /* #807d73 rather than #7b786e: the original measured 4.43:1 against this
+       theme's #0b0c10 page, just under the 4.5 needed for small text. */
+    --dim:         #807d73;
     --dimmer:      #55534c;
     --faint:       rgba(236, 231, 212, 0.14);
     --line:        #1c1d24;
@@ -184,6 +203,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Filings — ink on warm paper. */
 [data-theme="filings"] {
+    --card-veil:   rgba(244, 243, 239, 0.62);
     --bg:          #f4f3ef;
     --bg-soft:     #f4f3ef;
     --panel:       #ffffff;
@@ -208,6 +228,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Sand — white grains on true black. */
 [data-theme="sand"] {
+    --card-veil:   rgba(0, 0, 0, 0.50);
     --bg:          #000000;
     --bg-soft:     #000000;
     --panel:       #0a0a0a;
@@ -232,6 +253,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Constellation — cool blue-white on deep navy. */
 [data-theme="constellation"] {
+    --card-veil:   rgba(7, 11, 24, 0.55);
     --bg:          #070b18;
     --bg-soft:     #070b18;
     --panel:       #0b1124;
@@ -256,6 +278,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Dispersion — black particles on white. */
 [data-theme="dispersion"] {
+    --card-veil:   rgba(255, 255, 255, 0.62);
     --bg:          #ffffff;
     --bg-soft:     #ffffff;
     --panel:       #ffffff;
@@ -364,8 +387,12 @@ h2 { color: var(--fg); font-family: var(--serif); }
 [data-theme="dispersion"] .speed-controls button.active {
     background: var(--panel-hi); border-color: var(--accent); color: var(--fg);
 }
+/* --dim, not --faint. --faint is a hairline/border colour: on Filings it is
+   #cfcdc5, which against that theme's #f4f3ef page gives a contrast ratio of
+   1.43 — the "VS" was effectively invisible on both light themes (1.54 on
+   Dispersion). --dim keeps it quiet but legible. */
 [data-theme="flow"] #vs, [data-theme="filings"] #vs, [data-theme="sand"] #vs,
-[data-theme="constellation"] #vs, [data-theme="dispersion"] #vs { color: var(--faint); }
+[data-theme="constellation"] #vs, [data-theme="dispersion"] #vs { color: var(--dim); }
 [data-theme="flow"] .board-label, [data-theme="filings"] .board-label,
 [data-theme="sand"] .board-label, [data-theme="constellation"] .board-label,
 [data-theme="dispersion"] .board-label { color: var(--dim); }

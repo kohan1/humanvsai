@@ -979,12 +979,19 @@
                critic at all (the 1B-step checkpoint that produced its .onnx is
                gone), so the value readout is already hidden on every rung. */
             if (typeof CheckpointSwitcher !== "undefined") {
-                CheckpointSwitcher.mount({
+                var sw = CheckpointSwitcher.mount({
                     game: "tetris",
                     container: document.getElementById("board-ai"),
                     initial: session,
                     onSession: function (s) { aiPlayer.session = s; },
                 });
+                // Compact, as on Watermelon. The stacked variant is 89px tall
+                // and sits under the speed controls, which left the AI column
+                // hanging 187px below the human one; compact is 31px.
+                if (sw) {
+                    var el = document.querySelector("#board-ai .ckpt");
+                    if (el) el.classList.add("ckpt--compact");
+                }
             }
         } catch(e) {
             console.warn("AI model failed to load:", e.message);

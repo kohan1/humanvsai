@@ -71,8 +71,11 @@ function bgHarness(cvs, setup) {
     const api = setup(ctx, state);
 
     function resize() {
-        state.W = cvs.width = window.innerWidth;
-        state.H = cvs.height = window.innerHeight;
+        // The canvas box, not innerWidth — innerWidth includes the scrollbar
+        // while this fixed inset:0 canvas does not, and the mismatch made the
+        // browser rescale every background by the scrollbar's width.
+        state.W = cvs.width = cvs.clientWidth || window.innerWidth;
+        state.H = cvs.height = cvs.clientHeight || window.innerHeight;
         if (api.resize) api.resize();
     }
     window.addEventListener('resize', resize);

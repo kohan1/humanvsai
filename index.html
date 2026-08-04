@@ -13,7 +13,12 @@
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             overflow: hidden;
         }
-        #mesh { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+        /* pointer-events: none — the renderers track the cursor on window, so the
+           canvas never needs to receive events itself, and a fullscreen fixed
+           element that does is one stacking-order mistake away from swallowing
+           every click on the page. */
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0;
+                pointer-events: none; }
         .stage {
             position: fixed; inset: 0;
             display: flex; flex-direction: column;
