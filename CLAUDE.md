@@ -515,6 +515,24 @@ policy, and check the settle thresholds first** — they decide when a drop is
 
 **Observation / training**
 
+0. **Watermelon trained under a different merge rule than it plays under.**
+   `watermelon_env.py` blocked a top-tier merge outright (`ta >= MAX_TIER:
+   return`), leaving both fruit on the board permanently. `game.js` removes
+   BOTH and only then skips creating the replacement (`a.remove(); b.remove();
+   if (tier === MAX_TIER) return;`) — so in the browser two watermelons
+   annihilate and free the space.
+
+   The AI therefore learned in a world where the top tier was permanent dead
+   area — one is 290px across in a 448x484 box, so two cannot coexist — and
+   then played a browser where it clears. Found on 2026-08-05 while looking for
+   ways to make endless play possible; it had been there the whole time, and
+   the env's own docstring asserts the opposite ("same board, same fruit sizes,
+   same merge rule").
+
+   Fixed in the ENV, not the browser: the browser was right. **Any claim that
+   the two sides agree should be checked against the code, not the comment** —
+   this one was documented as true for months while being false.
+
 1. **JS encoder drifted from the Python env** — Tetris `buildObs()` was still
    the old 210-float single-lookahead encoder while the model expected 238
    (5-piece lookahead). `238 − 210 = 28 = 35 − 7`, which confirmed it.
