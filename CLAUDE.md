@@ -11,6 +11,46 @@ here were found and fixed once already. Don't reintroduce them.
 > *why* over *what*: the code already says what it does. This file is the
 > handoff; if it's only in the chat, it's lost.
 
+## After every training run: rebuild the Inside page
+
+`inside.html` is the project's actual deliverable — it is the write-up, and its
+whole claim is that it shows *every* run, including the failures. A run that is
+not in it is a hole in that claim, and the page silently goes stale because
+nothing about training touches it.
+
+So this is not optional and not a follow-up. **Whenever a run finishes — or is
+stopped, or is abandoned — do all four of these before moving on:**
+
+1. **Archive the log.** `start_training.ps1` always writes
+   `remote_training.log`, whatever the run is. Copy it to
+   `<game>/training/logs/train_<name>.log`. The builder deliberately skips
+   `remote_training.log` itself, because once a run is archived the two are the
+   same curve and the page listed it twice.
+2. **Add a `RUN_NOTES` entry** in `tools/build_training_data.py`, keyed
+   `"<game>/train_<name>.log"`. Keyed by game AND filename: both Snake and
+   Watermelon have had a `train_100m.log`, and keying on the filename alone
+   attached Snake's score to Watermelon's run.
+3. **Record what actually happened**, including `outcome="rejected"` and why.
+   Only put a number in `evalScore` that was really measured with
+   `evaluate.py` — a run with no entry is emitted with its real curve and no
+   outcome label, which is the honest default. Never guess one.
+4. **Rebuild and deploy:**
+
+   ```bash
+   python tools/build_training_data.py
+   bash tools/deploy_pages.sh
+   ```
+
+An in-progress run can go on the page too — snapshot the log to `logs/` the
+same way and mark it `outcome="unknown"`. Re-snapshot when it finishes.
+
+If the run produced a model worth shipping, `tools/install_model.sh` is a
+separate step with its own regression gate. Rebuilding the page is not
+optional either way: a rejected run is exactly the kind the page exists to
+show.
+
+---
+
 ## Keep the best model, not the last one
 
 `train.py` used to save only the FINAL model. A run that peaked mid-way and
@@ -944,4 +984,11 @@ python embed_assets.py                    # → image_data.js
 python tools/build_checkpoints.py                  # all three games
 python tools/build_checkpoints.py snake --episodes 10   # one game, rougher
 python tools/probe_checkpoints.py         # which archived .zip files still load
+
+# After ANY training run — see "After every training run" at the top of this
+# file. The Inside page does not update itself.
+cp <game>/training/remote_training.log <game>/training/logs/train_<name>.log
+#   ... then add a RUN_NOTES entry in tools/build_training_data.py ...
+python tools/build_training_data.py       # -> inside/data.js
+bash tools/deploy_pages.sh
 ```

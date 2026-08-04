@@ -125,6 +125,24 @@ RUN_NOTES = {
              "never recovered. Keep the best for shipping; resume from the "
              "run-end model.",
     ),
+    "watermelon/train_survival.log": dict(
+        game="watermelon", label="survival objective · in progress",
+        outcome="unknown",
+        note="The first run to optimise SURVIVING rather than SCORING. Measured "
+             "over 12 games, the shipped 1032-point model died after 113 drops "
+             "with 163 of the ~222 fruit still at tiers 0-4 — it littered the "
+             "board with small fruit it never paired up, because the reward "
+             "only counted points. Four things changed together: reward is now "
+             "0.1 per drop lived rather than 0.1 per merge point; two top-tier "
+             "fruit finally merge and VANISH, without which endless play is "
+             "impossible by construction (one is 60% of the board's usable "
+             "height and two cannot coexist); gamma 0.99 -> 0.997, because at "
+             "0.99 the horizon is ~100 drops and the old policy died at 113, so "
+             "surviving longer than it already did was beyond what it could "
+             "value; and 24 -> 48 drop columns, since 24 stepped 18.7px against "
+             "a 30px smallest fruit. Trained from scratch — a 48-action policy "
+             "cannot resume a 24-action one.",
+    ),
     "watermelon/train_100m_v2.log": dict(
         game="watermelon", label="100M second attempt — stopped at 79M",
         evalScore=996.78, outcome="rejected",
