@@ -102,6 +102,20 @@ expected = {"snake": 16 * 16 * 5 + 14, "watermelon": 22 * 30 * 2 + 12}[game]
 actual = shp(inp)[1]
 print(f"  encoder width      : js {expected} vs model {actual}")
 assert expected == actual, "JS encoder and model input have drifted apart"
+
+# And the OUTPUT width against the number of actions game.js offers. The input
+# check above would happily pass a Watermelon model trained on 48 drop columns
+# while the page still maps 24 — the observation is unchanged, so nothing
+# complains, and the model's logits are silently reinterpreted as different
+# placements. Keep these in step with the games' own tables; they are the same
+# constants build_checkpoints.py checks.
+expected_actions = {"snake": 3, "watermelon": 24, "tetris": 40}[game]
+actual_actions = shp(out)[1]
+print(f"  action count       : js {expected_actions} vs model {actual_actions}")
+assert expected_actions == actual_actions, (
+    f"game.js offers {expected_actions} actions but this model outputs "
+    f"{actual_actions}. Update <game>/game.js in the SAME change that installs "
+    f"this model, then update the table in install_model.sh.")
 print("  all checks passed")
 PYEOF
 
