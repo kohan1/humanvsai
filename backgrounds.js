@@ -401,6 +401,12 @@ function initDispersion(cvs, opts) {
         }
 
         function sampleTargets() {
+            /* Deliberately LARGER than the page's own heading. Two sizes were
+               tried and both failed: at the heading's exact size the particles
+               land directly under the solid title and are completely hidden by
+               it, and with no anchor at all they were drawn behind the card
+               grid. Oversized and anchored to the heading, they read as a
+               ghosted wordmark the title sits inside. */
             const off = document.createElement('canvas');
             const w = off.width = Math.min(1100, st.W);
             const h = off.height = 260;
@@ -414,12 +420,37 @@ function initDispersion(cvs, opts) {
 
             const data = g.getImageData(0, 0, w, h).data;
             const step = Math.max(2, Math.round(4 / Math.max(0.5, INTENSITY)));
+
+            /* Trace the heading WHERE THE HEADING ACTUALLY IS, rather than at
+               the middle of the viewport.
+               On select.html the card grid occupies the vertical centre, so a
+               centred mask drew the whole effect behind the cards — the one
+               place on the page guaranteed to cover it. Anchoring to the
+               heading's own box puts the particles around the title, which is
+               both visible and what the effect is tracing in the first place.
+               Falls back to the viewport centre when there is no heading. */
+            const el = document.querySelector('.title, .header h1, h1');
+            const box = el && el.getBoundingClientRect();
+
+            /* Only trace the heading when the traced copy is much BIGGER than
+               the real one. index.html sets its title at ~115px, so a 150px
+               trace landed almost exactly on top of it and read as a
+               misregistered print rather than an effect. Returning nothing
+               here drops through to the drift field below — 500 particles
+               across the whole page, which is what the other themes do
+               anyway. */
+            const headSize = el ? parseFloat(getComputedStyle(el).fontSize) || 0 : 0;
+            if (headSize > size * 0.6) return [];
+
+            const cx = box && box.width ? box.left + box.width / 2 : st.W / 2;
+            const cy = box && box.height ? box.top + box.height / 2 : st.H / 2;
+
             const pts = [];
             for (let y = 0; y < h; y += step) {
                 for (let x = 0; x < w; x += step) {
                     if (data[(y * w + x) * 4 + 3] > 128) {
-                        pts.push({ x: x + (st.W - w) / 2,
-                                   y: y + (st.H - h) / 2 });
+                        pts.push({ x: x + cx - w / 2,
+                                   y: y + cy - h / 2 });
                     }
                 }
             }
