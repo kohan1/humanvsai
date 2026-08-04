@@ -112,12 +112,16 @@ function initFlow(cvs, opts) {
     const SCALE = 0.0016;      // noise zoom — smaller is smoother
     const SPEED = 34;
     const SWIRL = 240;         // how far the cursor bends the field
-    const FADE = 0.055;        // trail persistence
+    /* Trail persistence. See the note in draw(): this is an ERASE strength, not
+       a blend, so it converges to nothing instead of stalling. 0.05 at 60fps
+       leaves a trail visible for roughly two seconds. */
+    const FADE = 0.05;
 
     return bgHarness(cvs, (ctx, st) => {
         const noise = makeNoise(20260729);
         let parts = [];
         let t = 0;
+        let sweep = 0;
 
         function seed(n) {
             parts = Array.from({ length: n }, () => ({
@@ -137,10 +141,35 @@ function initFlow(cvs, opts) {
             draw() {
                 t += 0.0016;
 
-                // Fade toward the theme background rather than clearing.
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.fillStyle = 'rgba(' + themeBgRgb() + ',' + FADE + ')';
+                /* ERASE the old frame instead of painting the background over
+                   it at low alpha.
+                   Blending toward the background looks equivalent but does not
+                   converge: colour is 8-bit, so once a trail is within about
+                   18 levels of the background the per-frame change rounds to
+                   zero and the trail stops fading. The residue never clears,
+                   and because the particles keep moving it accumulates until
+                   the whole page is a haze — which is exactly what was
+                   happening.
+                   destination-out multiplies the existing ALPHA by (1 - FADE)
+                   instead, and that does reach zero, so trails genuinely
+                   disappear. The canvas is transparent, so the page's own
+                   background shows through rather than a painted copy of it. */
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.fillStyle = 'rgba(0, 0, 0, ' + FADE + ')';
                 ctx.fillRect(0, 0, st.W, st.H);
+
+                /* A multiply still stalls at the bottom of the 8-bit range:
+                   alpha 9 * 0.95 = 8.55, which rounds back to 9 and sticks, so
+                   every pixel the particles ever crossed kept a permanent
+                   veil — measured mean alpha 11 with a floor of 9 everywhere.
+                   A harder erase every 8th frame drags that floor down to ~2
+                   (under 1% — invisible) while costing live trails only a few
+                   percent of their length. */
+                if ((sweep = (sweep + 1) % 8) === 0) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+                    ctx.fillRect(0, 0, st.W, st.H);
+                }
+                ctx.globalCompositeOperation = 'source-over';
 
                 const rgb = particleRgb();
                 ctx.strokeStyle = 'rgba(' + rgb + ',' + (0.5 * INTENSITY).toFixed(3) + ')';
