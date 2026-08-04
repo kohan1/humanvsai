@@ -126,22 +126,26 @@ RUN_NOTES = {
              "run-end model.",
     ),
     "watermelon/train_survival.log": dict(
-        game="watermelon", label="survival objective · in progress",
-        outcome="unknown",
-        note="The first run to optimise SURVIVING rather than SCORING. Measured "
-             "over 12 games, the shipped 1032-point model died after 113 drops "
-             "with 163 of the ~222 fruit still at tiers 0-4 — it littered the "
-             "board with small fruit it never paired up, because the reward "
-             "only counted points. Four things changed together: reward is now "
-             "0.1 per drop lived rather than 0.1 per merge point; two top-tier "
-             "fruit finally merge and VANISH, without which endless play is "
-             "impossible by construction (one is 60% of the board's usable "
-             "height and two cannot coexist); gamma 0.99 -> 0.997, because at "
-             "0.99 the horizon is ~100 drops and the old policy died at 113, so "
-             "surviving longer than it already did was beyond what it could "
-             "value; and 24 -> 48 drop columns, since 24 stepped 18.7px against "
-             "a 30px smallest fruit. Trained from scratch — a 48-action policy "
-             "cannot resume a 24-action one.",
+        game="watermelon", label="survival objective · from scratch",
+        outcome="rejected",
+        checkpoint="watermelon/training/archive/models/watermelon_survival.72pt9drops_best.zip",
+        note="The first run to optimise SURVIVING rather than SCORING, and it "
+             "lost to the hand-written heuristic it was meant to beat. Measured "
+             "over 40 fixed seeds under identical rules: heuristic 85.6 drops, "
+             "this run's best checkpoint 72.9, its run-end model 66.2. It "
+             "peaked at 73.2 drops after 1M steps and then produced nothing in "
+             "the remaining 29M — 5 improvements in 120 evaluations across 12.2 "
+             "hours. The reason is almost certainly not the objective: this is "
+             "the ONLY Watermelon run ever trained from scratch. Changing the "
+             "action space from 24 to 48 columns made the existing "
+             "behaviourally-cloned checkpoint unloadable, and every previous "
+             "success on this game started from a clone of that same heuristic "
+             "— which is where the 85.6 comes from. PPO was asked to rediscover "
+             "from random what it is normally handed for free. The four changes "
+             "themselves (survival reward, top-tier sink, gamma 0.997, 48 "
+             "columns) are untested by this run rather than disproven by it: "
+             "the next attempt should re-run pretrain.py at 48 actions and fine-"
+             "tune from that clone.",
     ),
     "watermelon/train_100m_v2.log": dict(
         game="watermelon", label="100M second attempt — stopped at 79M",
