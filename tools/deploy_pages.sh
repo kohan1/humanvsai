@@ -54,9 +54,12 @@ echo "staging the site in $STAGE"
 
 # Entry pages, the shared mesh background, and the Inside page with its
 # generated training data.
-cp index.html select.html inside.html mesh.js backgrounds.js themes.css "$STAGE/"
-cp inspector.css inspector.js results.js settings.js "$STAGE/"
-cp checkpoints.css checkpoint_switcher.js checkpoints.js "$STAGE/"
+cp index.html select.html inside.html "$STAGE/"
+# Site-wide JS/CSS lives in shared/ and is referenced as shared/x.js from the
+# root pages and ../shared/x.js from the game pages, so the deployed tree has
+# to keep that directory rather than flattening it.
+mkdir -p "$STAGE/shared"
+cp shared/*.js shared/*.css "$STAGE/shared/"
 mkdir -p "$STAGE/inside"
 cp inside/data.js "$STAGE/inside/"
 
@@ -121,7 +124,7 @@ fi
 python - "$STAGE" <<'PYEOF' || exit 1
 import json, pathlib, sys
 stage = pathlib.Path(sys.argv[1])
-txt = (stage / "checkpoints.js").read_text(encoding="utf-8")
+txt = (stage / "shared" / "checkpoints.js").read_text(encoding="utf-8")
 data = json.loads(txt[txt.index("{"):txt.rindex("}") + 1])
 missing, n = [], 0
 for game, spec in data.items():

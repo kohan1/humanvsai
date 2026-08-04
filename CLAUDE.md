@@ -225,25 +225,50 @@ local server. This one constraint causes most of the non-obvious bugs below.
 ```
 humanvsai/                     ← project root
 ├── CLAUDE.md                  ← this file
-├── index.html / select.html   ← landing + game picker
+├── index.html                 ← landing
+├── select.html                ← game picker
+├── inside.html                ← how the opponents were trained
+├── shared/                    ← every site-wide asset, used by ALL pages
+│   ├── themes.css             ← the six palettes + shared chrome
+│   ├── mesh.js / backgrounds.js   ← the cursor-reactive backgrounds
+│   ├── settings.js            ← difficulty, theme, persisted choices
+│   ├── inspector.js / .css    ← the "what it sees" panel
+│   ├── checkpoint_switcher.js / checkpoints.css   ← the model-version control
+│   ├── checkpoints.js         ← GENERATED ladder manifest (build_checkpoints.py)
+│   └── results.js             ← head-to-head record
+├── inside/                    ← GENERATED data for inside.html
+│   └── data.js                ← built by tools/build_training_data.py
 ├── tools/                     ← automation, not part of the site
 │   ├── start_training.ps1     ← launch a run detached (survives SSH logout)
-│   ├── remote_trigger.ps1     ← poll GitHub issues to start runs from anywhere
-│   └── chain_training.sh      ← run one game's pipeline after another finishes
+│   ├── deploy_pages.sh        ← build + publish to gh-pages
+│   ├── install_model.sh       ← evaluate, gate, export, embed, release
+│   ├── build_checkpoints.py   ← the switcher's ladders
+│   ├── build_training_data.py ← inside/data.js
+│   ├── check_training.sh      ← OK / STALLED / DEAD / FINISHED / IDLE
+│   └── probe_checkpoints.py   ← which archived .zip files still load
 ├── tetris/
 │   ├── game.html / game.js / style.css / assets/
-│   └── training/              ← tetris_env.py, train.py, export.py, embed_model.py,
-│                                tetris_ai.onnx, visualiser*
+│   ├── checkpoints/           ← switcher rungs, .onnx (gitignored)
+│   └── training/              ← tetris_env.py, train.py, export.py, backups/
 ├── snake/
 │   ├── game.html / game.js / style.css / images/
 │   ├── embed_model.py / model_data.js / snake_ai.onnx (gitignored)
+│   ├── checkpoints/           ← switcher rungs, .onnx (gitignored)
 │   └── training/              ← snake_env.py, heuristic.py, pretrain.py, train.py,
-│                                evaluate.py, export.py, requirements.txt
+│                                evaluate.py, export.py, archive/, logs/
 └── watermelon/
     ├── game.html / game.js / style.css
     ├── embed_assets.py / image_data.js (generated)
     ├── assets/                ← fruit + cloud PNGs
-    └── lib/                   ← p5.min.js, planck.min.js, physics.min.js
+    ├── lib/                   ← p5.min.js, planck.min.js, physics.min.js
+    ├── checkpoints/           ← switcher rungs, .onnx (gitignored)
+    └── training/              ← watermelon_env.py, train.py, export.py,
+                                 archive/models/, logs/
+
+PATHS ARE LOAD-BEARING. The root pages reference shared/x.js and the game pages
+reference ../shared/x.js, and deploy_pages.sh reproduces shared/ in the built
+site rather than flattening it. The three page filenames are public URLs and
+must not move.
 ```
 
 `.gitignore` should exclude: `models/`, `checkpoints/`, `tb_logs/`, `*.onnx`,
