@@ -147,6 +147,40 @@ RUN_NOTES = {
              "the next attempt should re-run pretrain.py at 48 actions and fine-"
              "tune from that clone.",
     ),
+    "watermelon/train_survival_bc.log": dict(
+        game="watermelon", label="survival · cloned start (stopped at 7M)",
+        outcome="rejected",
+        checkpoint="watermelon/training/archive/models/watermelon_survivalbc.94pt3drops_best.zip",
+        note="Same survival objective as the from-scratch attempt, but starting "
+             "from a behavioural clone of the heuristic instead of random. The "
+             "clone alone reached 84.8 drops — above where 30M steps from "
+             "scratch had finished — and PPO moved the running mean to 91.2 "
+             "within 5.5M. Stopped deliberately at 7M to restart with the merge "
+             "incentive corrected; kept because it is the run that showed "
+             "cloning was the missing piece.",
+    ),
+    "watermelon/train_survival_hint.log": dict(
+        game="watermelon", label="survival · cloned start · merge bonus",
+        evalScore=1034.00, outcome="rejected",
+        parent="watermelon/train_survival_bc.log",
+        checkpoint="watermelon/training/archive/models/watermelon_survivalhint.106pt8drops.zip",
+        note="The best Watermelon run yet by every internal measure, and it "
+             "still tied rather than beat the model already shipped. Over 40M "
+             "steps the mean rose 88.2 -> 102.8 drops and 773 -> 980 score, "
+             "from a clone starting at 85.7. Head to head over 60 identical "
+             "seeds: shipped 107.6 drops / 1042.4 score, this 106.8 / 1034.0 — "
+             "behind by under 1% on both, so the install guard refused it. "
+             "Added a flat per-merge bonus after noticing the reward punished "
+             "the very behaviour that was failing: at REWARD_MERGE_SCALE 0.01 a "
+             "tier-0 merge paid 0.01 against 0.10 for merely surviving a drop, "
+             "so clearing small fruit earned a tenth of doing nothing. What "
+             "this run really establishes is the ceiling: two completely "
+             "different objectives — maximise score, and maximise survival — "
+             "converge on ~107 drops and ~1035 points. When the objective "
+             "changes and the answer does not, the reward is not the "
+             "constraint. The 22x30 observation grid, whose cells are ~20px "
+             "against a 30px smallest fruit, is the next thing to change.",
+    ),
     "watermelon/train_100m_v2.log": dict(
         game="watermelon", label="100M second attempt — stopped at 79M",
         evalScore=996.78, outcome="rejected",
