@@ -53,7 +53,7 @@ def rollout(policy, seed):
         obs, r, term, trunc, info = env.step(a)
         total += r
         done = term or trunc
-    return info["score"], total, env.drops
+    return info["score"], total, env.drops, info.get("merges", 0)
 
 
 print("=" * 68)
@@ -90,6 +90,7 @@ else:
     mean_score = np.mean([g[0] for g in good])
     mean_ret = np.mean([g[1] for g in good])
     mean_drops = np.mean([g[2] for g in good])
+    mean_merges = np.mean([g[3] for g in good])
 
     print(f"       heuristic scores {mean_score:.0f} over {mean_drops:.0f} drops, "
           f"return {mean_ret:+.2f}")
@@ -119,13 +120,14 @@ else:
     # left survival + death in the residual and reported a real shaping total
     # of 0.00 as +3.86 — a failure that was entirely the check's arithmetic.
     survive_total = mean_drops * WE.REWARD_SURVIVE
+    flat_total = mean_merges * WE.REWARD_MERGE_FLAT
     death_total = WE.REWARD_LOSS          # every heuristic game ends in a loss
-    shaping = mean_ret - merge_upper - survive_total - death_total
+    shaping = mean_ret - merge_upper - survive_total - flat_total - death_total
     check("shaping telescopes to about zero over an episode",
           abs(shaping) < max(1.0, merge_upper * 0.08),
           f"shaping total {shaping:+.2f} (return {mean_ret:+.2f} less merge "
-          f"{merge_upper:+.2f}, survival {survive_total:+.2f}, death "
-          f"{death_total:+.2f})")
+          f"{merge_upper:+.2f}, survival {survive_total:+.2f}, flat merges "
+          f"{flat_total:+.2f}, death {death_total:+.2f})")
 
     # An empty well is the reference point and must score exactly 0, or every
     # episode starts by paying or collecting a constant.

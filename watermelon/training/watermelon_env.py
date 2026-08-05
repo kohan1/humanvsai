@@ -146,6 +146,21 @@ REWARD_SURVIVE = float(os.environ.get("REWARD_SURVIVE", 0.1))   # per drop lived
 REWARD_MERGE_SCALE = float(os.environ.get("REWARD_MERGE_SCALE", 0.01))
 REWARD_LOSS = float(os.environ.get("REWARD_LOSS", -5.0))
 
+# A FLAT bonus per merge, independent of tier — "put the fruit you have on the
+# same fruit", paid the same for two cherries as for two melons.
+#
+# The points-scaled term alone actively discouraged the behaviour that matters
+# most. At REWARD_MERGE_SCALE=0.01 a tier-0 merge is worth POINTS[0]*0.01 =
+# 0.01, against 0.1 for merely surviving a drop — so pairing the smallest fruit
+# earned a tenth of doing nothing useful. And small fruit are exactly what the
+# policy was failing to pair: 163 of the ~222 fruit on the board at death were
+# tiers 0-4.
+#
+# Flat, not scaled, because the scaled term already rewards big merges plenty;
+# what was missing was any reason to bother with little ones. Every merge in a
+# cascade counts, so setting up a chain pays for each link.
+REWARD_MERGE_FLAT = float(os.environ.get("REWARD_MERGE_FLAT", 0.05))
+
 # Weights inside the potential. Kept small on purpose: across a ~100-drop game
 # the shaping contributes roughly a tenth of what merging does, so it guides
 # without drowning out the score.
@@ -200,6 +215,7 @@ class WatermelonEnv(gym.Env):
 
         self._build_walls()
 
+        self.merges = 0           # merges this episode, for reward decomposition
         self.fruits = {}          # body -> tier
         self._pending_merges = []
         self._install_merge_handler()
@@ -236,13 +252,18 @@ class WatermelonEnv(gym.Env):
         self._spawn_fruit(x, DROP_Y, tier)
         self.drops += 1
 
-        gained = self._settle()
+        gained, merges = self._settle()
+        self.merges += merges
         self.score += gained
 
-        # One drop survived is worth a fixed amount; merging is kept as a
-        # smaller term because it is the MECHANISM of survival and gives the
-        # critic a denser signal than "you are still alive" alone.
-        reward = REWARD_SURVIVE + gained * REWARD_MERGE_SCALE
+        # Survival is the objective; merging is the mechanism. The FLAT term is
+        # what says "put the fruit you have on the same fruit" — it pays the
+        # same for a cherry pair as for a melon pair, so small fruit are worth
+        # clearing instead of being left to clog the board. The scaled term on
+        # top keeps big merges worth more than small ones.
+        reward = (REWARD_SURVIVE
+                  + merges * REWARD_MERGE_FLAT
+                  + gained * REWARD_MERGE_SCALE)
 
         self.held_tier = self.next_tier
         self.next_tier = self._weighted_tier()
@@ -267,7 +288,8 @@ class WatermelonEnv(gym.Env):
         if truncated:
             self.done = True
 
-        return self._get_obs(), reward, terminated, truncated, {"score": self.score}
+        return (self._get_obs(), reward, terminated, truncated,
+                {"score": self.score, "merges": self.merges})
 
     # ── Physics setup ────────────────────────────────────────────────────
     def _build_walls(self):
@@ -329,8 +351,9 @@ class WatermelonEnv(gym.Env):
         return body
 
     def _resolve_merges(self):
-        """Apply queued merges. Returns points gained."""
+        """Apply queued merges. Returns (points gained, number of merges)."""
         gained = 0
+        merges = 0
         seen = set()
         for ba, bb, tier in self._pending_merges:
             if ba in seen or bb in seen:
@@ -352,20 +375,24 @@ class WatermelonEnv(gym.Env):
                 del self.fruits[body]
 
             gained += POINTS[tier]
+            merges += 1
             if tier < MAX_TIER:
                 self._spawn_fruit(mid[0], mid[1], tier + 1)
 
         self._pending_merges.clear()
-        return gained
+        return gained, merges
 
     def _settle(self):
-        """Run physics until motion dies down. Returns points gained."""
+        """Run physics until motion dies down. Returns (points, merges)."""
         gained = 0
+        merges = 0
         quiet = 0
         for _ in range(SETTLE_MAX_STEPS):
             self.space.step(PHYSICS_DT)
             if self._pending_merges:
-                gained += self._resolve_merges()
+                g, m = self._resolve_merges()
+                gained += g
+                merges += m
                 quiet = 0
                 continue
             if self._max_speed() < SETTLE_VELOCITY:
@@ -375,8 +402,10 @@ class WatermelonEnv(gym.Env):
             else:
                 quiet = 0
         # A merge on the final frame can leave something still moving; drain it.
-        gained += self._resolve_merges()
-        return gained
+        g, m = self._resolve_merges()
+        gained += g
+        merges += m
+        return gained, merges
 
     def _max_speed(self):
         fastest = 0.0
