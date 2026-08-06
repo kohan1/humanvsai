@@ -80,6 +80,38 @@ a run that overshoots and regresses no longer costs anything.
 
 ---
 
+## BestScoreCallback's numbers are IN-SAMPLE — never compare them to a
+## 60-seed figure
+
+Raising `EVAL_EPISODES` to 40 fixed the noise problem and introduced a subtler
+one. The callback evaluates seeds 0-39 and saves whichever checkpoint scores
+best **on those exact seeds**. Across 150+ evaluations that is a search for the
+checkpoint most flattered by one seed subset, so its number is an in-sample
+maximum, not an estimate of general performance.
+
+Measured on the merge-map run, the same file:
+
+    callback (seeds 0-39)   107.8 drops   1045 score
+    60 fixed seeds          103.2 drops    979 score
+
+About four drops of optimism. This produced two false conclusions in one
+session: a "milestone" that had supposedly beaten the shipped model, and a
+"+3.1 standard error" advantage over the previous run that reversed entirely
+once both were measured on 60 seeds (104.6 vs 106.8).
+
+Rules that follow:
+
+- **Never compare a callback figure to a 60-seed figure.** They are different
+  estimators and the callback's is biased upward.
+- **Comparing two callback figures is also unsafe.** Both are in-sample and can
+  be overfitted to seeds 0-39 by different amounts, which is exactly what
+  happened here.
+- **Any claim about which model is better needs an independent evaluation** on
+  a seed set the callback never selected on. `install_model.sh` does this, and
+  it is the only reason none of these ever shipped.
+
+---
+
 ## BestScoreCallback's 15 episodes cannot rank Watermelon models
 
 Measured over 136 evaluations across 33.75M steps of the 100M run:

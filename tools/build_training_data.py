@@ -181,6 +181,29 @@ RUN_NOTES = {
              "constraint. The 22x30 observation grid, whose cells are ~20px "
              "against a 30px smallest fruit, is the next thing to change.",
     ),
+    "watermelon/train_mergemap.log": dict(
+        game="watermelon", label="4-channel merge map", evalScore=1002.40,
+        outcome="rejected",
+        parent="watermelon/train_survival_hint.log",
+        checkpoint="watermelon/training/archive/models/watermelon_mergemap.104pt6drops.zip",
+        note="The observation was rebuilt to answer 'where can I merge?' "
+             "directly: two extra grid channels marking every fruit matching "
+             "the HELD and NEXT tier, plus a fix to the tier channel, which "
+             "encoded a tier-0 fruit as 0.0 - identical to empty space. The "
+             "clone improved (100% of the teacher against 99%, imitation "
+             "accuracy 0.967 against 0.955), so the channels do carry real "
+             "information. The trained policy did not: 104.6 drops / 1002.4 "
+             "score over 60 seeds, against 106.8 / 1034.0 for the previous "
+             "2-channel run and 107.6 / 1042.4 for the model already shipped. "
+             "Midway this run looked 3.1 standard errors ahead, which was an "
+             "artefact of comparing two BestScoreCallback figures: the callback "
+             "selects on seeds 0-39 and its numbers are in-sample, running "
+             "about 4 drops optimistic - 107.8 by the callback measured 103.2 "
+             "over 60 seeds. Five attempts have now landed within a few percent "
+             "of 107 drops across two objectives, four reward designs and two "
+             "observations. The ceiling is not the reward and not this "
+             "observation.",
+    ),
     "watermelon/train_100m_v2.log": dict(
         game="watermelon", label="100M second attempt — stopped at 79M",
         evalScore=996.78, outcome="rejected",
