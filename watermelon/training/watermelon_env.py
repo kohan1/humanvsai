@@ -88,7 +88,23 @@ GRAVITY = 20 * 60.0   # p5play applies gravity per-frame at 60fps; pymunk is per
 N_DROP_COLUMNS = int(os.environ.get("N_DROP_COLUMNS", 48))
 GRID_W = 22
 GRID_H = 30
-GRID_CHANNELS = 2
+# 4 channels, not 2. The two added ones are the whole point of this revision:
+# they answer "where can I merge?" directly instead of making the CNN infer it.
+#
+#   0  occupancy
+#   1  (tier + 1) / (MAX_TIER + 1)   -- NOT tier / MAX_TIER, which encoded a
+#      tier-0 fruit as 0.0, exactly like empty space. The smallest fruit, the
+#      ones the policy demonstrably fails to pair, were the ones encoded most
+#      ambiguously; telling them from a gap required cross-referencing ch0.
+#   2  1.0 where the fruit matches the HELD tier  -- drop here and it merges
+#   3  1.0 where the fruit matches the NEXT tier  -- set up for the drop after
+#
+# Channels are almost free: the grid keeps its spatial dimensions, so the CNN's
+# flatten and its Linear(cnn_out, 512) are unchanged. Raising the RESOLUTION
+# instead would roughly double that layer to ~10.5M params and push the browser
+# download from 22.6 MB toward 42 MB, on a site that has already shipped a
+# "stuck on loading" bug from an oversized model.
+GRID_CHANNELS = 4
 N_SCALARS = 12
 SPAWN_TIERS = 5        # spawn pool only ever yields tiers 0-4
 
@@ -525,7 +541,11 @@ class WatermelonEnv(gym.Env):
                     px = (col + 0.5) * cell_w
                     if (px - cx) ** 2 + (py - cy) ** 2 <= r * r:
                         grid[row, col, 0] = 1.0
-                        grid[row, col, 1] = tier / MAX_TIER
+                        grid[row, col, 1] = (tier + 1) / (MAX_TIER + 1)
+                        if tier == self.held_tier:
+                            grid[row, col, 2] = 1.0
+                        if tier == self.next_tier:
+                            grid[row, col, 3] = 1.0
 
         held = np.zeros(SPAWN_TIERS, dtype=np.float32)
         held[min(self.held_tier, SPAWN_TIERS - 1)] = 1.0

@@ -683,10 +683,20 @@
            1 stack height as a fraction of the board
            1 fruit count / MAX_FRUIT_NORM
 
-       30*22*2 + 12 = 1332 floats -> 24 action logits, one per drop column. */
+       30*22*4 + 12 = 2652 floats -> 48 action logits, one per drop column.
 
-    const GRID_W = 22, GRID_H = 30, GRID_CHANNELS = 2, N_SCALARS = 12;
-    const N_DROP_COLUMNS = 24;
+       CHANNELS 2 AND 3 ARE THE MERGE HINT. They mark every cell holding a
+       fruit of the tier being held / coming next, so "where can I merge?" is
+       read straight off the grid instead of inferred. Channel 1 is
+       (tier+1)/(MAX_TIER+1), NOT tier/MAX_TIER — the old form encoded a tier-0
+       fruit as 0.0, indistinguishable from empty space in that channel.
+
+       MUST MATCH watermelon_env.py::_get_obs FIELD FOR FIELD. Encoder drift is
+       the most common bug on this project and it fails silently: onnxruntime
+       will happily run a mismatched tensor and return confident nonsense. */
+
+    const GRID_W = 22, GRID_H = 30, GRID_CHANNELS = 4, N_SCALARS = 12;
+    const N_DROP_COLUMNS = 48;
     const SPAWN_TIERS = 5;
     const MAX_FRUIT_NORM = 60;
     const OBS_SIZE = GRID_W * GRID_H * GRID_CHANNELS + N_SCALARS;
@@ -695,6 +705,9 @@
         const obs = new Float32Array(OBS_SIZE);
         const cellW = state.width / GRID_W;
         const cellH = state.height / GRID_H;
+        // Read before the grid loop: channels 2 and 3 compare against these.
+        const heldTier = state.holdingTier === null ? 0 : state.holdingTier;
+        const nextTier = state.nextTier;
 
         for (const f of state.fruit) {
             const r = f.diameter / 2;
@@ -713,14 +726,16 @@
                     if (dx * dx + dy * dy <= r * r) {
                         const base = (row * GRID_W + col) * GRID_CHANNELS;
                         obs[base] = 1;
-                        obs[base + 1] = f.tier / MAX_TIER;
+                        obs[base + 1] = (f.tier + 1) / (MAX_TIER + 1);
+                        if (f.tier === heldTier) obs[base + 2] = 1;
+                        if (f.tier === nextTier) obs[base + 3] = 1;
                     }
                 }
             }
         }
 
         let p = GRID_W * GRID_H * GRID_CHANNELS;
-        const held = state.holdingTier === null ? 0 : state.holdingTier;
+        const held = heldTier;
         obs[p + Math.min(held, SPAWN_TIERS - 1)] = 1;
         p += SPAWN_TIERS;
         obs[p + Math.min(state.nextTier, SPAWN_TIERS - 1)] = 1;
