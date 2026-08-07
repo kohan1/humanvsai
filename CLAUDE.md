@@ -11,6 +11,33 @@ here were found and fixed once already. Don't reintroduce them.
 > *why* over *what*: the code already says what it does. This file is the
 > handoff; if it's only in the chat, it's lost.
 
+## Never deploy twice in quick succession — it cancels itself
+
+Pushing to `gh-pages` starts a Pages deployment that takes about 90 seconds.
+Pushing again while one is in flight CANCELS it, and the failure is close to
+invisible:
+
+- `tools/deploy_pages.sh` prints "deployed to ..." and exits 0.
+- The `build` and `report-build-status` jobs both go green.
+- Only the `deploy` job fails, with `Error: Deployment cancelled.`
+- The site keeps serving the PREVIOUS build, so every page still works.
+- `gh api repos/<repo>/pages/builds/latest` says only "Page build failed",
+  with `duration: 0` and no further detail.
+
+On 2026-08-06 four deploys inside fifteen minutes produced four cancelled
+deployments. The branch content was verified correct the whole time — right
+files, right sizes, `.nojekyll` present — which made it look like a GitHub-side
+fault. It was not: it was self-inflicted, and the giveaway is that the
+Actions run shows build succeeding and only deploy failing after ~12s.
+
+`deploy_pages.sh` now blocks until the deployment reaches a terminal state and
+exits non-zero if it errored, so a second deploy cannot start while one is
+running. **If you ever need to check whether the live site is actually current,
+compare `inside/data.js`'s `generated` timestamp against the local file** —
+every page returning 200 proves nothing, because the old build still serves.
+
+---
+
 ## After every training run: rebuild the Inside page
 
 `inside.html` is the project's actual deliverable — it is the write-up, and its

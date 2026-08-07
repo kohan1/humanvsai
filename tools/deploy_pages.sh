@@ -191,3 +191,37 @@ git remote add origin "https://github.com/$REPO.git"
 git push -q --force origin gh-pages
 
 echo "deployed to https://kohan1.github.io/humanvsai/"
+
+# WAIT FOR THE PAGES DEPLOYMENT TO FINISH BEFORE RETURNING.
+#
+# Pushing to gh-pages starts a Pages deployment that takes ~90s. Pushing AGAIN
+# while one is in flight cancels it — the build and report-build-status jobs
+# still go green, and only the deploy job fails with "Deployment cancelled", so
+# the script looks like it succeeded while the site silently keeps serving the
+# previous build.
+#
+# That is exactly what happened on 2026-08-06: four deploys inside fifteen
+# minutes produced four cancelled deployments, and the site served day-old
+# content while every local check said the branch was correct. The API reports
+# only "Page build failed" with no detail, so it cost a long time to find.
+#
+# Blocking here makes the failure mode impossible: the next deploy cannot start
+# until this one is terminal.
+GH="/c/Program Files/GitHub CLI/gh.exe"
+if [ -x "$GH" ]; then
+    printf "waiting for the Pages deployment"
+    for _ in $(seq 1 40); do
+        sleep 15
+        status=$("$GH" api repos/"$REPO"/pages/builds/latest --jq .status 2>/dev/null || echo "")
+        case "$status" in
+            built)   echo " -> built"; break ;;
+            errored) echo " -> ERRORED"
+                     echo "the branch was pushed but Pages refused to publish it."
+                     echo "check: gh api repos/$REPO/pages/builds/latest"
+                     exit 1 ;;
+            *)       printf "." ;;
+        esac
+    done
+else
+    echo "(gh not found — cannot confirm the deployment; wait ~90s before deploying again)"
+fi
