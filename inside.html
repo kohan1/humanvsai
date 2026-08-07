@@ -1,0 +1,1793 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>inside — human vs ai</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; min-height: 100%;
+            background: #080808; color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        /* pointer-events: none — the renderers track the cursor on window, so the
+           canvas never needs to receive events itself, and a fullscreen fixed
+           element that does is one stacking-order mistake away from swallowing
+           every click on the page. */
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0;
+                pointer-events: none; }
+
+        .back {
+            position: fixed; top: 1.6rem; left: 1.8rem;
+            display: inline-flex; align-items: center; gap: 0.4em;
+            font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase;
+            color: #555; text-decoration: none; transition: color 0.15s; z-index: 100;
+        }
+        .back:hover { color: #bbb; }
+
+        .page {
+            position: relative; z-index: 10;
+            max-width: 1080px; margin: 0 auto;
+            padding: 6rem 2rem 5rem;
+        }
+
+        .eyebrow {
+            font-size: 0.58rem; letter-spacing: 0.24em; text-transform: uppercase;
+            color: #555; margin-bottom: 0.9rem;
+        }
+        h1 {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: clamp(1.8rem, 4vw, 2.8rem);
+            font-weight: 300; letter-spacing: -0.01em;
+        }
+        .lede {
+            margin-top: 1.7rem; max-width: 60ch;
+            font-size: 0.86rem; line-height: 1.75; color: #7a7a7a;
+        }
+
+        .header, .stats, .block { opacity: 0; transform: translateY(16px);
+            animation: up 0.9s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .header { animation-delay: 0.05s; }
+        .stats  { animation-delay: 0.18s; }
+        .block  { animation-delay: 0.28s; }
+        @keyframes up { to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) {
+            .header, .stats, .block { animation: none; opacity: 1; transform: none; }
+        }
+
+        /* ── Stat strip ─────────────────────────────────────────────────── */
+        .stats {
+            margin-top: 3rem;
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 1px; background: #1e1e1e; border: 1px solid #1e1e1e;
+        }
+        @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+        .stat { background: #080808; padding: 1.5rem 1.4rem; }
+        .stat-num {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.9rem; font-weight: 300; letter-spacing: -0.02em;
+        }
+        .stat-label {
+            margin-top: 0.5rem; font-size: 0.55rem; letter-spacing: 0.18em;
+            text-transform: uppercase; color: #555;
+        }
+
+        /* ── Blocks ─────────────────────────────────────────────────────── */
+        .block { margin-top: 4.5rem; }
+        .block-head { display: flex; align-items: baseline; justify-content: space-between;
+            flex-wrap: wrap; gap: 1rem; margin-bottom: 1.4rem; }
+        h2 {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.25rem; font-weight: 300; letter-spacing: -0.01em;
+        }
+        .block-note {
+            margin-top: 0.75rem;
+            font-size: 0.74rem; line-height: 1.7; color: #6a6a6a; max-width: 62ch;
+        }
+
+        /* ── Controls ───────────────────────────────────────────────────── */
+        .controls { display: flex; gap: 1.6rem; flex-wrap: wrap; }
+        .ctl-group { display: flex; gap: 1px; background: #1e1e1e; border: 1px solid #1e1e1e; }
+        .ctl {
+            background: #080808; border: 0; cursor: pointer;
+            font-family: inherit; font-size: 0.55rem; letter-spacing: 0.16em;
+            text-transform: uppercase; color: #555;
+            padding: 0.55rem 0.95rem; transition: color 0.15s, background 0.15s;
+        }
+        .ctl:hover { color: #bbb; background: #111; }
+        .ctl.on { color: #fff; background: #151515; }
+
+        /* ── Chart ──────────────────────────────────────────────────────── */
+        .chart-wrap { position: relative; border: 1px solid #1e1e1e; background: #0a0a0a; }
+        canvas.chart { display: block; width: 100%; height: 380px; }
+        canvas.chart.short { height: 240px; }
+        canvas.chart.tall { height: 520px; }
+
+        /* ── Weight heat maps ───────────────────────────────────────────── */
+        .heat-row {
+            display: flex; flex-wrap: wrap; gap: 1px;
+            background: #1e1e1e; border: 1px solid #1e1e1e;
+        }
+        .heat-cell {
+            flex: 1 1 180px; background: #0a0a0a;
+            padding: 1rem; display: flex; flex-direction: column;
+            align-items: center; gap: 0.6rem;
+        }
+        /* Size is set in JS to an EXACT integer multiple of the native pixels.
+           At 2.41x and 2.97x some weight cells landed on 3 screen pixels and
+           others on 2, and that uneven repeat is what read as grain — the
+           image was never blurred, it was aliased. */
+        .heat-cell canvas {
+            max-width: 100%; height: auto;
+            image-rendering: pixelated; border: 1px solid #1a1a1a;
+        }
+        .heat-label {
+            font-size: 0.5rem; letter-spacing: 0.14em; text-transform: uppercase;
+            color: #4a4a4a; text-align: center; line-height: 1.7;
+        }
+        .heat-label b { display: block; color: #9a9a9a; font-weight: 400; }
+
+        .two-up {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem;
+            align-items: start;
+        }
+        @media (max-width: 820px) { .two-up { grid-template-columns: 1fr; } }
+        .two-up .chart-wrap { margin-top: 1.4rem; }
+
+        /* ── Architecture ───────────────────────────────────────────────── */
+        .arch-flow {
+            display: flex; flex-wrap: wrap; align-items: stretch; gap: 0;
+            border: 1px solid #1e1e1e; background: #0a0a0a;
+        }
+        .arch-step {
+            flex: 1 1 0; min-width: 104px;
+            padding: 1.1rem 0.9rem;
+            border-right: 1px solid #141414;
+            display: flex; flex-direction: column; gap: 0.4rem;
+        }
+        .arch-step:last-child { border-right: 0; }
+        .arch-kind {
+            font-size: 0.5rem; letter-spacing: 0.16em; text-transform: uppercase;
+            color: #4a4a4a;
+        }
+        .arch-shape {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.72rem; color: #cfe4ff;
+        }
+        .arch-params { font-size: 0.6rem; color: #6a6a6a; font-variant-numeric: tabular-nums; }
+        .arch-summary {
+            display: flex; flex-wrap: wrap; gap: 2rem;
+            margin-top: 1.1rem; font-size: 0.7rem; color: #7a7a7a;
+        }
+        .arch-summary b {
+            display: block; color: #fff; font-weight: 400;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.25rem; margin-bottom: 0.2rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Head to head ───────────────────────────────────────────────── */
+        .h2h-empty {
+            border: 1px solid #1e1e1e; background: #0a0a0a;
+            padding: 2rem 1.4rem; font-size: 0.74rem; line-height: 1.8; color: #6a6a6a;
+        }
+        .h2h-row {
+            display: grid; grid-template-columns: 1fr auto; gap: 1rem;
+            align-items: center; padding: 0.9rem 1.1rem;
+            border: 1px solid #1e1e1e; border-bottom: 0; background: #0a0a0a;
+        }
+        .h2h-row:last-child { border-bottom: 1px solid #1e1e1e; }
+        .h2h-name { font-size: 0.75rem; color: #ccc; }
+        .h2h-tally { font-size: 0.7rem; color: #7a7a7a; font-variant-numeric: tabular-nums; }
+        .h2h-tally b { color: #8fd6a8; font-weight: 500; }
+        .h2h-tally i { color: #d98a8a; font-style: normal; }
+        .h2h-bar { grid-column: 1 / -1; height: 3px; background: #d98a8a; margin-top: 0.5rem; }
+        .h2h-bar span { display: block; height: 100%; background: #8fd6a8; }
+        .tip {
+            position: absolute; pointer-events: none; opacity: 0;
+            background: #131313; border: 1px solid #262626;
+            padding: 0.6rem 0.75rem; font-size: 0.68rem; line-height: 1.6;
+            transition: opacity 0.12s; white-space: nowrap; z-index: 20;
+        }
+        .tip .tip-run { color: #fff; margin-bottom: 0.25rem; }
+        .tip .tip-row { color: #888; }
+        .tip .tip-row b { color: #ddd; font-weight: 500; }
+
+        /* Key under a chart. Every chart that encodes something in colour or
+           shape gets one — without it the reader has to infer the encoding. */
+        .chart-key {
+            display: flex; flex-wrap: wrap; gap: 0.45rem 1.6rem;
+            margin-top: 0.9rem; font-size: 0.66rem; color: #6f6f6f;
+        }
+        .chart-key span { display: inline-flex; align-items: center; gap: 0.55em; }
+        .chart-key i { display: inline-block; width: 15px; height: 2px; flex-shrink: 0; }
+        .chart-key i.dot  { width: 9px; height: 9px; border-radius: 50%; }
+        .chart-key i.ring {
+            width: 11px; height: 11px; border-radius: 50%;
+            background: none; border: 1px solid rgba(255,255,255,0.45);
+        }
+        .chart-key i.dash {
+            background: repeating-linear-gradient(90deg, #5a5a5a 0 3px, transparent 3px 6px);
+        }
+        .chart-key i.bar { width: 11px; height: 11px; }
+
+        /* A short read-this-first line above a chart's key. */
+        .how-to-read {
+            margin-top: 0.9rem; font-size: 0.72rem; line-height: 1.8; color: #7a7a7a;
+            max-width: 78ch;
+        }
+        .how-to-read b { color: #b9b9b9; font-weight: 400; }
+
+        .omitted { margin-top: 0.8rem; font-size: 0.66rem; line-height: 1.6; color: #4f4f4f; }
+        .omitted:empty { display: none; }
+        .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin-top: 1rem; }
+        .leg {
+            display: inline-flex; align-items: center; gap: 0.5em;
+            font-size: 0.66rem; color: #777; cursor: pointer;
+            background: none; border: 0; font-family: inherit;
+            padding: 0.2rem 0; transition: color 0.15s, opacity 0.15s;
+        }
+        .leg:hover { color: #eee; }
+        .leg.off { opacity: 0.32; }
+        .leg-swatch { width: 14px; height: 2px; flex-shrink: 0; }
+        .leg-score { color: #555; font-variant-numeric: tabular-nums; }
+
+        /* ── Ledger ─────────────────────────────────────────────────────── */
+        .ledger { border: 1px solid #1e1e1e; }
+        .row {
+            display: grid; grid-template-columns: 12px 1.6fr 0.7fr 0.6fr 0.7fr 0.5fr;
+            gap: 1rem; align-items: center;
+            padding: 0.85rem 1.1rem; border-top: 1px solid #141414;
+            font-size: 0.72rem; color: #888; cursor: pointer;
+            transition: background 0.14s, color 0.14s;
+        }
+        .row:first-child { border-top: 0; }
+        .row:hover { background: #111; color: #ddd; }
+        .row.head {
+            color: #4a4a4a; font-size: 0.53rem; letter-spacing: 0.16em;
+            text-transform: uppercase; cursor: default; background: #0b0b0b;
+        }
+        .row.head:hover { background: #0b0b0b; color: #4a4a4a; }
+        .row-dot { width: 7px; height: 7px; border-radius: 50%; }
+        .row-name { color: #ccc; }
+        .row .num { font-variant-numeric: tabular-nums; text-align: right; }
+        .row-outcome { font-size: 0.53rem; letter-spacing: 0.14em; text-transform: uppercase; }
+        /* NOT a .row. It used to carry that class, which made it a six-column
+           grid, so its text became an anonymous grid item in the 12px dot
+           column and wrapped one word wide. It is a plain block. */
+        .row-note {
+            display: block;
+            /* Even top and bottom, so the text sits centred in its band. It
+               used to have bottom-only padding and a negative top margin,
+               which pinned it against the row above. */
+            padding: 0.9rem 1.1rem;
+            font-size: 0.72rem; line-height: 1.75;
+            color: #8a8a8a;
+            background: #111;
+        }
+        .o-shipped  { color: #cfe4ff; }
+        .o-improved { color: #8fd6a8; }
+        .o-rejected { color: #d98a8a; }
+        .o-running  { color: #e0c07a; }
+        .o-unknown  { color: #4a4a4a; }
+
+        .foot {
+            margin-top: 5rem; font-size: 0.52rem; letter-spacing: 0.16em;
+            color: rgba(255,255,255,0.14); text-transform: uppercase;
+        }
+    </style>
+    <link rel="stylesheet" href="shared/themes.css" />
+    <script src="shared/settings.js"></script>
+    <script>
+    // Before first paint: a themed page must not flash the default
+    // palette while settings.js loads.
+    try {
+        var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+        document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+    </script>
+</head>
+<body>
+    <canvas id="mesh"></canvas>
+    <a class="back" href="select.html">← back</a>
+
+    <div class="page">
+        <div class="header">
+            <p class="eyebrow">the training behind it</p>
+            <h1>inside</h1>
+            <p class="lede">
+                Every run that produced the three opponents on this site — including
+                the ones that failed. Nothing here is hand-written behaviour: each
+                model learned by playing its own game several million times and
+                being scored on the result.
+            </p>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>Learning curves</h2>
+                    <p class="block-note">
+                        Score against training steps, straight out of the logs. Click a
+                        run to hide it; hover for the numbers.
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="game-tabs"></div>
+                    <div class="ctl-group" id="metric-tabs"></div>
+                    <div class="ctl-group" id="scale-tabs"></div>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="curve"></canvas>
+                <div class="tip" id="curve-tip"></div>
+            </div>
+            <div class="legend" id="legend"></div>
+            <p class="omitted" id="omitted"></p>
+        </div>
+
+        <div class="block" id="evals-block">
+            <div class="block-head">
+                <div>
+                    <h2>Why the best model is not the last one</h2>
+                    <p class="block-note">
+                        While it trains, the model stops every 250,000 steps and plays
+                        fifteen games. The games never change — same starting pieces,
+                        same order — so every check is measuring the model, not luck of
+                        the draw.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="evals"></canvas>
+                <div class="tip" id="evals-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Left to right is training progress. Each dot is one of those checks.
+                <b>They swing by hundreds of points on identical games</b> — so the model
+                you happen to stop on is close to a coin flip. The solid line is the best
+                score seen so far, and training saves a copy every time that line steps
+                up. Without it, whatever the run ended on would be what shipped, and three
+                earlier runs ended below the model they started from.
+            </p>
+            <div class="chart-key">
+                <span><i class="dot" style="background:#4d5a6a"></i> a check</span>
+                <span><i class="dot" style="background:#cfe4ff"></i> a new best</span>
+                <span><i style="background:#cfe4ff"></i> best so far — what gets kept</span>
+                <span><i class="dash"></i> the model this run started from</span>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>How good it got, for how much training</h2>
+                    <p class="block-note">
+                        Every finished run, scored over 30 to 60 full games after it
+                        ended. This is the headline question — does more training
+                        actually buy more skill?
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="prog-tabs"></div>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="progression"></canvas>
+                <div class="tip" id="prog-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Sideways is <b>total</b> training, not the length of one run: a run that
+                continues from an earlier model inherits everything that model already
+                learned, so 4M steps on top of a 10M-step model sits at 14M. Up is the
+                score it achieved. The line only joins versions that were kept — a run
+                that scored worse was discarded, so nothing was ever built on top of it,
+                and joining it to the line would suggest otherwise. Hover any point for
+                what changed in that run and what it bought per million steps.
+            </p>
+            <div class="chart-key">
+                <span><i style="background:#cfe4ff"></i> the surviving chain</span>
+                <span><i class="dot" style="background:#fff"></i> shipped to the site</span>
+                <span><i class="dot" style="background:#cfe4ff"></i> kept, an improvement</span>
+                <span><i class="dot" style="background:#d98a8a"></i> discarded, scored worse</span>
+                <span><i class="ring"></i> weights still exist — playable</span>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>The family tree</h2>
+                    <p class="block-note">
+                        Training did not run in a line. Every run starts from some
+                        earlier model, and when one came out worse it was abandoned and
+                        the next attempt went back to the last good version instead.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="tree"></canvas>
+                <div class="tip" id="tree-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Each dot is one training run, placed left to right by how much total
+                training it represents, with its evaluated score printed above it. A
+                curve joins a run to <b>the model it started from</b>. The straight row
+                across the middle is the surviving line — the ancestry of what the site
+                serves today. Everything hanging below it is a branch that stopped:
+                a run that finished below the model already shipped, so it was kept as a
+                record and never built on. Two of Watermelon's branches leave from the
+                same parent, which is what trying twice from a known-good model looks
+                like.
+            </p>
+            <div class="chart-key">
+                <span><i class="dot" style="background:#fff"></i> shipped</span>
+                <span><i class="dot" style="background:#8fd6a8"></i> an improvement</span>
+                <span><i class="dot" style="background:#d98a8a"></i> rejected — dead end</span>
+                <span><i class="dot" style="background:#e0c07a"></i> still running</span>
+                <span><i style="background:#3f5670;height:3px"></i> continued from</span>
+                <span><i class="dash"></i> abandoned branch</span>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>The same model, sixty games</h2>
+                    <p class="block-note">
+                        Nothing changes between these games — same model, same weights,
+                        same starting conditions. Every difference in the result comes
+                        from how the game itself unfolded.
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="dist-tabs"></div>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="dist"></canvas>
+                <div class="tip" id="dist-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Sideways is the score; each bar counts how many of the sixty games
+                finished in that band. Snake's ran from <b>41 to 177</b> — the best game
+                was four times the worst, from an identical opponent. Note how far apart
+                the mean and median sit: a handful of games that ended almost
+                immediately drag the average well below the typical result. That gap is
+                why one evaluation proves very little, and why a model is only replaced
+                when it wins over dozens of games rather than one.
+            </p>
+            <div class="chart-key">
+                <span><i class="bar" style="background:rgba(207,228,255,0.42)"></i> games in that band</span>
+                <span><i class="dash" style="background:repeating-linear-gradient(90deg,#cfe4ff 0 3px,transparent 3px 6px)"></i> mean — pulled down by bad games</span>
+                <span><i class="dash" style="background:repeating-linear-gradient(90deg,#8fd6a8 0 3px,transparent 3px 6px)"></i> median — the typical game</span>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>What the network actually is</h2>
+                    <p class="block-note">
+                        Read straight out of the model files the site ships, so it
+                        cannot drift from what is really running.
+                    </p>
+                </div>
+                <div class="controls">
+                    <div class="ctl-group" id="arch-tabs"></div>
+                </div>
+            </div>
+            <div id="arch"></div>
+            <p class="how-to-read">
+                Read left to right: numbers describing the board go in one end, and a
+                score for every move the AI could make comes out the other. Each box in
+                between is a layer of the network, and its figures are the shape of that
+                layer's weight matrix — <b>outputs × inputs</b>. So <b>1024 × 238</b>
+                means 1,024 units each looking at all 238 input numbers, which is where
+                its 243,712 weights come from. A <b>convolution</b> layer slides one
+                small filter across the board, so it learns shapes wherever they appear;
+                a <b>dense</b> layer connects everything to everything. Snake and
+                Watermelon see a grid and use both; Tetris is dense throughout. Every
+                one of those weights started as a random number and was moved only by
+                playing.
+            </p>
+        </div>
+
+        <div class="block two-up">
+            <div>
+                <h2>Where the time went</h2>
+                <p class="block-note">
+                    Measured with the real training loop, not a synthetic benchmark.
+                </p>
+                <div class="chart-wrap">
+                    <canvas class="chart short" id="bench"></canvas>
+                    <div class="tip" id="bench-tip"></div>
+                </div>
+            </div>
+            <div>
+                <h2>Head to head</h2>
+                <p class="block-note">
+                    Your own results against these opponents, recorded on this device.
+                </p>
+                <div id="h2h"></div>
+            </div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>When it all happened</h2>
+                    <p class="block-note">
+                        Every run on a wall clock. Gaps are the machine doing something
+                        else; the bars are actual compute.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart" id="timeline"></canvas>
+                <div class="tip" id="timeline-tip"></div>
+            </div>
+        </div>
+
+        <div class="block" id="brain-block">
+            <div class="block-head">
+                <div>
+                    <h2>The Tetris bot's actual brain</h2>
+                    <p class="block-note">
+                        Not a diagram of a neural network — this one. Every line is a
+                        real weight read out of the model file the site ships, drawn at
+                        its true strength: blue pulls an option up, red pushes it down.
+                        Hover a neuron to isolate what it is connected to.
+                    </p>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas class="chart tall" id="brain"></canvas>
+                <div class="tip" id="brain-tip"></div>
+            </div>
+            <p class="how-to-read">
+                Each column is a layer, each dot one neuron, and each line a real
+                connection between them. Numbers describing the board enter on the left
+                and a score for every possible move leaves on the right. A neuron
+                <b>brightens as it fires</b>, and a line is only lit while the neuron
+                feeding it is active — so you are watching signal find a path, not a
+                loop of decoration. Most neurons sit dark at any moment, which is
+                genuinely how this kind of network behaves. <b>Hover any neuron</b> to
+                mute everything except its own connections.
+            </p>
+            <div class="chart-key">
+                <span><i style="background:rgba(140,190,255,0.9)"></i> positive — argues for a move</span>
+                <span><i style="background:rgba(235,130,130,0.9)"></i> negative — argues against</span>
+                <span><i class="dot" style="background:#e8f1ff"></i> firing now</span>
+                <span><i class="dot" style="background:#5f6b7a"></i> quiet</span>
+            </div>
+            <p class="omitted" id="brain-note"></p>
+
+            <div class="block-head" style="margin-top:2.5rem">
+                <div>
+                    <h2 style="font-size:1rem">Every weight, layer by layer</h2>
+                    <p class="block-note">
+                        The same weights again, all of them this time — each matrix
+                        averaged down to fit and coloured by sign. Structure here is
+                        learned, not designed.
+                    </p>
+                </div>
+            </div>
+            <div id="brain-heat"></div>
+        </div>
+
+        <div class="block">
+            <div class="block-head">
+                <div>
+                    <h2>Every run, and what became of it</h2>
+                    <p class="block-note">
+                        A new model only replaces the one on the site if it scores higher.
+                        Click a row for what happened.
+                    </p>
+                </div>
+            </div>
+            <div class="ledger" id="ledger"></div>
+        </div>
+
+        <p class="foot" id="foot"></p>
+    </div>
+
+    <script src="shared/backgrounds.js"></script>
+    <script src="shared/mesh.js"></script>
+    <script src="inside/data.js"></script>
+    <script>
+    (() => {
+        initMesh('mesh', { intensity: 0.42 });
+
+        /* Canvas cannot use CSS, so the charts read the theme's variables and
+           re-read them whenever the theme changes. Without this every chart
+           would stay dark-on-dark after switching to a light theme. */
+        const PAL = {};
+        function readPalette() {
+            const cs = getComputedStyle(document.documentElement);
+            const v = (n, fallback) => (cs.getPropertyValue(n).trim() || fallback);
+            PAL.grid   = v('--chart-grid', '#161616');
+            PAL.axis   = v('--chart-axis', '#4a4a4a');
+            PAL.ink    = v('--chart-ink', '#cfe4ff');
+            PAL.track  = v('--chart-track', '#1a1a1a');
+            PAL.bg     = v('--bg-soft', '#0a0a0a');
+            PAL.fg     = v('--fg', '#ffffff');
+            PAL.dim    = v('--dim', '#6a6a6a');
+            PAL.good   = v('--accent-2', '#8fd6a8');
+            PAL.bad    = v('--warn', '#d98a8a');
+        }
+        readPalette();
+        new MutationObserver(() => { readPalette(); redraw(); })
+            .observe(document.documentElement,
+                     { attributes: true, attributeFilter: ['data-theme'] });
+
+        const runs = TRAINING_DATA.runs;
+        const shipped = TRAINING_DATA.shipped;
+
+        /* Colours are assigned per game so the eye groups them, with lightness
+           walking up the list — later runs read as brighter. */
+        const HUES = { snake: 145, tetris: 265, watermelon: 205 };
+        const byGame = {};
+        runs.forEach(r => { (byGame[r.game] = byGame[r.game] || []).push(r); });
+        Object.entries(byGame).forEach(([g, list]) => {
+            list.forEach((r, i) => {
+                const t = list.length === 1 ? 1 : i / (list.length - 1);
+                r.color = `hsl(${HUES[g] || 0} ${45 + t * 30}% ${38 + t * 34}%)`;
+            });
+        });
+
+        const fmtSteps = n =>
+            n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M'
+                     : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n);
+        const fmtHours = s => s >= 3600 ? (s / 3600).toFixed(1) + ' h'
+                                        : Math.round(s / 60) + ' min';
+
+        /* ── Stat strip ─────────────────────────────────────────────────── */
+        const totalSteps = runs.reduce((a, r) => a + r.steps, 0);
+        const totalSecs  = runs.reduce((a, r) => a + r.elapsed, 0);
+        document.getElementById('stats').innerHTML = [
+            [runs.length, 'training runs'],
+            [fmtSteps(totalSteps), 'steps played'],
+            [(totalSecs / 3600).toFixed(0) + ' h', 'compute time'],
+            [runs.filter(r => r.outcome === 'rejected').length, 'runs rejected'],
+        ].map(([n, l]) =>
+            `<div class="stat"><div class="stat-num">${n}</div>
+             <div class="stat-label">${l}</div></div>`).join('');
+
+        /* ── State ──────────────────────────────────────────────────────── */
+        const METRICS = {
+            s: { key: 's', label: 'score',      axis: 'game score' },
+            r: { key: 'r', label: 'reward',     axis: 'mean reward' },
+            f: { key: 'f', label: 'throughput', axis: 'steps / second' },
+        };
+        let game = 'all';
+        let metric = 's';
+        /* Tetris ran to a billion steps; Snake's longest is 40M. On a linear
+           axis every other run is crushed into the first 4% of the width, so
+           a log option is not a nicety here — it is the only way to see them
+           together. */
+        let xmode = 'log';   // default, because Tetris is 25x longer than anything else
+        const hidden = new Set();
+
+        const games = [...new Set(runs.map(r => r.game))];
+        document.getElementById('game-tabs').innerHTML =
+            ['all', ...games].map(g =>
+                `<button class="ctl${g === 'all' ? ' on' : ''}" data-game="${g}">${g}</button>`
+            ).join('');
+        document.getElementById('metric-tabs').innerHTML =
+            Object.values(METRICS).map(m =>
+                `<button class="ctl${m.key === 's' ? ' on' : ''}" data-metric="${m.key}">${m.label}</button>`
+            ).join('');
+
+        document.getElementById('game-tabs').addEventListener('click', e => {
+            const b = e.target.closest('[data-game]'); if (!b) return;
+            game = b.dataset.game;
+            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            renderLegend(); drawCurve();
+        });
+        document.getElementById('metric-tabs').addEventListener('click', e => {
+            const b = e.target.closest('[data-metric]'); if (!b) return;
+            metric = b.dataset.metric;
+            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            renderLegend(); drawCurve();
+        });
+
+        document.getElementById('scale-tabs').innerHTML =
+            [['lin', 'linear'], ['log', 'log steps']].map(([k, l]) =>
+                `<button class="ctl${k === xmode ? ' on' : ''}" data-scale="${k}">${l}</button>`
+            ).join('');
+        document.getElementById('scale-tabs').addEventListener('click', e => {
+            const b = e.target.closest('[data-scale]'); if (!b) return;
+            xmode = b.dataset.scale;
+            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            drawCurve();
+        });
+
+        /* A run only appears under a metric it actually recorded — the older
+           logs predate the score callback and have no score series. */
+        const has = (r, m) => r.series.some(p => p[m] !== undefined);
+        const shown = () => runs.filter(r =>
+            (game === 'all' || r.game === game) && has(r, metric));
+        const visible = () => shown().filter(r => !hidden.has(r.key));
+
+        /* ── Legend ─────────────────────────────────────────────────────── */
+        function renderLegend() {
+            /* Not every run recorded every metric — Tetris predates the score
+               callback and logged only reward, and the earliest Snake runs are
+               the same. Say so, rather than letting a run silently vanish when
+               the metric changes. */
+            const missing = runs.filter(r =>
+                (game === 'all' || r.game === game) && !has(r, metric));
+            const el = document.getElementById('omitted');
+            if (!missing.length) {
+                el.textContent = '';
+            } else {
+                const games = [...new Set(missing.map(r => r.game))];
+                const alt = Object.values(METRICS)
+                    .filter(m => m.key !== metric &&
+                                 missing.every(r => has(r, m.key)))
+                    .map(m => m.label);
+                el.textContent =
+                    `${games.join(' and ')} ${games.length > 1 ? 'are' : 'is'} not shown here — `
+                    + `${missing.length > 1 ? 'those runs were' : 'it was'} trained before the `
+                    + `game-score logger existed and only recorded reward.`
+                    + (alt.length ? ` Switch to ${alt.join(' or ')} to see ${games.length > 1 ? 'them' : 'it'}.` : '');
+            }
+
+            document.getElementById('legend').innerHTML = shown().map(r => `
+                <button class="leg${hidden.has(r.key) ? ' off' : ''}" data-file="${r.key}">
+                    <span class="leg-swatch" style="background:${r.color}"></span>
+                    <span>${r.game} · ${r.label}</span>
+                    <span class="leg-score">${r.evalScore ? r.evalScore.toFixed(0) : ''}</span>
+                </button>`).join('');
+        }
+        document.getElementById('legend').addEventListener('click', e => {
+            const b = e.target.closest('[data-file]'); if (!b) return;
+            const f = b.dataset.file;
+            hidden.has(f) ? hidden.delete(f) : hidden.add(f);
+            renderLegend(); drawCurve();
+        });
+
+        /* ── Chart engine ───────────────────────────────────────────────── */
+        function setupCanvas(cvs) {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = cvs.getBoundingClientRect();
+            cvs.width = rect.width * dpr;
+            cvs.height = rect.height * dpr;
+            const ctx = cvs.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            return { ctx, w: rect.width, h: rect.height };
+        }
+
+        const PAD = { l: 58, r: 18, t: 18, b: 34 };
+
+        function niceTicks(lo, hi, count) {
+            const span = hi - lo || 1;
+            const raw = span / count;
+            const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+            const norm = raw / mag;
+            const step = (norm >= 5 ? 10 : norm >= 2 ? 5 : norm >= 1 ? 2 : 1) * mag;
+            const out = [];
+            for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(v);
+            return out;
+        }
+
+        function drawFrame(ctx, w, h, xs, ys, xFmt, yFmt, yAxisLabel) {
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            ys.forEach(v => {
+                const y = ys.scale(v);
+                ctx.strokeStyle = PAL.grid;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(PAD.l, y + 0.5); ctx.lineTo(w - PAD.r, y + 0.5);
+                ctx.stroke();
+                ctx.fillStyle = PAL.axis;
+                ctx.textAlign = 'right';
+                ctx.fillText(yFmt(v), PAD.l - 9, y);
+            });
+
+            xs.forEach(v => {
+                const x = xs.scale(v);
+                ctx.fillStyle = PAL.axis;
+                ctx.textAlign = 'center';
+                ctx.fillText(xFmt(v), x, h - PAD.b + 14);
+            });
+
+            ctx.save();
+            ctx.translate(13, (h - PAD.b + PAD.t) / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = PAL.axis;
+            ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.fillText(yAxisLabel.toUpperCase(), 0, 0);
+            ctx.restore();
+        }
+
+        function makeScale(lo, hi, a, b) {
+            const f = v => a + (v - lo) / ((hi - lo) || 1) * (b - a);
+            f.lo = lo; f.hi = hi;
+            return f;
+        }
+
+        /* Clamps at lo rather than letting log(0) go to -Infinity, which would
+           silently drop the first point of every run. */
+        function makeLogScale(lo, hi, a, b) {
+            const l0 = Math.log10(Math.max(lo, 1)), l1 = Math.log10(Math.max(hi, 10));
+            const f = v => a + (Math.log10(Math.max(v, Math.max(lo, 1))) - l0) / ((l1 - l0) || 1) * (b - a);
+            f.lo = lo; f.hi = hi;
+            return f;
+        }
+
+        function logTicks(lo, hi) {
+            const out = [];
+            for (let e = Math.floor(Math.log10(Math.max(lo, 1)));
+                 e <= Math.ceil(Math.log10(Math.max(hi, 10))); e++) {
+                for (const m of [1, 3]) {
+                    const v = m * Math.pow(10, e);
+                    if (v >= Math.max(lo, 1) && v <= hi) out.push(v);
+                }
+            }
+            return out;
+        }
+
+        /* ── Curve chart ────────────────────────────────────────────────── */
+        const curveCvs = document.getElementById('curve');
+        const curveTip = document.getElementById('curve-tip');
+        let curveGeom = null;
+
+        function drawCurve() {
+            const { ctx, w, h } = setupCanvas(curveCvs);
+            const list = visible();
+
+            if (!list.length) {
+                ctx.clearRect(0, 0, w, h);
+                ctx.fillStyle = PAL.axis;
+                ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('no runs recorded this metric', w / 2, h / 2);
+                curveGeom = null;
+                return;
+            }
+
+            let xMax = 0, xMin = Infinity, yLo = Infinity, yHi = -Infinity;
+            list.forEach(r => r.series.forEach(p => {
+                if (p[metric] === undefined) return;
+                xMax = Math.max(xMax, p.t);
+                if (p.t > 0) xMin = Math.min(xMin, p.t);
+                yLo = Math.min(yLo, p[metric]);
+                yHi = Math.max(yHi, p[metric]);
+            }));
+            if (!isFinite(xMin)) xMin = 1;
+            if (yLo === yHi) { yLo -= 1; yHi += 1; }
+            const padY = (yHi - yLo) * 0.08;
+            yLo -= padY; yHi += padY;
+
+            const xs = xmode === 'log'
+                ? makeLogScale(xMin, xMax, PAD.l, w - PAD.r)
+                : makeScale(0, xMax, PAD.l, w - PAD.r);
+            const ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
+            const xt = xmode === 'log' ? logTicks(xMin, xMax) : niceTicks(0, xMax, 6);
+            const yt = niceTicks(yLo, yHi, 5);
+            xt.scale = xs; yt.scale = ys;
+
+            drawFrame(ctx, w, h, xt, yt, fmtSteps,
+                      v => (Math.abs(v) >= 1000 ? fmtSteps(v) : v.toFixed(0)),
+                      METRICS[metric].axis);
+
+            ctx.lineJoin = ctx.lineCap = 'round';
+            list.forEach(r => {
+                ctx.strokeStyle = r.color;
+                ctx.lineWidth = r.outcome === 'shipped' || r.outcome === 'running' ? 2 : 1.25;
+                ctx.beginPath();
+                let started = false;
+                r.series.forEach(p => {
+                    if (p[metric] === undefined) return;
+                    const x = xs(p.t), y = ys(p[metric]);
+                    started ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), started = true);
+                });
+                ctx.stroke();
+            });
+
+            curveGeom = { xs, ys, list, w, h };
+        }
+
+        function nearest(geom, mx, my) {
+            let best = null, bestD = Infinity;
+            geom.list.forEach(r => {
+                r.series.forEach(p => {
+                    if (p[metric] === undefined) return;
+                    const dx = geom.xs(p.t) - mx, dy = geom.ys(p[metric]) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bestD) { bestD = d; best = { r, p }; }
+                });
+            });
+            return bestD < 90 * 90 ? best : null;
+        }
+
+        curveCvs.addEventListener('mousemove', e => {
+            if (!curveGeom) return;
+            const rect = curveCvs.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            const hit = nearest(curveGeom, mx, my);
+            if (!hit) { curveTip.style.opacity = 0; return; }
+
+            const { r, p } = hit;
+            const rows = [
+                `<div class="tip-row">step <b>${p.t.toLocaleString()}</b></div>`,
+                `<div class="tip-row">${METRICS[metric].axis} <b>${p[metric]}</b></div>`,
+            ];
+            if (p.e !== undefined) rows.push(`<div class="tip-row">elapsed <b>${fmtHours(p.e)}</b></div>`);
+            curveTip.innerHTML =
+                `<div class="tip-run" style="color:${r.color}">${r.game} · ${r.label}</div>` + rows.join('');
+            curveTip.style.opacity = 1;
+            const tw = curveTip.offsetWidth, th = curveTip.offsetHeight;
+            curveTip.style.left = Math.min(Math.max(8, mx + 14), curveGeom.w - tw - 8) + 'px';
+            curveTip.style.top  = Math.min(Math.max(8, my - th - 12), curveGeom.h - th - 8) + 'px';
+        });
+        curveCvs.addEventListener('mouseleave', () => { curveTip.style.opacity = 0; });
+
+        /* ── Eval chart: the fixed-seed checks of the live run ──────────── */
+        const evalRun = runs.filter(r => r.evals && r.evals.length > 2).pop();
+        const evalCvs = document.getElementById('evals');
+        const evalTip = document.getElementById('evals-tip');
+        let evalGeom = null;
+
+        function drawEvals() {
+            if (!evalRun) { document.getElementById('evals-block').style.display = 'none'; return; }
+            const { ctx, w, h } = setupCanvas(evalCvs);
+            const pts = evalRun.evals;
+
+            const xMax = Math.max(...pts.map(p => p.t));
+            let yLo = Math.min(...pts.map(p => p.score));
+            let yHi = Math.max(...pts.map(p => p.score));
+            const pad = (yHi - yLo) * 0.14 || 10;
+            yLo -= pad; yHi += pad;
+
+            const xs = makeScale(0, xMax, PAD.l, w - PAD.r);
+            const ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
+            const xt = niceTicks(0, xMax, 6), yt = niceTicks(yLo, yHi, 5);
+            xt.scale = xs; yt.scale = ys;
+            drawFrame(ctx, w, h, xt, yt, fmtSteps, v => v.toFixed(0), 'score, fixed games');
+
+            // The bar the run had to beat: the model it started from.
+            const base = pts[0].score;
+            ctx.strokeStyle = PAL.axis;
+            ctx.setLineDash([3, 4]);
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(PAD.l, ys(base) + 0.5); ctx.lineTo(w - PAD.r, ys(base) + 0.5);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Sits clear of its own line, and flips below it when the baseline
+            // is close to the top of the plot — at -9 with textBaseline middle
+            // the glyphs sat on the dashes.
+            ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textAlign = 'left';
+            const near = ys(base) - PAD.t < 26;
+            ctx.textBaseline = near ? 'top' : 'alphabetic';
+            const label = 'THE MODEL THIS RUN STARTED FROM — ' + base.toFixed(0);
+            const lw = ctx.measureText(label).width;
+            ctx.fillStyle = PAL.bg;
+            ctx.fillRect(PAD.l + 4, ys(base) + (near ? 6 : -19), lw + 8, 14);
+            ctx.fillStyle = PAL.dim;
+            ctx.fillText(label, PAD.l + 8, ys(base) + (near ? 9 : -8));
+            ctx.textBaseline = 'middle';
+
+            // Running best — the thing actually kept.
+            ctx.strokeStyle = PAL.ink;
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            let run = -Infinity;
+            pts.forEach((p, i) => {
+                run = Math.max(run, p.score);
+                const x = xs(p.t), y = ys(run);
+                i ? (ctx.lineTo(x, y)) : ctx.moveTo(x, y);
+            });
+            ctx.stroke();
+
+            // Each individual check.
+            pts.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(xs(p.t), ys(p.score), p.best ? 4 : 2.6, 0, Math.PI * 2);
+                ctx.fillStyle = p.best ? PAL.ink : PAL.axis;
+                ctx.fill();
+            });
+
+            evalGeom = { xs, ys, pts, w, h };
+        }
+
+        evalCvs.addEventListener('mousemove', e => {
+            if (!evalGeom) return;
+            const rect = evalCvs.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            let best = null, bestD = Infinity;
+            evalGeom.pts.forEach(p => {
+                const dx = evalGeom.xs(p.t) - mx, dy = evalGeom.ys(p.score) - my;
+                const d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = p; }
+            });
+            if (bestD > 80 * 80) { evalTip.style.opacity = 0; return; }
+            evalTip.innerHTML =
+                `<div class="tip-run">${best.best ? 'new best' : 'check'}</div>` +
+                `<div class="tip-row">step <b>${best.t.toLocaleString()}</b></div>` +
+                `<div class="tip-row">score <b>${best.score}</b></div>`;
+            evalTip.style.opacity = 1;
+            const tw = evalTip.offsetWidth, th = evalTip.offsetHeight;
+            evalTip.style.left = Math.min(Math.max(8, mx + 14), evalGeom.w - tw - 8) + 'px';
+            evalTip.style.top  = Math.min(Math.max(8, my - th - 12), evalGeom.h - th - 8) + 'px';
+        });
+        evalCvs.addEventListener('mouseleave', () => { evalTip.style.opacity = 0; });
+
+        /* ── Ledger ─────────────────────────────────────────────────────── */
+        const OUTCOME = {
+            shipped:  ['o-shipped',  'on the site'],
+            improved: ['o-improved', 'improved'],
+            rejected: ['o-rejected', 'rejected'],
+            running:  ['o-running',  'running'],
+        };
+        const ledger = document.getElementById('ledger');
+        ledger.innerHTML =
+            `<div class="row head"><span></span><span>run</span>
+             <span class="num">steps</span><span class="num">time</span>
+             <span class="num">score</span><span>outcome</span></div>` +
+            runs.slice().reverse().map(r => {
+                const [cls, text] = OUTCOME[r.outcome] || ['o-unknown', 'not evaluated'];
+                return `<div class="row" data-file="${r.key}">
+                    <span class="row-dot" style="background:${r.color}"></span>
+                    <span class="row-name">${r.game} · ${r.label}</span>
+                    <span class="num">${fmtSteps(r.steps)}</span>
+                    <span class="num">${fmtHours(r.elapsed)}</span>
+                    <span class="num">${r.evalScore ? r.evalScore.toFixed(2) : '—'}</span>
+                    <span class="row-outcome ${cls}">${text}</span>
+                </div>`;
+            }).join('');
+
+        ledger.addEventListener('click', e => {
+            const row = e.target.closest('.row[data-file]'); if (!row) return;
+            const r = runs.find(x => x.key === row.dataset.file);
+            const open = row.nextElementSibling && row.nextElementSibling.classList.contains('row-note');
+            ledger.querySelectorAll('.row-note').forEach(n => n.remove());
+            if (open || !r.note) return;
+            const note = document.createElement('div');
+            note.className = 'row-note';
+            note.textContent = r.note;
+            row.after(note);
+        });
+
+        document.getElementById('foot').textContent =
+            `data generated ${TRAINING_DATA.generated.replace('T', ' ')} · ` +
+            Object.entries(shipped).map(([g, s]) => `${g} ${s}`).join(' · ');
+
+        /* ── Shared: a tab strip bound to a redraw ──────────────────────── */
+        function tabs(id, items, initial, onPick) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.innerHTML = items.map(v =>
+                `<button class="ctl${v === initial ? ' on' : ''}" data-v="${v}">${v}</button>`
+            ).join('');
+            el.addEventListener('click', e => {
+                const b = e.target.closest('[data-v]'); if (!b) return;
+                [...el.children].forEach(c => c.classList.toggle('on', c === b));
+                onPick(b.dataset.v);
+            });
+        }
+
+        function hover(cvs, tip, pick, format) {
+            cvs.addEventListener('mousemove', e => {
+                const rect = cvs.getBoundingClientRect();
+                const hit = pick(e.clientX - rect.left, e.clientY - rect.top);
+                if (!hit) { tip.style.opacity = 0; return; }
+                tip.innerHTML = format(hit);
+                tip.style.opacity = 1;
+                const tw = tip.offsetWidth, th = tip.offsetHeight;
+                tip.style.left = Math.min(Math.max(8, e.clientX - rect.left + 14), rect.width - tw - 8) + 'px';
+                tip.style.top  = Math.min(Math.max(8, e.clientY - rect.top - th - 12), rect.height - th - 8) + 'px';
+            });
+            cvs.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+        }
+
+        /* ── Progression: skill against cumulative experience ───────────── */
+        const scored = runs.filter(r => r.evalScore);
+        const progGames = [...new Set(scored.map(r => r.game))];
+        let progGame = progGames.includes('watermelon') ? 'watermelon' : progGames[0];
+        const progCvs = document.getElementById('progression');
+        const progTip = document.getElementById('prog-tip');
+        let progGeom = null;
+
+        function drawProgression() {
+            const { ctx, w, h } = setupCanvas(progCvs);
+            const list = scored.filter(r => r.game === progGame)
+                               .sort((a, b) => a.cumulativeSteps - b.cumulativeSteps);
+            if (!list.length) { progGeom = null; return; }
+
+            const xMax = Math.max(...list.map(r => r.cumulativeSteps));
+            const vals = list.map(r => r.evalScore);
+            let yLo = Math.min(...vals), yHi = Math.max(...vals);
+            const pad = (yHi - yLo) * 0.18 || 10;
+            yLo -= pad; yHi += pad;
+
+            const xs = makeScale(0, xMax * 1.04, PAD.l, w - PAD.r);
+            const ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
+            const xt = niceTicks(0, xMax, 6), yt = niceTicks(yLo, yHi, 5);
+            xt.scale = xs; yt.scale = ys;
+            drawFrame(ctx, w, h, xt, yt, fmtSteps, v => v.toFixed(0), 'evaluated score');
+
+            // The surviving line only. Rejected runs are drawn as strays,
+            // because joining them would imply the next run built on them.
+            const kept = list.filter(r => r.outcome !== 'rejected');
+            ctx.strokeStyle = PAL.ink;
+            ctx.lineWidth = 1.8;
+            ctx.lineJoin = ctx.lineCap = 'round';
+            ctx.beginPath();
+            kept.forEach((r, i) => {
+                const x = xs(r.cumulativeSteps), y = ys(r.evalScore);
+                i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+            });
+            ctx.stroke();
+
+            list.forEach(r => {
+                const x = xs(r.cumulativeSteps), y = ys(r.evalScore);
+                const rejected = r.outcome === 'rejected';
+                if (rejected) {
+                    ctx.strokeStyle = PAL.bad;
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([2, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(x, ys(yLo + pad)); ctx.lineTo(x, y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+                ctx.beginPath();
+                ctx.arc(x, y, r.checkpoint ? 5 : 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = rejected ? PAL.bad
+                              : r.outcome === 'shipped' ? PAL.fg : PAL.ink;
+                ctx.fill();
+                // A ring marks a version whose weights still exist, so it
+                // could be played.
+                if (r.checkpoint) {
+                    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.stroke();
+                }
+            });
+
+            progGeom = { xs, ys, list };
+        }
+
+        hover(progCvs, progTip,
+            (mx, my) => {
+                if (!progGeom) return null;
+                let best = null, bd = Infinity;
+                progGeom.list.forEach(r => {
+                    const dx = progGeom.xs(r.cumulativeSteps) - mx;
+                    const dy = progGeom.ys(r.evalScore) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; best = r; }
+                });
+                return bd < 80 * 80 ? best : null;
+            },
+            r => `<div class="tip-run">${r.label}</div>`
+               + `<div class="tip-row">after <b>${fmtSteps(r.cumulativeSteps)}</b> steps total</div>`
+               + `<div class="tip-row">scored <b>${r.evalScore.toFixed(2)}</b></div>`
+               + (r.gainPerMStep !== undefined
+                    ? `<div class="tip-row">this run <b>${r.gainPerMStep > 0 ? '+' : ''}${r.gainPerMStep}</b> per M steps</div>` : '')
+               + (r.checkpoint ? `<div class="tip-row">weights kept — playable</div>` : '')
+               + (r.note ? `<div class="tip-row" style="max-width:34ch;white-space:normal">${r.note}</div>` : ''));
+
+        // The tree reads progGame too, so it follows the same tab.
+        tabs('prog-tabs', progGames, progGame, v => {
+            progGame = v; drawProgression(); drawTree();
+        });
+
+        /* ── Family tree ────────────────────────────────────────────────── */
+        const treeCvs = document.getElementById('tree');
+        const treeTip = document.getElementById('tree-tip');
+        let treeGeom = null;
+
+        function drawTree() {
+            const { ctx, w, h } = setupCanvas(treeCvs);
+            const list = runs.filter(r => r.game === progGame && (r.evalScore || r.parent || r.outcome));
+            if (!list.length) { treeGeom = null; return; }
+
+            // Everything that survived sits on one trunk; each rejected run
+            // gets a lane of its own so its branch is visibly a dead end.
+            let deadLane = 0;
+            const lane = new Map();
+            list.forEach(r => lane.set(r.key, r.outcome === 'rejected' ? ++deadLane : 0));
+            const maxLane = Math.max(...lane.values());
+
+            const xMax = Math.max(...list.map(r => r.cumulativeSteps));
+            const xs = makeScale(0, xMax * 1.06, PAD.l, w - PAD.r);
+            const laneH = (h - PAD.t - PAD.b) / (maxLane + 1.6);
+            const ys = (l) => PAD.t + laneH * (l + 0.5);
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            const xt = niceTicks(0, xMax, 6);
+            xt.forEach(v => {
+                ctx.fillStyle = PAL.axis;
+                ctx.textAlign = 'center';
+                ctx.fillText(fmtSteps(v), xs(v), h - PAD.b + 14);
+            });
+
+            const byFile = Object.fromEntries(list.map(r => [r.key, r]));
+            list.forEach(r => {
+                const p = byFile[r.parent];
+                if (!p) return;
+                const x1 = xs(p.cumulativeSteps), y1 = ys(lane.get(p.key));
+                const x2 = xs(r.cumulativeSteps), y2 = ys(lane.get(r.key));
+                const dead = r.outcome === 'rejected';
+                ctx.strokeStyle = dead ? PAL.bad : PAL.ink;
+                ctx.lineWidth = dead ? 1 : 2;
+                ctx.setLineDash(dead ? [3, 3] : []);
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.bezierCurveTo((x1 + x2) / 2, y1, (x1 + x2) / 2, y2, x2, y2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            list.forEach(r => {
+                const x = xs(r.cumulativeSteps), y = ys(lane.get(r.key));
+                const c = { shipped: PAL.fg, improved: PAL.good,
+                            rejected: PAL.bad, running: '#e0c07a' }[r.outcome] || PAL.axis;
+                ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = c; ctx.fill();
+                ctx.fillStyle = r.outcome === 'rejected' ? PAL.bad : PAL.dim;
+                ctx.textAlign = 'center';
+                ctx.fillText(r.evalScore ? r.evalScore.toFixed(0) : '—', x, y - 15);
+            });
+
+            treeGeom = { xs, ys, lane, list };
+        }
+
+        hover(treeCvs, treeTip,
+            (mx, my) => {
+                if (!treeGeom) return null;
+                let best = null, bd = Infinity;
+                treeGeom.list.forEach(r => {
+                    const dx = treeGeom.xs(r.cumulativeSteps) - mx;
+                    const dy = treeGeom.ys(treeGeom.lane.get(r.key)) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; best = r; }
+                });
+                return bd < 70 * 70 ? best : null;
+            },
+            r => `<div class="tip-run">${r.label}</div>`
+               + `<div class="tip-row">${fmtSteps(r.steps)} steps · ${fmtHours(r.elapsed)}</div>`
+               + `<div class="tip-row">${(OUTCOME[r.outcome] || ['', 'not evaluated'])[1]}`
+               + (r.evalScore ? ` at <b>${r.evalScore.toFixed(2)}</b>` : '') + '</div>');
+
+        /* ── Score distribution ─────────────────────────────────────────── */
+        const dists = TRAINING_DATA.distributions || {};
+        const distGames = Object.keys(dists);
+        let distGame = distGames[0];
+        const distCvs = document.getElementById('dist');
+        const distTip = document.getElementById('dist-tip');
+        let distGeom = null;
+
+        function drawDist() {
+            const { ctx, w, h } = setupCanvas(distCvs);
+            const d = dists[distGame];
+            if (!d) {
+                ctx.clearRect(0, 0, w, h);
+                ctx.fillStyle = PAL.axis;
+                ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('not measured yet — run tools/eval_distribution.py', w / 2, h / 2);
+                distGeom = null;
+                return;
+            }
+
+            const BINS = 16;
+            const lo = d.min, hi = d.max;
+            const width = (hi - lo) / BINS || 1;
+            const bins = new Array(BINS).fill(0);
+            d.scores.forEach(s => {
+                bins[Math.min(BINS - 1, Math.floor((s - lo) / width))]++;
+            });
+            const yHi = Math.max(...bins);
+
+            const xs = makeScale(lo, hi, PAD.l, w - PAD.r);
+            const ys = makeScale(0, yHi, h - PAD.b, PAD.t);
+            const xt = niceTicks(lo, hi, 6), yt = niceTicks(0, yHi, 4);
+            xt.scale = xs; yt.scale = ys;
+            drawFrame(ctx, w, h, xt, yt, v => v.toFixed(0), v => v.toFixed(0), 'games');
+
+            const bw = (xs(hi) - xs(lo)) / BINS;
+            bins.forEach((n, i) => {
+                if (!n) return;
+                const x = xs(lo + i * width);
+                ctx.fillStyle = PAL.ink + '6b';
+                ctx.fillRect(x + 1, ys(n), bw - 2, ys(0) - ys(n));
+            });
+
+            [['mean', d.mean, PAL.ink], ['median', d.median, PAL.good]].forEach(([label, v, col], i) => {
+                ctx.strokeStyle = col; ctx.lineWidth = 1.4;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath(); ctx.moveTo(xs(v), PAD.t); ctx.lineTo(xs(v), ys(0)); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = col; ctx.textAlign = 'left';
+                ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.fillText(`${label.toUpperCase()} ${Math.round(v)}`, xs(v) + 5, PAD.t + 8 + i * 12);
+            });
+
+            distGeom = { xs, ys, bins, lo, width, bw, d };
+        }
+
+        hover(distCvs, distTip,
+            (mx) => {
+                if (!distGeom) return null;
+                const i = Math.floor((mx - distGeom.xs(distGeom.lo)) / distGeom.bw);
+                if (i < 0 || i >= distGeom.bins.length) return null;
+                return { i, n: distGeom.bins[i] };
+            },
+            ({ i, n }) => {
+                const from = Math.round(distGeom.lo + i * distGeom.width);
+                const to = Math.round(distGeom.lo + (i + 1) * distGeom.width);
+                return `<div class="tip-run">${from}–${to}</div>`
+                     + `<div class="tip-row"><b>${n}</b> of ${distGeom.d.episodes} games</div>`;
+            });
+
+        tabs('dist-tabs', distGames.length ? distGames : ['none'], distGame,
+             v => { distGame = v; drawDist(); });
+
+        /* ── Architecture ───────────────────────────────────────────────── */
+        const arch = TRAINING_DATA.architecture || {};
+        const archGames = Object.keys(arch);
+        let archGame = archGames.includes('watermelon') ? 'watermelon' : archGames[0];
+
+        function drawArch() {
+            const a = arch[archGame];
+            const el = document.getElementById('arch');
+            if (!a) { el.innerHTML = ''; return; }
+
+            const steps = [];
+            const inShape = a.inputs[0].shape.filter(v => typeof v === 'number');
+            steps.push({ kind: 'input', shape: inShape.join(' × ') + ' floats', params: null });
+            a.layers.forEach(l => steps.push({
+                kind: l.kind === 'conv' ? 'convolution' : 'dense',
+                shape: l.shape.join(' × '),
+                params: l.params,
+            }));
+            a.outputs.forEach(o => steps.push({
+                kind: 'output',
+                shape: o.name + ' (' + o.shape.filter(v => typeof v === 'number').join(' × ') + ')',
+                params: null,
+            }));
+
+            el.innerHTML =
+                '<div class="arch-flow">' + steps.map(s => `
+                    <div class="arch-step">
+                        <span class="arch-kind">${s.kind}</span>
+                        <span class="arch-shape">${s.shape}</span>
+                        <span class="arch-params">${s.params ? s.params.toLocaleString() + ' weights' : ''}</span>
+                    </div>`).join('') + '</div>' +
+                `<div class="arch-summary">
+                    <div><b>${a.params.toLocaleString()}</b>learned parameters</div>
+                    <div><b>${a.sizeMB} MB</b>model file</div>
+                    <div><b>${a.layers.filter(l => l.kind === 'conv').length}</b>convolution layers</div>
+                    <div><b>${a.layers.filter(l => l.kind === 'dense').length}</b>dense layers</div>
+                 </div>`;
+        }
+
+        tabs('arch-tabs', archGames, archGame, v => { archGame = v; drawArch(); });
+
+        /* ── CPU vs GPU ─────────────────────────────────────────────────── */
+        const bench = TRAINING_DATA.benchmark;
+        const benchCvs = document.getElementById('bench');
+        const benchTip = document.getElementById('bench-tip');
+        let benchGeom = null;
+
+        function drawBench() {
+            const { ctx, w, h } = setupCanvas(benchCvs);
+            if (!bench) return;
+            const rows = bench.results;
+            const xMax = Math.max(...rows.map(r => r.fps));
+            const left = 86, right = w - 46, top = 16;
+            const rowH = (h - top - 14) / rows.length;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            rows.forEach((r, i) => {
+                const y = top + rowH * (i + 0.5);
+                const bw = (r.fps / xMax) * (right - left);
+                ctx.fillStyle = (r.device === 'cpu' ? PAL.bad : PAL.ink) + '7a';
+                ctx.fillRect(left, y - rowH * 0.3, bw, rowH * 0.6);
+                ctx.fillStyle = PAL.dim;
+                ctx.textAlign = 'right';
+                ctx.fillText(`${r.envs} envs · ${r.device}`, left - 8, y);
+                ctx.fillStyle = r.device === 'cpu' ? PAL.bad : PAL.ink;
+                ctx.textAlign = 'left';
+                ctx.fillText(r.fps.toLocaleString(), left + bw + 6, y);
+            });
+            benchGeom = { rows, left, right, top, rowH };
+        }
+
+        hover(benchCvs, benchTip,
+            (mx, my) => {
+                if (!benchGeom) return null;
+                const i = Math.floor((my - benchGeom.top) / benchGeom.rowH);
+                return benchGeom.rows[i] ? { r: benchGeom.rows[i] } : null;
+            },
+            ({ r }) => {
+                const cpu = bench.results.find(x => x.device === 'cpu');
+                return `<div class="tip-run">${r.envs} envs on ${r.device.toUpperCase()}</div>`
+                     + `<div class="tip-row"><b>${r.fps.toLocaleString()}</b> ${bench.unit}</div>`
+                     + (cpu && r.device !== 'cpu'
+                        ? `<div class="tip-row"><b>${(r.fps / cpu.fps).toFixed(1)}×</b> the CPU baseline</div>` : '');
+            });
+
+        /* ── Wall-clock timeline ────────────────────────────────────────── */
+        const tlCvs = document.getElementById('timeline');
+        const tlTip = document.getElementById('timeline-tip');
+        let tlGeom = null;
+
+        function drawTimeline() {
+            const { ctx, w, h } = setupCanvas(tlCvs);
+            const list = runs.filter(r => r.startedAt && r.elapsed > 0)
+                             .map(r => ({ ...r, t0: new Date(r.startedAt), t1: new Date(r.endedAt) }))
+                             .sort((a, b) => a.t0 - b.t0);
+            if (!list.length) { tlGeom = null; return; }
+
+            const lo = Math.min(...list.map(r => +r.t0));
+            const hi = Math.max(...list.map(r => +r.t1));
+            const xs = makeScale(lo, hi, PAD.l, w - PAD.r);
+            const rowH = (h - PAD.t - PAD.b) / list.length;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.textBaseline = 'middle';
+
+            // One tick per day.
+            const day = 86400000;
+            for (let t = new Date(lo).setHours(0, 0, 0, 0); t <= hi; t += day) {
+                if (t < lo) continue;
+                ctx.strokeStyle = PAL.grid; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(xs(t), PAD.t); ctx.lineTo(xs(t), h - PAD.b); ctx.stroke();
+                ctx.fillStyle = PAL.axis; ctx.textAlign = 'center';
+                ctx.fillText(new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+                             xs(t), h - PAD.b + 14);
+            }
+
+            list.forEach((r, i) => {
+                const y = PAD.t + rowH * (i + 0.5);
+                const x1 = xs(+r.t0), x2 = Math.max(xs(+r.t1), xs(+r.t0) + 2);
+                ctx.fillStyle = r.color;
+                ctx.globalAlpha = r.outcome === 'rejected' ? 0.4 : 0.85;
+                ctx.fillRect(x1, y - rowH * 0.28, x2 - x1, rowH * 0.56);
+                ctx.globalAlpha = 1;
+            });
+
+            tlGeom = { list, xs, rowH };
+        }
+
+        hover(tlCvs, tlTip,
+            (mx, my) => {
+                if (!tlGeom) return null;
+                const i = Math.floor((my - PAD.t) / tlGeom.rowH);
+                const r = tlGeom.list[i];
+                if (!r) return null;
+                return (mx >= tlGeom.xs(+r.t0) - 6 && mx <= tlGeom.xs(+r.t1) + 6) ? r : null;
+            },
+            r => `<div class="tip-run" style="color:${r.color}">${r.game} · ${r.label}</div>`
+               + `<div class="tip-row">${r.t0.toLocaleString()}</div>`
+               + `<div class="tip-row">ran for <b>${fmtHours(r.elapsed)}</b></div>`);
+
+        /* ── Head to head ───────────────────────────────────────────────── */
+        function drawH2H() {
+            const el = document.getElementById('h2h');
+            let played = [];
+            try {
+                played = JSON.parse(localStorage.getItem('humanvsai.results') || '[]');
+            } catch (e) { played = []; }
+
+            if (!played.length) {
+                el.innerHTML = `<div class="h2h-empty">
+                    Nothing recorded yet. Finish a game against any of the three
+                    opponents and the result is stored on this device — nothing is
+                    sent anywhere — then it appears here.
+                </div>`;
+                return;
+            }
+
+            const byGame = {};
+            played.forEach(m => {
+                const g = byGame[m.game] || (byGame[m.game] = { w: 0, l: 0, d: 0 });
+                if (m.human > m.ai) g.w++; else if (m.human < m.ai) g.l++; else g.d++;
+            });
+
+            el.innerHTML = Object.entries(byGame).map(([game, g]) => {
+                const total = g.w + g.l + g.d;
+                return `<div class="h2h-row">
+                    <span class="h2h-name">${game}</span>
+                    <span class="h2h-tally"><b>${g.w}</b> won · <i>${g.l}</i> lost${g.d ? ` · ${g.d} drawn` : ''}</span>
+                    <span class="h2h-bar"><span style="width:${(100 * g.w / total).toFixed(1)}%"></span></span>
+                </div>`;
+            }).join('');
+        }
+
+        /* ── The actual brain ───────────────────────────────────────────────
+           Every edge is a real weight. Blue is positive, red negative, and
+           opacity is |w| against that layer's own peak — normalising per layer
+           rather than globally, because the output layer's weights are about
+           2.5x the middle layers' and would otherwise wash them out. */
+        const brain = (TRAINING_DATA.brain || {}).tetris;
+        const brainCvs = document.getElementById('brain');
+        const brainTip = document.getElementById('brain-tip');
+        let brainGeom = null;
+        let brainHover = null;
+
+        /* Replays a real game the bot played.
+         *
+         * The activations are recorded, not computed here — running the model
+         * in the browser would mean downloading another 7 MB for a decoration.
+         * What is shipped is 108 neuron values per move, one byte each, which
+         * is why 260 moves cost 65 KB.
+         *
+         * Values are interpolated between moves so neurons swell and fade
+         * rather than snapping, and the loop only runs while the section is on
+         * screen — an animation nobody is looking at is pure battery drain. */
+        const activity = (() => {
+            const rec = TRAINING_DATA.activity;
+            if (!rec || !brain) {
+                return { current: () => null, setVisible() {}, label: () => '' };
+            }
+
+            const cols = rec.columns;
+            const offsets = cols.reduce((acc, n) => (acc.push(acc[acc.length - 1] + n), acc), [0]);
+            const decode = (i) => {
+                const flat = rec.frames[((i % rec.frames.length) + rec.frames.length) % rec.frames.length];
+                return cols.map((n, c) => {
+                    const out = new Array(n);
+                    for (let j = 0; j < n; j++) out[j] = flat[offsets[c] + j] / 255;
+                    return out;
+                });
+            };
+
+            const MOVES_PER_SEC = 2.4;
+            let idx = 0, blend = 0, from = decode(0), to = decode(1);
+            let live = null, raf = null, visible = false, last = 0;
+
+            function step(now) {
+                if (!visible) { raf = null; return; }
+                const dt = Math.min(0.25, (now - last) / 1000 || 0);
+                last = now;
+                blend += dt * MOVES_PER_SEC;
+                while (blend >= 1) {
+                    blend -= 1; idx++;
+                    from = to; to = decode(idx + 1);
+                }
+                const e = blend * blend * (3 - 2 * blend);   // ease, no linear ramp
+                live = from.map((col, c) => col.map((v, j) => v + (to[c][j] - v) * e));
+                drawBrain();
+                raf = requestAnimationFrame(step);
+            }
+
+            return {
+                current: () => live,
+                label: () => `move ${(idx % rec.frames.length) + 1} of ${rec.frames.length}`,
+                setVisible(v) {
+                    visible = v;
+                    if (v && !raf) { last = performance.now(); raf = requestAnimationFrame(step); }
+                },
+            };
+        })();
+
+        function drawBrain() {
+            if (!brain) { document.getElementById('brain-block').style.display = 'none'; return; }
+            const { ctx, w, h } = setupCanvas(brainCvs);
+            ctx.clearRect(0, 0, w, h);
+
+            const cols = brain.nodes.length;
+            const padX = 60, padY = 34;
+            const colX = (i) => padX + (w - padX * 2) * (cols === 1 ? 0.5 : i / (cols - 1));
+            const nodeY = (col, j) => {
+                const n = brain.nodes[col];
+                const usable = h - padY * 2;
+                return padY + (n === 1 ? usable / 2 : usable * j / (n - 1));
+            };
+
+            // How hard each sampled neuron is firing on the current frame,
+            // 0-1. Absent until the recording loads, in which case everything
+            // renders at rest.
+            const act = activity.current();
+            const fire = (c, j) => act ? act[c][j] : 0;
+
+            brain.edges.forEach((e) => {
+                const from = e.layer, to = e.layer + 1;
+                for (let d = 0; d < e.to; d++) {
+                    for (let s = 0; s < e.from; s++) {
+                        const wv = e.w[d * e.from + s];
+                        const mag = Math.abs(wv) / e.peak;
+                        const touches = brainHover &&
+                            ((brainHover.col === from && brainHover.idx === s) ||
+                             (brainHover.col === to && brainHover.idx === d));
+                        const dim = brainHover && !touches;
+
+                        // A connection only carries signal if the neuron
+                        // feeding it is firing, so brightness is weight
+                        // strength TIMES the source's activation. A dead
+                        // neuron's connections go dark, which is the whole
+                        // point of animating this.
+                        //
+                        // EXCEPT when hovering. A hovered neuron that happens
+                        // to be silent would otherwise highlight nothing at
+                        // all — the question being asked is "what is this
+                        // wired to", not "what is it doing right now" — so a
+                        // touched edge is drawn at full weight strength.
+                        const live = 0.25 + 0.75 * fire(from, s);
+                        // Cull only when nothing is hovered. Hovering asks to
+                        // see EVERY connection this neuron has, including the
+                        // weak ones — culling them shows a partial fan-out and
+                        // makes the neuron look less connected than it is.
+                        if (!touches && mag < 0.08) continue;
+
+                        const alpha = touches
+                            ? Math.min(0.95, 0.35 + mag * 0.65)
+                            : mag * 0.5 * live * (dim ? 0.06 : 1);
+                        ctx.strokeStyle = wv >= 0
+                            ? `rgba(140,190,255,${alpha.toFixed(3)})`
+                            : `rgba(235,130,130,${alpha.toFixed(3)})`;
+                        ctx.lineWidth = touches ? 0.8 + mag * 2.2
+                                      : dim ? 0.5 : 0.4 + mag * 1.4 * live;
+                        ctx.beginPath();
+                        ctx.moveTo(colX(from), nodeY(from, s));
+                        ctx.lineTo(colX(to), nodeY(to, d));
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            const LABELS = ['board + pieces', 'hidden 1024', 'hidden 1024', 'hidden 512', 'placements'];
+            for (let c = 0; c < cols; c++) {
+                for (let j = 0; j < brain.nodes[c]; j++) {
+                    const on = brainHover && brainHover.col === c && brainHover.idx === j;
+                    const f = fire(c, j);
+                    const x = colX(c), y = nodeY(c, j);
+
+                    if (f > 0.12) {                       // halo while firing
+                        const g = ctx.createRadialGradient(x, y, 0, x, y, 4 + f * 11);
+                        g.addColorStop(0, `rgba(190,220,255,${(f * 0.5).toFixed(3)})`);
+                        g.addColorStop(1, 'rgba(190,220,255,0)');
+                        ctx.fillStyle = g;
+                        ctx.beginPath(); ctx.arc(x, y, 4 + f * 11, 0, Math.PI * 2); ctx.fill();
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, on ? 5 : 2.6 + f * 2.2, 0, Math.PI * 2);
+                    if (on) ctx.fillStyle = '#fff';
+                    else {
+                        const base = c === 0 ? [127, 155, 191]
+                                   : c === cols - 1 ? [207, 228, 255] : [95, 107, 122];
+                        const mix = (v) => Math.round(v + (255 - v) * f * 0.85);
+                        ctx.fillStyle = `rgb(${mix(base[0])},${mix(base[1])},${mix(base[2])})`;
+                    }
+                    ctx.fill();
+                }
+                ctx.fillStyle = PAL.axis;
+                ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText((LABELS[c] || '').toUpperCase(), colX(c), h - 10);
+            }
+
+            brainGeom = { colX, nodeY, cols };
+        }
+
+        brainCvs.addEventListener('mousemove', e => {
+            if (!brainGeom) return;
+            const rect = brainCvs.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            let found = null, bd = 18 * 18;
+            for (let c = 0; c < brainGeom.cols; c++) {
+                for (let j = 0; j < brain.nodes[c]; j++) {
+                    const dx = brainGeom.colX(c) - mx, dy = brainGeom.nodeY(c, j) - my;
+                    const d = dx * dx + dy * dy;
+                    if (d < bd) { bd = d; found = { col: c, idx: j }; }
+                }
+            }
+            const changed = JSON.stringify(found) !== JSON.stringify(brainHover);
+            brainHover = found;
+            if (changed) drawBrain();
+
+            if (!found) { brainTip.style.opacity = 0; return; }
+            const names = ['input', 'hidden layer 1', 'hidden layer 2', 'hidden layer 3', 'placement'];
+            brainTip.innerHTML =
+                `<div class="tip-run">${names[found.col] || 'neuron'}</div>` +
+                `<div class="tip-row">one of <b>${brain.layers[Math.min(found.col, brain.layers.length - 1)].shape[found.col === 0 ? 1 : 0].toLocaleString()}</b> in this layer</div>` +
+                `<div class="tip-row">showing a sample of ${brain.nodes[found.col]}</div>`;
+            brainTip.style.opacity = 1;
+            const tw = brainTip.offsetWidth, th = brainTip.offsetHeight;
+            brainTip.style.left = Math.min(Math.max(8, mx + 14), rect.width - tw - 8) + 'px';
+            brainTip.style.top  = Math.min(Math.max(8, my - th - 12), rect.height - th - 8) + 'px';
+        });
+        brainCvs.addEventListener('mouseleave', () => {
+            brainTip.style.opacity = 0;
+            if (brainHover) { brainHover = null; drawBrain(); }
+        });
+
+        function drawBrainNote() {
+            if (!brain) return;
+            const total = brain.layers.reduce((a, l) => a + l.shape[0] * l.shape[1], 0);
+            const shown = brain.edges.reduce((a, e) => a + e.w.length, 0);
+            const rec = TRAINING_DATA.activity;
+            document.getElementById('brain-note').textContent =
+                `${shown.toLocaleString()} connections drawn, sampled evenly from `
+                + `${total.toLocaleString()} real ones — every 1.84 million would be a solid block.`
+                + (rec ? `  Firing is replayed from a real game: ${rec.frames.length} moves, `
+                       + `finishing on ${rec.finalScore.toLocaleString()} points.` : '');
+        }
+
+        /* Run the animation only while the section is actually visible. */
+        if (brain && 'IntersectionObserver' in window) {
+            new IntersectionObserver(
+                (entries) => activity.setVisible(entries[0].isIntersecting),
+                { rootMargin: '120px 0px' }
+            ).observe(brainCvs);
+        } else if (brain) {
+            activity.setVisible(true);
+        }
+
+        function drawHeat() {
+            if (!brain) return;
+            const host = document.getElementById('brain-heat');
+            host.innerHTML = '<div class="heat-row">' + brain.layers.map((l, i) =>
+                `<div class="heat-cell">
+                    <canvas data-heat="${i}" width="${l.heat.w}" height="${l.heat.h}"></canvas>
+                    <span class="heat-label"><b>layer ${i + 1} — ${l.shape[1]} → ${l.shape[0]}</b>
+                    ${(l.shape[0] * l.shape[1]).toLocaleString()} weights ·
+                    ±${l.heat.peak.toFixed(2)} peak · ${(l.stats.zeroish * 100).toFixed(0)}% near zero</span>
+                </div>`).join('') + '</div>';
+
+            // One integer scale for the whole row, chosen so the widest map
+            // still fits, so every layer's cells are the same physical size.
+            const widest = Math.max(...brain.layers.map(l => l.heat.w));
+            const scale = Math.max(1, Math.floor(190 / widest));
+
+            brain.layers.forEach((l, i) => {
+                const cvs = host.querySelector(`[data-heat="${i}"]`);
+                cvs.style.width = l.heat.w * scale + 'px';
+                cvs.style.height = l.heat.h * scale + 'px';
+                const ctx = cvs.getContext('2d');
+                const img = ctx.createImageData(l.heat.w, l.heat.h);
+                for (let p = 0; p < l.heat.data.length; p++) {
+                    // 128 is zero; below is negative (red), above positive (blue).
+                    const v = (l.heat.data[p] - 128) / 127;
+                    const mag = Math.min(1, Math.abs(v));
+                    const o = p * 4;
+                    img.data[o]     = v < 0 ? 235 : 140;
+                    img.data[o + 1] = v < 0 ? 130 : 190;
+                    img.data[o + 2] = v < 0 ? 130 : 255;
+                    img.data[o + 3] = Math.round(28 + mag * 227);
+                }
+                ctx.putImageData(img, 0, 0);
+            });
+        }
+
+        /* ── Boot ───────────────────────────────────────────────────────── */
+        renderLegend();
+        drawArch();
+        drawH2H();
+        drawBrainNote();
+        drawHeat();
+        function redraw() {
+            drawCurve(); drawEvals(); drawProgression(); drawTree();
+            drawDist(); drawBench(); drawTimeline(); drawBrain();
+        }
+        window.addEventListener('resize', redraw);
+        redraw();
+    })();
+    </script>
+</body>
+</html>

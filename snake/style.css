@@ -1,0 +1,209 @@
+
+/* ── Back navigation ── */
+.back-nav {
+    position: fixed;
+    top: 1.5rem;
+    left: 1.75rem;
+    z-index: 100;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #555;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+.back-nav:hover { color: #aaa; }
+
+:root {
+    font-size: 18px;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+html, body {
+    background-color: #000;
+    margin: 0;
+    padding: 0;
+    color: #fff;
+    width: 100%;
+    height: 100%;
+}
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+* {
+    box-sizing: border-box;
+    user-select: none;
+}
+
+*[hidden] {
+    display: none !important;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+
+/* flex-start, not center — the same fix Tetris already carries. The AI column
+   is taller than the human one (speed/model controls hang below it), and
+   centring each column on its own height pushed the AI board visibly HIGHER
+   than the human board: measured 35px of offset, so the two "YOU" and "AI"
+   labels and the two play areas did not line up. Aligning to the top levels
+   the boards and lets the extra controls hang below where they belong. */
+#arena {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 48px;
+}
+
+#vs {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #444;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+}
+
+.board-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.board-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #555;
+    text-transform: uppercase;
+}
+
+/* ── Board ──────────────────────────────────────────────────────────────── */
+
+main {
+    position: relative;
+    width: 480px;
+    height: 480px;
+    flex-shrink: 0;
+    outline: 1px solid #2a2a2a;
+}
+
+main canvas {
+    width: 480px;
+    height: 480px;
+    display: block;
+}
+
+main > button {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 6px;
+    border: none;
+    cursor: pointer;
+    background-color: transparent;
+    border-radius: 4px;
+    outline: none;
+    transition: background-color 0.08s ease;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #ccc;
+}
+
+main > button svg {
+    width: 26px;
+    height: 26px;
+    display: block;
+}
+
+main > button:hover {
+    background-color: rgba(200, 200, 200, 0.2);
+}
+
+main > button:active {
+    background-color: rgba(200, 200, 200, 0.35);
+}
+
+/* ── Controls overlay ─────────────────────────────────────────────────────── */
+
+main div.controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #ccc;
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 0.85rem;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+main div.controls[hidden] {
+    display: flex !important;
+    opacity: 0;
+}
+
+main div.controls p {
+    margin: 0.35em 0;
+    text-align: center;
+    color: #fff;
+}
+
+/* ── AI status overlay (model loading / error state) ─────────────────────── */
+
+.ai-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #444;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.7);
+}
+.ai-status[hidden] { display: none !important; }
+
+/* ── Narrow screens ─────────────────────────────────────────────────────────
+   Without this the two 480px boards plus a 48px gap need ~1010px, and #arena
+   is a non-wrapping flex row that stays centred and overflows BOTH edges.
+   Measured at a 741px viewport: the human board ran from x=-366 to x=114, so
+   the player's own board was mostly off-screen — and because the overflow is
+   symmetric there is no horizontal scroll to reach it.
+
+   Stack below 1040px, and scale the canvases down below 560px so a phone gets
+   two usable boards rather than one clipped one. */
+@media (max-width: 1040px) {
+    #arena { flex-direction: column; align-items: center; gap: 18px; }
+    #vs { margin-top: 0; font-size: 1.5rem; }
+}
+
+@media (max-width: 560px) {
+    body { padding-left: 0.6rem; padding-right: 0.6rem; }
+    /* The 480px board size is set on `main` AND on `main canvas`; both have to
+       give way or the fixed width wins and the board overflows again. The
+       canvas keeps its square aspect so the grid stays undistorted. */
+    main { width: min(88vw, 480px); height: auto; aspect-ratio: 1 / 1; }
+    main canvas { width: 100%; height: 100%; }
+    .board-wrap { width: 100%; }
+}

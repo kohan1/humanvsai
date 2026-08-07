@@ -1,0 +1,240 @@
+/* Shared styling for the neural-network inspector.
+ *
+ * Defaults are tuned for the dark games (Snake, Tetris). Watermelon is a cream
+ * and sage board, so watermelon/style.css overrides the custom properties
+ * below rather than restating any of these rules. */
+
+.insp {
+    --insp-fg:       #ddd;
+    --insp-dim:      #666;
+    --insp-line:     #242424;
+    --insp-panel:    rgba(255, 255, 255, 0.02);
+    --insp-accent:   #9ec7ff;
+    --insp-cell-bg:  #101010;   /* heat-map background, must be OPAQUE */
+    --insp-track:    #1a1a1a;   /* bar track */
+    --insp-cell-rgb: 158, 199, 255;
+
+    /* FIXED WIDTH, deliberately. The panel's contents change every decision —
+       a scalar going from 9 to 10, or "cherry" to "strawberry" — and with an
+       auto width the whole box grew and shrank a few pixels several times a
+       second, which reads as the layout twitching. Pinning the width means
+       only the numbers change. */
+    width: min(600px, 100%);
+    margin: 1.25rem auto 0;
+    padding: 1.1rem 1.2rem 1.2rem;
+    border: 1px solid var(--insp-line);
+    background: var(--insp-panel);
+    color: var(--insp-fg);
+    font-size: 12px;
+    text-align: left;
+}
+
+.insp[hidden] { display: none !important; }
+
+.insp-section-label {
+    font-size: 0.53rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--insp-dim);
+    margin-bottom: 0.7rem;
+}
+.insp-actions .insp-section-label { margin-top: 1.3rem; }
+
+/* ── Observation channels ───────────────────────────────────────────────── */
+
+.insp-channels {
+    display: flex;
+    flex-wrap: wrap;
+    /* PIXELS, not rem. The three games set different root font sizes —
+       Snake's is 18px — so a rem gap computed wider there and tipped its
+       five 96px channels onto a second row. */
+    gap: 8px;
+    align-items: flex-start;
+    /* Centred, not left-aligned. The panel is a fixed width, so two narrow
+       channels (Watermelon) or one (Tetris) would otherwise sit hard against
+       the left edge with a gap beside them. */
+    justify-content: center;
+}
+.insp-chan { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
+.insp-chan-cvs {
+    display: block;
+    border: 1px solid var(--insp-line);
+    image-rendering: pixelated;
+}
+.insp-chan-label {
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--insp-dim);
+}
+
+/* ── Scalars ────────────────────────────────────────────────────────────── */
+
+/* A grid of fixed columns rather than a wrapping flex row. With flex, a value
+   changing width could push an item onto the next line and change the panel's
+   height mid-play. Fixed tracks and tabular figures keep every item exactly
+   where it was. */
+.insp-scalars {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 0.4rem 0.8rem;
+    margin-top: 0.9rem;
+    font-size: 0.66rem; color: var(--insp-dim);
+    font-variant-numeric: tabular-nums;
+}
+.insp-scalars:empty { display: none; }
+.insp-scalar b {
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 0.5rem;
+    margin-right: 0.45em;
+}
+
+/* ── Action distribution ────────────────────────────────────────────────── */
+
+.insp-bars { display: flex; gap: 2px; }
+
+/* Columns: one bar per drop position, growing upward, so the shape lines up
+   with the board above it. */
+.insp-actions-columns .insp-bars { align-items: flex-end; height: 76px; }
+.insp-actions-columns .insp-act {
+    position: relative; flex: 1 1 0; height: 100%;
+    display: flex; align-items: flex-end;
+    background: var(--insp-track);
+}
+.insp-actions-columns .insp-act-fill {
+    display: block; width: 100%;
+    height: calc(var(--p, 0) * 100%);
+    background: var(--insp-accent);
+    opacity: 0.42;
+    transition: height 0.12s linear, opacity 0.12s;
+}
+.insp-actions-columns .insp-act-label { display: none; }
+.insp-actions-columns .insp-act.is-best .insp-act-fill { opacity: 1; }
+
+/* Rows: a handful of named actions, so they get labels. */
+.insp-actions-rows .insp-bars { flex-direction: column; gap: 4px; }
+.insp-actions-rows .insp-act {
+    position: relative; height: 20px;
+    display: flex; align-items: center;
+    background: var(--insp-track);
+}
+.insp-actions-rows .insp-act-fill {
+    position: absolute; inset: 0 auto 0 0;
+    width: calc(var(--p, 0) * 100%);
+    background: var(--insp-accent);
+    opacity: 0.42;
+    transition: width 0.12s linear, opacity 0.12s;
+}
+.insp-actions-rows .insp-act.is-best .insp-act-fill { opacity: 1; }
+.insp-actions-rows .insp-act-label {
+    position: relative;
+    padding-left: 0.6em;
+    font-size: 0.58rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    mix-blend-mode: difference;
+    color: #fff;
+}
+
+/* ── Readouts ───────────────────────────────────────────────────────────── */
+
+.insp-readouts {
+    display: flex; flex-wrap: wrap; gap: 1.6rem;
+    margin-top: 1.3rem; padding-top: 1.1rem;
+    border-top: 1px solid var(--insp-line);
+}
+.insp-metric { min-width: 130px; }
+.insp-metric[hidden] { display: none; }
+.insp-metric-label {
+    font-size: 0.5rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--insp-dim); margin-bottom: 0.45rem;
+}
+.insp-metric-num { font-variant-numeric: tabular-nums; font-size: 0.8rem; }
+.insp-metric-big { font-size: 1.3rem; }
+.insp-metric-hint {
+    margin-top: 0.3rem; font-size: 0.55rem; color: var(--insp-dim); opacity: 0.8;
+}
+.insp-bar {
+    height: 4px; background: var(--insp-track); margin-bottom: 0.4rem;
+    max-width: 160px;
+}
+.insp-bar-fill {
+    display: block; height: 100%;
+    width: calc(var(--p, 0) * 100%);
+    background: var(--insp-accent);
+    transition: width 0.15s linear;
+}
+
+/* ── Placing it below the fold ──────────────────────────────────────────────
+   All three games centre their arena in a full-height flex body. Adding a
+   sibling section to that would sit it BESIDE the arena, not under it, so the
+   arena gets wrapped in .screen and the body becomes a normal block. #arena's
+   own rules are left completely alone — Tetris and Watermelon align their
+   boards differently, and overriding that here would break them. */
+body:has(.insp-section) {
+    display: block;
+    padding: 0;
+}
+body:has(.insp-section) .screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Extra room at the bottom, so centring lifts the boards clear of the
+       fixed scroll cue instead of the cue overlapping them. */
+    padding: 2rem 1.5rem 4.5rem;
+}
+/* A block, not a flex row: .insp sets its own fixed width and centres itself
+   with auto margins, so a flex parent would fight it. */
+.insp-section {
+    display: block;
+    padding: 0 1.5rem 5rem;
+}
+
+/* ── Scroll cue ─────────────────────────────────────────────────────────── */
+
+.insp-cue {
+    position: fixed;
+    left: 50%;
+    bottom: 1.4rem;
+    transform: translateX(-50%);
+    z-index: 90;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.55rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--insp-cue-fg, #6a6a6a);
+    opacity: 0.85;
+    transition: opacity 0.35s, transform 0.35s, color 0.15s;
+}
+.insp-cue:hover { color: var(--insp-cue-hover, #fff); opacity: 1; }
+
+/* Once the reader has started scrolling it has served its purpose. */
+.insp-cue.is-gone {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(8px);
+}
+
+.insp-cue-arrow {
+    width: 20px;
+    height: 12px;
+    animation: insp-nudge 2.1s ease-in-out infinite;
+}
+@keyframes insp-nudge {
+    0%, 100% { transform: translateY(0); opacity: 0.55; }
+    50%      { transform: translateY(4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .insp-cue-arrow { animation: none; opacity: 0.9; }
+}

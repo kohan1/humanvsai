@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>human vs ai</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; height: 100%;
+            background: #080808;
+            color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+        /* pointer-events: none — the renderers track the cursor on window, so the
+           canvas never needs to receive events itself, and a fullscreen fixed
+           element that does is one stacking-order mistake away from swallowing
+           every click on the page. */
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0;
+                pointer-events: none; }
+        .stage {
+            position: fixed; inset: 0;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 10; pointer-events: none;
+        }
+        .title {
+            font-size: clamp(3.8rem, 9vw, 8.5rem);
+            font-weight: 300; letter-spacing: -0.02em; line-height: 1;
+            color: #fff; text-align: center;
+            font-family: Georgia, 'Times New Roman', serif;
+            opacity: 0; transform: translateY(22px);
+            animation: up 1.2s cubic-bezier(0.16,1,0.3,1) 0.15s forwards;
+        }
+        .title .vs { color: #555; font-style: italic; font-weight: 300; margin: 0 0.14em; }
+        .rule {
+            width: 1px; height: 44px; background: #2a2a2a;
+            margin: 2.6rem 0 2.2rem;
+            opacity: 0; animation: up 1.2s cubic-bezier(0.16,1,0.3,1) 0.38s forwards;
+        }
+        .enter {
+            display: inline-flex; align-items: center; gap: 0.55em;
+            padding: 0.72em 2em; border: 1px solid #2a2a2a;
+            background: transparent; color: #ccc; font-family: inherit;
+            font-size: 0.68rem; font-weight: 400; letter-spacing: 0.22em;
+            text-transform: uppercase; text-decoration: none; cursor: pointer;
+            transition: border-color 0.2s, color 0.2s, background 0.2s;
+            opacity: 0; animation: up 1.2s cubic-bezier(0.16,1,0.3,1) 0.6s forwards;
+            pointer-events: all;
+        }
+        .enter:hover { border-color: rgba(255,255,255,0.4); color: #fff; background: rgba(255,255,255,0.03); }
+        .enter .arr { display: inline-block; transition: transform 0.2s; }
+        .enter:hover .arr { transform: translateX(5px); }
+        .foot {
+            position: fixed; bottom: 1.8rem; left: 50%; transform: translateX(-50%);
+            font-size: 0.52rem; letter-spacing: 0.18em; color: rgba(255,255,255,0.1);
+            text-transform: uppercase; white-space: nowrap; z-index: 10;
+            opacity: 0; animation: up 1.2s cubic-bezier(0.16,1,0.3,1) 0.85s forwards;
+        }
+        @keyframes up { to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) {
+            .title, .rule, .enter, .foot { animation: none; opacity: 1; transform: none; }
+        }
+    </style>
+    <link rel="stylesheet" href="shared/themes.css" />
+    <script src="shared/backgrounds.js"></script>
+    <script src="shared/settings.js"></script>
+    <script>
+    // Before first paint: a themed page must not flash the default
+    // palette while settings.js loads.
+    try {
+        var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+        document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+    </script>
+</head>
+<body>
+    <canvas id="mesh"></canvas>
+    <div class="stage">
+        <h1 class="title">human<span class="vs">vs</span>ai</h1>
+        <div class="rule"></div>
+        <a class="enter" href="select.html">enter <span class="arr">→</span></a>
+    </div>
+
+    <!-- The background is shared with select.html and inside.html, and
+         dispatches on the current theme. index.html used to carry its own
+         copy of the lattice, which meant the landing page ignored the
+         theme entirely. -->
+    <script src="shared/mesh.js"></script>
+    <script>initMesh('mesh');</script>
+</body>
+</html>

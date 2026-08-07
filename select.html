@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>select — human vs ai</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            width: 100%; min-height: 100%;
+            background: #080808; color: #fff;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        /* pointer-events: none — the renderers track the cursor on window, so the
+           canvas never needs to receive events itself, and a fullscreen fixed
+           element that does is one stacking-order mistake away from swallowing
+           every click on the page. */
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0;
+                pointer-events: none; }
+        .back {
+            position: fixed; top: 1.6rem; left: 1.8rem;
+            display: inline-flex; align-items: center; gap: 0.4em;
+            font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase;
+            color: #555; text-decoration: none; transition: color 0.15s; z-index: 100;
+        }
+        .back:hover { color: #bbb; }
+        .page {
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            padding: 6rem 2rem 4rem; position: relative; z-index: 10;
+        }
+        .header {
+            text-align: center; margin-bottom: 3.5rem;
+            opacity: 0; transform: translateY(16px);
+            animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.05s forwards;
+        }
+        .header .eyebrow {
+            font-size: 0.58rem; letter-spacing: 0.24em; text-transform: uppercase;
+            color: #555; margin-bottom: 0.9rem;
+        }
+        .header h1 {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+            font-weight: 300; letter-spacing: -0.01em; color: #fff;
+        }
+        .grid {
+            display: grid; grid-template-columns: repeat(3, minmax(0, 260px));
+            justify-content: center;
+            gap: 1px; width: fit-content; max-width: 100%;
+            background: #1e1e1e; border: 1px solid #1e1e1e;
+            opacity: 0; animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.22s forwards;
+        }
+        @media (max-width: 720px) {
+            .grid { grid-template-columns: repeat(auto-fit, minmax(220px, 260px)); }
+        }
+        .card {
+            display: flex; flex-direction: column; justify-content: space-between;
+            padding: 2rem 2rem 1.8rem; background: #080808;
+            text-decoration: none; color: #aaa; min-height: 180px;
+            transition: background 0.18s, color 0.18s; position: relative; overflow: hidden;
+        }
+        .card::after {
+            content: ''; position: absolute; inset: 0;
+            border: 1px solid transparent; transition: border-color 0.18s; pointer-events: none;
+        }
+        .card:hover { background: #111; color: #fff; }
+        .card:hover::after { border-color: rgba(255,255,255,0.15); }
+        .card-num { font-size: 0.55rem; letter-spacing: 0.2em; text-transform: uppercase; color: #444; }
+        .card-name {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.55rem; font-weight: 300; letter-spacing: -0.01em; line-height: 1.1; color: inherit;
+        }
+        .card-meta { display: flex; align-items: center; justify-content: space-between; }
+        .card-tag { font-size: 0.55rem; letter-spacing: 0.16em; text-transform: uppercase; color: #444; }
+        .card-arrow { font-size: 0.85rem; color: #444; transition: transform 0.2s, color 0.18s; }
+        .card:hover .card-arrow { transform: translateX(4px); color: #aaa; }
+        /* Spans all three game cards. Laid out as one horizontal bar rather
+           than a tall card, so it reads as a different kind of destination
+           instead of a fourth game. */
+        .card-wide {
+            grid-column: 1 / -1;
+            flex-direction: row; align-items: center; justify-content: space-between;
+            min-height: 0; padding: 1.4rem 2rem;
+        }
+        .card-wide .wide-left { display: flex; align-items: baseline; gap: 1.1rem; }
+        .card-wide .wide-right { display: flex; align-items: center; gap: 1.4rem; }
+        .card-wide .card-name { font-size: 1.2rem; }
+        @media (max-width: 720px) {
+            .card-wide .card-tag { display: none; }
+        }
+
+        .foot {
+            margin-top: 4rem; font-size: 0.52rem; letter-spacing: 0.16em;
+            color: rgba(255,255,255,0.1); text-transform: uppercase;
+            opacity: 0; animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.45s forwards;
+        }
+        /* ── Settings ───────────────────────────────────────────────────────
+           Opposite corner to the back link, so the two never crowd. */
+        .settings-btn {
+            position: fixed; top: 1.5rem; right: 1.8rem; z-index: 120;
+            display: inline-flex; align-items: center; gap: 0.5em;
+            background: none; border: 0; cursor: pointer;
+            font-family: inherit; font-size: 0.6rem;
+            letter-spacing: 0.2em; text-transform: uppercase;
+            color: #555; transition: color 0.15s;
+        }
+        .settings-btn:hover, .settings-btn[aria-expanded="true"] { color: #ddd; }
+        .settings-btn svg { width: 13px; height: 13px; }
+
+        .settings-panel {
+            position: fixed; top: 3.6rem; right: 1.8rem; z-index: 119;
+            width: min(320px, calc(100vw - 3rem));
+            background: #0c0c0c; border: 1px solid #222;
+            padding: 1.3rem 1.3rem 1.1rem;
+            opacity: 0; transform: translateY(-6px); pointer-events: none;
+            transition: opacity 0.18s, transform 0.18s;
+        }
+        .settings-panel.open { opacity: 1; transform: none; pointer-events: auto; }
+        .settings-panel[hidden] { display: none; }
+
+        .settings-title {
+            font-size: 0.53rem; letter-spacing: 0.2em; text-transform: uppercase;
+            color: #4a4a4a; margin-bottom: 0.5rem;
+        }
+        .settings-blurb {
+            font-size: 0.68rem; line-height: 1.7; color: #6a6a6a;
+            margin-bottom: 1rem;
+        }
+        .settings-opt {
+            display: block; width: 100%; text-align: left;
+            background: #080808; border: 1px solid #1c1c1c;
+            color: #999; font-family: inherit; cursor: pointer;
+            padding: 0.6rem 0.75rem; margin-bottom: 4px;
+            transition: border-color 0.14s, color 0.14s, background 0.14s;
+        }
+        .settings-opt:hover { color: #fff; border-color: #333; background: #101010; }
+        .settings-opt.on { color: #fff; border-color: #cfe4ff; background: #101418; }
+        .settings-opt b {
+            display: block; font-size: 0.74rem; font-weight: 400;
+            margin-bottom: 0.15rem;
+        }
+        .settings-opt span { font-size: 0.62rem; color: #5f5f5f; line-height: 1.5; }
+        .settings-opt.on span { color: #7e94ab; }
+        .settings-foot {
+            margin-top: 0.9rem; font-size: 0.6rem; line-height: 1.6; color: #4a4a4a;
+        }
+
+        @keyframes up { to { opacity: 1; transform: translateY(0); } }
+        @media (prefers-reduced-motion: reduce) {
+            .header, .grid, .foot { animation: none; opacity: 1; transform: none; }
+        }
+    </style>
+    <link rel="stylesheet" href="shared/themes.css" />
+    <script>
+    // Before first paint: a themed page must not flash the default
+    // palette while settings.js loads.
+    try {
+        var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+        document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+    </script>
+</head>
+<body>
+    <canvas id="mesh"></canvas>
+    <a class="back" href="index.html">← back</a>
+
+    <button class="settings-btn" id="settings-btn" aria-expanded="false"
+            aria-controls="settings-panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span id="settings-label">settings</span>
+    </button>
+
+    <div class="settings-panel" id="settings-panel" hidden>
+        <p class="settings-title">Theme</p>
+        <div class="theme-row" id="settings-theme"></div>
+
+        <p class="settings-title" style="margin-top:1.3rem">AI difficulty</p>
+        <p class="settings-blurb">
+            Every opponent picks its move from a score it gives each option.
+            Easing off does not slow it down or make it act at random — it lets
+            it take a move it rated second best. Same model, weaker play.
+        </p>
+        <div id="settings-difficulty"></div>
+        <p class="settings-foot">
+            Applies to all three games and is remembered on this device.
+        </p>
+    </div>
+    <div class="page">
+        <div class="header">
+            <p class="eyebrow">select a game</p>
+            <h1>human vs ai</h1>
+        </div>
+        <div class="grid">
+            <a class="card" href="snake/game.html">
+                <span class="card-num">01</span>
+                <span class="card-name">Snake</span>
+                <div class="card-meta">
+                    <span class="card-tag">arcade</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+            <a class="card" href="tetris/game.html">
+                <span class="card-num">02</span>
+                <span class="card-name">Tetris</span>
+                <div class="card-meta">
+                    <span class="card-tag">strategy</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+            <a class="card" href="watermelon/game.html">
+                <span class="card-num">03</span>
+                <span class="card-name">Watermelon Game</span>
+                <div class="card-meta">
+                    <span class="card-tag">physics</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+            <a class="card card-wide" href="inside.html">
+                <div class="wide-left">
+                    <span class="card-num">04</span>
+                    <span class="card-name">Inside</span>
+                </div>
+                <div class="wide-right">
+                    <span class="card-tag">how the opponents were trained</span>
+                    <span class="card-arrow">→</span>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- The mesh background is shared with inside.html. -->
+    <script src="shared/backgrounds.js"></script>
+    <script src="shared/mesh.js"></script>
+    <script src="shared/settings.js"></script>
+    <script>
+    initMesh('mesh');
+
+    (() => {
+        const btn = document.getElementById('settings-btn');
+        const panel = document.getElementById('settings-panel');
+        const label = document.getElementById('settings-label');
+        const list = document.getElementById('settings-difficulty');
+
+        const themeRow = document.getElementById('settings-theme');
+
+        function renderThemes() {
+            const t = Settings.get().theme;
+            themeRow.innerHTML = Settings.THEMES.map(x => `
+                <button class="theme-swatch${x.id === t ? ' on' : ''}" data-theme-id="${x.id}"
+                        title="${x.label}">
+                    <i style="background:${x.swatch}"></i><b>${x.label}</b>
+                </button>`).join('');
+        }
+        themeRow.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-theme-id]');
+            if (!b) return;
+            Settings.set({ theme: b.dataset.themeId });
+            Settings.applyTheme(b.dataset.themeId);
+            renderThemes();
+        });
+
+        function render() {
+            const current = Settings.get().difficulty;
+            list.innerHTML = Settings.DIFFICULTY.map(d => `
+                <button class="settings-opt${d.id === current ? ' on' : ''}"
+                        data-id="${d.id}">
+                    <b>${d.label}</b><span>${d.hint}</span>
+                </button>`).join('');
+            // Surface the choice on the button itself, so a weakened opponent
+            // is never a surprise the player has forgotten about.
+            const chosen = Settings.DIFFICULTY.find(d => d.id === current);
+            label.textContent = current === 'full'
+                ? 'settings' : `settings · ${chosen.label.toLowerCase()}`;
+        }
+
+        list.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-id]');
+            if (!b) return;
+            Settings.set({ difficulty: b.dataset.id });
+            render();
+        });
+
+        function open(v) {
+            btn.setAttribute('aria-expanded', String(v));
+            panel.hidden = false;
+            // Force a reflow between un-hiding and adding the class, so the
+            // transition still runs from the right starting point. This used
+            // to be a requestAnimationFrame, which never fires while the tab
+            // is not compositing — the panel then simply never opened.
+            void panel.offsetHeight;
+            panel.classList.toggle('open', v);
+            if (!v) setTimeout(() => {
+                if (!panel.classList.contains('open')) panel.hidden = true;
+            }, 200);
+        }
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            open(btn.getAttribute('aria-expanded') !== 'true');
+        });
+        panel.addEventListener('click', (e) => e.stopPropagation());
+        document.addEventListener('click', () => {
+            if (btn.getAttribute('aria-expanded') === 'true') open(false);
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') open(false);
+        });
+
+        renderThemes();
+        render();
+    })();
+    </script>
+</body>
+</html>
