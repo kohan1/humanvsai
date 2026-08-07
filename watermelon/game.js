@@ -71,8 +71,35 @@
     const CLOUD_IMG = asset(CLOUD_PATH);
 
     const POINTS     = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78];
-    const DIAMETERS  = [30, 46, 70, 80, 100, 125, 150, 177, 200, 230, 290];
+    /* A geometric ladder, 24 -> 200 across eleven tiers. Mirrored in
+       watermelon/training/watermelon_env.py and the two MUST stay identical.
+
+       The previous sizes ([30, 46, 70, 80, 100, 125, 150, 177, 200, 230, 290])
+       made the game finite no matter how well it was played. Two 290px fruit
+       cannot touch anywhere below the loss line — side by side they need 580px
+       against a 448px well, stacked they need 580px against 484px of height,
+       and diagonally the walls force their centres far enough apart vertically
+       that the upper one is already past the loss line. Since a vanishing
+       top-tier pair is the ONLY way area leaves the well, area could only ever
+       accumulate. A watermelon was worse than useless: reachable from two tier
+       9s, then permanently unmergeable, squatting on 30% of the board forever.
+
+       At 200px a top pair needs 400px and fits with 48px to spare, so the sink
+       is live and an unbounded game is possible in principle. The even 24%
+       steps also mean every merge shrinks the area it occupies (0.74-0.78x);
+       the old ladder grew it at the bottom, where two 30px fruit became a 46px
+       fruit covering 1.18x the area. */
+    const DIAMETERS  = [24, 30, 37, 45, 56, 69, 86, 106, 131, 162, 200];
     const MAX_TIER   = IMAGES.length - 1;
+    /* MAX_TIER comes from the image list, so a ladder of the wrong length
+       would silently give some tier no size (undefined diameter) or no sprite.
+       Cheap to check, and invisible if it ever goes wrong. */
+    if (DIAMETERS.length !== IMAGES.length) {
+        throw new Error(
+            `DIAMETERS has ${DIAMETERS.length} entries but there are ` +
+            `${IMAGES.length} fruit images — they must match one-to-one.`
+        );
+    }
 
     const WEIGHTED = {
         initGame: [0, 1, 2, 3, 4],
@@ -204,6 +231,32 @@
             p.setup = () => {
                 new p.Canvas(CANVAS_W, CANVAS_H);
                 p.world.gravity.y = 20;
+
+                /* Resize every fruit image to its collider.
+
+                   p5play draws a sprite's animation at the image's NATURAL
+                   size — `sprite.diameter` sizes the physics circle and does
+                   not stretch the picture to match. The PNGs were authored
+                   against the original ladder and their widths still track it
+                   almost exactly (watermelon.png is 291px for the old 290,
+                   apple.png 128 for 125), so for years natural size and
+                   collider size agreed by construction and nothing had to
+                   convert between them.
+
+                   Compressing the ladder broke that coincidence. Colliders
+                   shrank, images did not, and every fruit rendered 1.4-1.9x
+                   larger than the circle it actually occupied — so fruit
+                   appeared to sit inside one another while the physics was
+                   entirely correct and reported no overlaps at all.
+
+                   Scaling by width preserves each sprite's aspect ratio and
+                   restores the intended relationship. Not `sprite.scale`,
+                   which calls _resizeColliders() and would move the physics to
+                   match the picture — exactly backwards. */
+                FRUIT_IMG.forEach((img, tier) => {
+                    const aspect = img.height / img.width;
+                    img.resize(DIAMETERS[tier], Math.round(DIAMETERS[tier] * aspect));
+                });
 
                 // NOTE: an attempt to raise the solver's iteration counts by
                 // wrapping p.world.step() was reverted — it froze fruit in
@@ -674,19 +727,35 @@
        produces nonsense rather than failing — the same class of bug as the
        Tetris 210-vs-238 mismatch.
 
-         grid  GRID_H x GRID_W x 2, row-major (row, col, channel)
-           0 occupancy       1 if the cell CENTRE falls inside a fruit
-           1 tier/MAX_TIER   that fruit's normalised tier
+         grid  GRID_H x GRID_W x 4, row-major (row, col, channel)
+           0 occupancy               1 if the cell CENTRE falls inside a fruit
+           1 (tier+1)/(MAX_TIER+1)   that fruit's normalised tier
+           2 merges with held        1 where the fruit matches the held tier
+           3 merges with next        1 where the fruit matches the next tier
          scalars (12)
            5 held tier one-hot   (spawn pool is tiers 0-4)
            5 next tier one-hot
            1 stack height as a fraction of the board
            1 fruit count / MAX_FRUIT_NORM
 
-       30*22*2 + 12 = 1332 floats -> 24 action logits, one per drop column. */
+       30*22*4 + 12 = 2652 floats -> 48 action logits, one per drop column.
 
-    const GRID_W = 22, GRID_H = 30, GRID_CHANNELS = 2, N_SCALARS = 12;
-    const N_DROP_COLUMNS = 24;
+       Channel 1 is (tier+1)/(MAX_TIER+1), NOT tier/MAX_TIER. The old form
+       encoded a tier-0 fruit as 0.0 — identical to empty space — so telling
+       the smallest fruit from a gap required cross-referencing channel 0, and
+       the smallest fruit are exactly the ones the policy failed to pair.
+
+       Channels 2 and 3 answer "where can I merge?" directly instead of making
+       the network infer it from channel 1. They are derived, not new
+       information, but they are the question the policy actually has to
+       answer on every single drop.
+
+       48 columns, not 24: the board is 448px wide, so 24 columns step 18.7px
+       while the smallest fruit is 24px across — the action grid was coarser
+       than the thing it had to line up with. */
+
+    const GRID_W = 22, GRID_H = 30, GRID_CHANNELS = 4, N_SCALARS = 12;
+    const N_DROP_COLUMNS = 48;
     const SPAWN_TIERS = 5;
     const MAX_FRUIT_NORM = 60;
     const OBS_SIZE = GRID_W * GRID_H * GRID_CHANNELS + N_SCALARS;
@@ -695,6 +764,11 @@
         const obs = new Float32Array(OBS_SIZE);
         const cellW = state.width / GRID_W;
         const cellH = state.height / GRID_H;
+        // The env's held_tier is always a real tier, so null (no fruit in hand
+        // between drops) falls back to 0 here — the same substitution the
+        // one-hot below already makes, kept identical so the two fields can
+        // never disagree about what is being held.
+        const heldTier = state.holdingTier === null ? 0 : state.holdingTier;
 
         for (const f of state.fruit) {
             const r = f.diameter / 2;
@@ -713,7 +787,9 @@
                     if (dx * dx + dy * dy <= r * r) {
                         const base = (row * GRID_W + col) * GRID_CHANNELS;
                         obs[base] = 1;
-                        obs[base + 1] = f.tier / MAX_TIER;
+                        obs[base + 1] = (f.tier + 1) / (MAX_TIER + 1);
+                        if (f.tier === heldTier)        obs[base + 2] = 1;
+                        if (f.tier === state.nextTier)  obs[base + 3] = 1;
                     }
                 }
             }
@@ -749,6 +825,8 @@
             channels: [
                 { label: "occupancy", hint: "1 where a fruit covers the cell" },
                 { label: "tier", hint: "fruit size in that cell, 0-1" },
+                { label: "merges with held", hint: "drop here and it combines" },
+                { label: "merges with next", hint: "where the fruit after this one pairs" },
             ],
         },
         readCell: (obs, row, col, ch) => obs[(row * GRID_W + col) * GRID_CHANNELS + ch],
@@ -767,7 +845,7 @@
                 { label: "holding", value: oneHot(p) },
                 { label: "next", value: oneHot(p + SPAWN_TIERS) },
                 { label: "stack height", value: (obs[p + 2 * SPAWN_TIERS] * 100).toFixed(0) + "%" },
-                { label: "fruit", value: Math.round(obs[p + 2 * SPAWN_TIERS + 1] * 60) },
+                { label: "fruit", value: Math.round(obs[p + 2 * SPAWN_TIERS + 1] * MAX_FRUIT_NORM) },
             ];
         },
         valueLabel: "expected score from here",

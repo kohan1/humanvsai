@@ -98,7 +98,7 @@ print(f"  onnx               : {inp.name} {shp(inp)} -> {out.name} {shp(out)}")
 
 # The JS encoder must still agree with the model's input width, or inference
 # silently produces nonsense rather than failing.
-expected = {"snake": 16 * 16 * 5 + 14, "watermelon": 22 * 30 * 2 + 12}[game]
+expected = {"snake": 16 * 16 * 5 + 14, "watermelon": 22 * 30 * 4 + 12}[game]
 actual = shp(inp)[1]
 print(f"  encoder width      : js {expected} vs model {actual}")
 assert expected == actual, "JS encoder and model input have drifted apart"
@@ -109,7 +109,7 @@ assert expected == actual, "JS encoder and model input have drifted apart"
 # complains, and the model's logits are silently reinterpreted as different
 # placements. Keep these in step with the games' own tables; they are the same
 # constants build_checkpoints.py checks.
-expected_actions = {"snake": 3, "watermelon": 24, "tetris": 40}[game]
+expected_actions = {"snake": 3, "watermelon": 48, "tetris": 40}[game]
 actual_actions = shp(out)[1]
 print(f"  action count       : js {expected_actions} vs model {actual_actions}")
 assert expected_actions == actual_actions, (

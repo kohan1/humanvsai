@@ -100,8 +100,14 @@ LR_RESUME = float(os.environ.get("LR_RESUME", 4e-5))
 # gamma=0.99 gives an effective horizon of about 1/(1-gamma) = 100 drops. The
 # old policy died at 113. So it could not value surviving past roughly the
 # point it already died — the objective was invisible beyond its own lifetime.
-# 0.997 moves the horizon to ~330 drops.
-GAMMA = float(os.environ.get("GAMMA", 0.997))
+# 0.997 moved the horizon to ~330 drops.
+#
+# Then the diameter ladder was compressed and the untrained heuristic teacher
+# started living ~370 drops, which puts the horizon BEHIND the episode again —
+# the same failure as before, just at a larger scale. 0.999 gives ~1000 drops,
+# keeping the horizon roughly 3x the current episode length, which is the ratio
+# 0.997 had when episodes were ~110.
+GAMMA = float(os.environ.get("GAMMA", 0.999))
 
 TARGET_KL = float(os.environ.get("TARGET_KL", 0.05))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 2048))   # bigger batch, GPU-friendly

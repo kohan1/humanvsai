@@ -63,7 +63,45 @@ CANVAS_H = 599
 LOSS_LINE_Y = 115
 
 POINTS = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78]
-DIAMETERS = [30, 46, 70, 80, 100, 125, 150, 177, 200, 230, 290]
+
+# A GEOMETRIC LADDER, 24 -> 200 in eleven tiers (each 24% wider than the last).
+# The old ladder was [30, 46, 70, 80, 100, 125, 150, 177, 200, 230, 290] and it
+# made the game unwinnable by construction. Three separate faults, all fixed by
+# this one line:
+#
+#  1. THE ONLY AREA SINK WAS UNREACHABLE. Area leaves the well exactly once:
+#     when two MAX_TIER fruit merge and vanish. Two 290px fruit need 580px to
+#     sit side by side (the well is 448 wide) and 580px to stack (the well is
+#     484 tall, loss line to floor). Even touching diagonally, the walls cap
+#     their horizontal separation at 158px, so their centres are >=243px apart
+#     vertically and the upper fruit's top edge lands at y=66 -- above the loss
+#     line at y=115. You die before they touch. So area only ever accumulated
+#     and every game was finite no matter how well it was played. Five training
+#     runs across four reward designs and two observations all landed at
+#     104-108 drops; that band was this wall, not the agent.
+#
+#     At 200px a top pair needs 400 of 448 -- 48px of slack.
+#
+#  2. A WATERMELON WAS A TOMBSTONE. Tier 9 fruit could reach each other, so
+#     tier 10 was produced but could never be consumed: 66,052px of permanent
+#     dead area, 30% of the well, for the rest of the game. Making the game's
+#     namesake fruit was the single worst thing that could happen to you.
+#
+#  3. THE WORKING SET DID NOT FIT. Holding one fruit of every tier -- the
+#     minimum inventory for a cascade, since each tier waits for a partner --
+#     came to 98% of the well. There was no room to run the ladder at all.
+#     The new ladder brings that to 42%.
+#
+# A geometric ladder also makes every merge shrink area (0.74-0.78x). The old
+# one GREW it at the bottom: two 30px fruit became a 46px fruit, 1.18x the area
+# they occupied, so the early merges the policy was rewarded for were actively
+# filling the well.
+#
+# Sizes are mirrored in watermelon/game.js and must stay identical -- a
+# mismatch here is silent and produces a policy that is wrong in the browser
+# only. See tools/install_model.sh, which guards the encoder but cannot see
+# physics constants.
+DIAMETERS = [24, 30, 37, 45, 56, 69, 86, 106, 131, 162, 200]
 MAX_TIER = len(DIAMETERS) - 1
 
 WEIGHTED = {
@@ -108,7 +146,18 @@ GRID_CHANNELS = 4
 N_SCALARS = 12
 SPAWN_TIERS = 5        # spawn pool only ever yields tiers 0-4
 
-MAX_FRUIT_NORM = 60.0  # normalising constant for the fruit-count scalar
+# Normalising constant for the fruit-count scalar. A normaliser that saturates
+# is a scalar the policy cannot read, since "full" and "very full" collapse to
+# the same number once the count passes it.
+#
+# The compressed ladder looked like it should need a much larger value — every
+# fruit is smaller, so surely more of them fit. Measured, it does not: the peak
+# count over a heuristic episode is 39-48. Smaller fruit merge away faster
+# (every merge now shrinks the area it occupies), so the board turns over
+# instead of accumulating. 60 leaves the peak reading about 0.8 with headroom
+# above it; the 150 this was briefly set to would have wasted three quarters of
+# the range.
+MAX_FRUIT_NORM = 60.0
 # Raised from 300. The point of this run is long games, and a cap of 300 would
 # become the ceiling the moment the agent got good — it currently dies at ~113,
 # so 300 was never reached and never mattered. It has to sit well above the
@@ -330,17 +379,17 @@ class WatermelonEnv(gym.Env):
             a, b = arbiter.shapes
             ba, bb = a.body, b.body
             ta, tb = self.fruits.get(ba), self.fruits.get(bb)
-            # Two MAX_TIER fruit ARE allowed to pair now. _resolve_merges
-            # removes both and declines to spawn a replacement (its own
+            # Two MAX_TIER fruit ARE allowed to pair. _resolve_merges removes
+            # both and declines to spawn a replacement (its own
             # `if tier < MAX_TIER` guard), so the pair simply vanishes — the
-            # rule the original game uses.
+            # rule the original game uses, and matched by game.js, which does
+            # `if (tier === MAX_TIER) return;` after removing both sprites.
             #
-            # Without this the top tier is permanent dead area, and the game is
-            # finite by construction: every drop adds area, the only
-            # area-reducing move is a high-tier merge, and that dead-ends at
-            # tier 10. One tier-10 fruit is 290px across in a 448x484 playable
-            # box — 60% of the usable height — so two cannot coexist. No amount
-            # of training can survive indefinitely while that is true.
+            # This is the ONLY way area ever leaves the well, which is why the
+            # ladder above had to be rewritten before it meant anything: with
+            # the old 290px top tier, two of them could not touch below the
+            # loss line, so this branch was dead code and the game was finite
+            # however well it was played.
             if ta is None or tb is None or ta != tb:
                 return
             # Defer: mutating the space inside a callback is not allowed.

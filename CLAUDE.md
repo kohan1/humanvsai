@@ -252,8 +252,76 @@ the action space. If the goal is faster convergence to the ceiling you already
 have, shape the reward.** Those are different problems and this run confirmed
 they need different tools.
 
-Watermelon's real limit is most likely the 22x30 observation grid — roughly
-20px cells against a 40px smallest fruit — not its reward.
+Watermelon's real limit was neither the reward nor, as this section previously
+guessed, the 22x30 observation grid. It was the size of the fruit. See the next
+section.
+
+---
+
+## Watermelon's ceiling was geometric, and no reward could have found it
+
+**Diagnosed 2026-08-08, after five training runs failed to beat 108 drops.**
+
+Four reward designs and two observations all landed between 104 and 108 drops.
+That band was not a coincidence and not a tuning problem — it was a wall none of
+those levers touched, because the wall was in the physics constants.
+
+Area leaves the well exactly once: when two MAX_TIER fruit merge and vanish
+(`_resolve_merges` declines to spawn a replacement, and game.js does the same
+with `if (tier === MAX_TIER) return;`). With the old ladder ending at 290px,
+that state was **unreachable in any legal position**:
+
+- side by side they need 580px; the well is 448 wide
+- stacked they need 580px; the well is 484 tall, loss line to floor
+- diagonally, the walls cap their horizontal separation at 158px, which forces
+  their centres 243px apart vertically and puts the upper fruit's top edge at
+  y=-21 — 136px past the loss line at y=115
+
+Force two into contact in a test and the merge handler fires correctly. That is
+what made this so hard to see: **the code was right and the situation was
+impossible.** Nothing errors, nothing warns, and every reward function is
+optimising honestly against a game that cannot be won.
+
+Two corollaries that also went unnoticed for months:
+
+- **A watermelon was a tombstone.** Two tier-9 fruit *could* reach each other,
+  so tier 10 was produced and then could never be consumed: 66,052px of dead
+  area, 30% of the well, permanent. Making the game's namesake fruit was the
+  worst thing that could happen to you.
+- **The working set did not fit.** One fruit of each tier — the minimum
+  inventory for a cascade, since every tier waits for a partner — came to 98%
+  of the well.
+
+The fix was the diameter ladder, not the agent: a geometric `[24, 30, 37, 45,
+56, 69, 86, 106, 131, 162, 200]`. A top pair now needs 400 of 448px, the
+one-of-each inventory drops to 42%, and every merge shrinks the area it
+occupies (0.74-0.78x) where the old ladder *grew* it at the bottom — two 30px
+fruit became a 46px fruit covering 1.18x the area, so the early merges the
+policy was rewarded for were actively filling the well.
+
+**The unchanged heuristic teacher went from 85.6 drops to 375.** No training
+involved. That is the size of the thing five runs of PPO were being asked to
+climb over.
+
+### What to take from this
+
+**Before tuning an agent that has plateaued, check whether the goal is
+reachable at all.** Write the arithmetic down: what is the sink, what rate does
+it need to run at, and does the state that triggers it physically exist? A
+reward can only rank policies that the environment permits. This cost roughly a
+week of compute across five runs, and the check that would have caught it takes
+a few minutes with a calculator.
+
+Guards now in place, because both failures were silent:
+
+- `watermelon/training/test_top_tier_sink.py` — asserts the top-tier pair
+  actually merges and that area leaves the well. Run it before training.
+- `tools/check_watermelon_sync.py` — compares DIAMETERS, POINTS, canvas and
+  encoder constants between `watermelon_env.py` and `game.js`.
+  `install_model.sh` cannot catch a diameter change, because changing fruit
+  sizes does not change any array's shape: every assertion passes, the model
+  loads, the page renders, and the policy is quietly playing a different game
+  from the one it trained on.
 
 ---
 
@@ -571,6 +639,33 @@ policy, and check the settle thresholds first** — they decide when a drop is
 ---
 
 ## Bugs already found and fixed — don't reintroduce these
+
+**Rendering**
+
+00. **Fruit sprites are drawn at the image's natural size, not the collider's.**
+    p5play sizes the physics circle from `sprite.diameter` and draws the
+    animation at the PNG's own dimensions; nothing converts between them. The
+    assets were authored against the original ladder and their widths still
+    track it almost exactly (watermelon.png 291px for a 290px fruit,
+    apple.png 128 for 125), so the two agreed by coincidence and no code ever
+    had to reconcile them.
+
+    Compressing the ladder on 2026-08-08 broke the coincidence: colliders
+    shrank, images did not, and every fruit rendered 1.4-1.9x larger than the
+    circle it occupied. Fruit *looked* like they were sitting inside each other
+    while the physics was completely correct — querying the board reported
+    exact diameters and zero overlaps, which is what made it read as a physics
+    bug when it was purely cosmetic.
+
+    Fixed by resizing each `p5.Image` to `DIAMETERS[tier]` in `setup()`,
+    preserving aspect. **Not** `sprite.scale`: that setter calls
+    `_resizeColliders()` and would move the physics to match the picture,
+    which is backwards. `SpriteAnimation.scale` would also work — it is applied
+    in the draw path only — but resizing the image fixes every draw site at
+    once (balls, cloud ball, preview) instead of each assignment of `.img`.
+
+    **If DIAMETERS changes again, the images must be rescaled with it.** The
+    coupling is invisible: nothing errors and the game remains playable.
 
 **Observation / training**
 
