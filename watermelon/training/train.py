@@ -184,8 +184,16 @@ class BestScoreCallback(BaseCallback):
     mostly select for a lucky draw rather than a better policy.
     """
 
+    # save_path defaults to a FIXED filename, which is the same collision
+    # CHECKPOINT_DIR was fixed for: two runs both write watermelon_best.zip and
+    # the later one silently destroys the earlier run's best model. It happened
+    # on 2026-08-08 — the geometry run overwrote the merge-map run's best
+    # within a minute of starting. That cost nothing (the old model was a 1332
+    # encoder, unusable after the ladder change, and that run underperformed
+    # anyway) but it is luck, not design. Override BEST_PATH per run.
     def __init__(self, eval_freq: int, n_episodes: int = 15,
-                 save_path: str = "watermelon_best.zip", verbose: int = 1):
+                 save_path: str = os.environ.get("BEST_PATH", "watermelon_best.zip"),
+                 verbose: int = 1):
         super().__init__(verbose)
         self.eval_freq = eval_freq
         self.n_episodes = n_episodes
@@ -259,6 +267,20 @@ def main():
             target_kl=TARGET_KL,
             ent_coef=ENT_COEF_RESUME,
             batch_size=BATCH_SIZE,
+            # gamma MUST be passed here. SB3's load() restores every
+            # hyperparameter from the zip and then does
+            # `model.__dict__.update(kwargs)`, so ONLY the arguments named on
+            # this call override the saved values. gamma was not among them,
+            # so GAMMA above applied solely to the from-scratch branch below —
+            # a branch this project has not taken since pretrain.py existed.
+            #
+            # Every resumed Watermelon run therefore trained at pretrain.py's
+            # gamma=0.99, a 100-drop horizon, no matter what GAMMA said.
+            # Measured 2026-08-08: the merge-map model, configured as 0.997,
+            # was saved carrying 0.99. The runs whose entire purpose was to
+            # survive longer could not see past 100 drops, and the setting
+            # documented as fixing that was never in effect.
+            gamma=GAMMA,
         )
         # pretrain.py sets verbose=0 and that is serialised into the .zip,
         # which would otherwise make training look frozen when it is fine.

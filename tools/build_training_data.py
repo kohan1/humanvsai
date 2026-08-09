@@ -204,6 +204,57 @@ RUN_NOTES = {
              "observations. The ceiling is not the reward and not this "
              "observation.",
     ),
+    # NOTE: there is no separate entry for this run's behavioural-cloning
+    # stage, even though the clone is what ended up shipping. The builder
+    # charts PPO timestep curves and BC has none, so an entry for it would be a
+    # label with no series. The clone's result is stated in the note below.
+    "watermelon/train_geometry.log": dict(
+        game="watermelon", label="compressed fruit ladder · 30M PPO",
+        evalScore=4450.00, outcome="rejected",
+        parent="watermelon/train_mergemap.log",
+        checkpoint="watermelon/training/watermelon_final.geometry.zip",
+        note="Five runs had now landed within a few percent of 107 drops across "
+             "two objectives, four reward designs and two observations. None of "
+             "them was ever going to work, because the ceiling was not in the "
+             "agent at all - it was in the fruit sizes. Area leaves the well "
+             "exactly once, when two top-tier fruit merge and vanish, and with "
+             "a 290px watermelon in a 448x484 well that state cannot exist: two "
+             "need 580px side by side, 580px stacked, and approaching "
+             "diagonally the walls force the upper one's top edge to y=-21, "
+             "136px past the loss line. Force them together in a test and the "
+             "merge fires perfectly. The code was right and the situation was "
+             "impossible, so area could only accumulate and every game was "
+             "finite however well it was played. Worse, a watermelon was a "
+             "tombstone: reachable from two tier-9s, then permanently "
+             "unmergeable, squatting on 30% of the board. And one fruit of "
+             "every tier - the minimum inventory for a cascade - came to 98% of "
+             "the well. Replacing the ladder with a geometric 24->200 fixes all "
+             "three: a top pair needs 400 of 448px, inventory falls to 42%, and "
+             "every merge now shrinks the area it occupies where the old ladder "
+             "grew it at the bottom. The measure of how little of this was ever "
+             "about the AI: the unchanged hand-written heuristic went from 85.6 "
+             "drops to 375 on the geometry change alone. "
+             "Then 30 million steps, 14 hours 52 minutes, and no measurable "
+             "improvement whatsoever. PPO recorded exactly two best scores: the "
+             "clone it started from, and 428 drops at 750k steps. Nothing "
+             "better across the remaining 29.3M. Over 200 held-out seeds every "
+             "candidate lands in the same place - clone 403.3 +- 6.4 drops, PPO "
+             "at 750k 400.9 +- 5.3, PPO at 30M 397.8 +- 5.5, and the "
+             "hand-written heuristic 398.6 +- 4.9. A total spread of 5.5 drops "
+             "against a combined standard error of 8.4, which is no difference "
+             "at all. So on this game a neural network trained for 15 hours "
+             "plays exactly as well as the fifty-line heuristic it was cloned "
+             "from, and reinforcement learning adds nothing on top of "
+             "imitation. Reading this run also uncovered why the discount was "
+             "never the problem it was assumed to be: SB3's PPO.load() restores "
+             "every hyperparameter from the zip and only overrides the kwargs "
+             "named on the call, and gamma was not one of them. Every resumed "
+             "Watermelon run since pretrain.py existed had trained at gamma "
+             "0.99, a 100-drop horizon, no matter what the config said - the "
+             "merge-map run was configured as 0.997 and saved carrying 0.99. "
+             "This run is the first with the setting actually in effect, at "
+             "0.999, and it changed nothing either.",
+    ),
     "watermelon/train_100m_v2.log": dict(
         game="watermelon", label="100M second attempt — stopped at 79M",
         evalScore=996.78, outcome="rejected",

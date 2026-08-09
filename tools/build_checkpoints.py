@@ -47,7 +47,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # What each game's game.js builds. A rung whose observation width disagrees is
 # refused rather than shipped: onnxruntime would run it and return confident
 # nonsense. Kept in step with the same table in install_model.sh.
-ENCODER_WIDTH = {"snake": 1294, "watermelon": 1332, "tetris": 238}
+ENCODER_WIDTH = {"snake": 1294, "watermelon": 2652, "tetris": 238}
 
 # The rungs, weakest first. `src` is relative to <game>/training.
 # `shipped` marks the rung that reuses the already-deployed model.
@@ -75,15 +75,28 @@ LADDERS = {
             {"id": "s4", "shipped": True, "src": "snake_final.zip"},
         ],
     },
+    # ONE RUNG, so the switcher hides itself (it needs two to be worth showing).
+    #
+    # The old ladder — 614 / 842 / 937 / 1032 — was four models trained under
+    # the previous fruit ladder, on a 1332-float encoder. After the geometry
+    # change they cannot even run: selecting one threw
+    # "Got: 2652 Expected: 1332" and froze the AI mid-game.
+    #
+    # They were not replaced, because this run produced no ladder to replace
+    # them with. Measured over 200 held-out seeds, every candidate lands in the
+    # same place: BC clone 403.3 +- 6.4 drops, PPO at 750k 400.9 +- 5.3, PPO at
+    # 30M 397.8 +- 5.5, and the hand-written heuristic 398.6 +- 4.9. A whole
+    # spread of 5.5 drops against a combined standard error of 8.4. There is no
+    # progression to show, and four buttons all reading "4.5k" would imply one
+    # that does not exist.
+    #
+    # Rebuild this the moment a genuinely stronger Watermelon model exists.
     "watermelon": {
         "shipped_onnx": "watermelon/watermelon_ai.onnx",
         "stepsMeaning": "run",
         "episodes": 30,
         "rungs": [
-            {"id": "w1", "src": "archive/models/watermelon_ppo_614.zip"},
-            {"id": "w2", "src": "archive/models/watermelon_final.841pt87.zip"},
-            {"id": "w3", "src": "archive/models/watermelon_final.936pt70.zip"},
-            {"id": "w4", "shipped": True, "src": "watermelon_final.zip"},
+            {"id": "w1", "shipped": True, "src": "watermelon_final.zip"},
         ],
     },
     "tetris": {
@@ -181,7 +194,7 @@ def do_eval(game, onnx_path, episodes):
     MOVE_CAP = 60000 if game == "tetris" else 100000
 
     # How many of the logits are legal right now. None means "all of them",
-    # which is true for Snake (3 directions) and Watermelon (24 columns).
+    # which is true for Snake (3 directions) and Watermelon (48 columns).
     def allowed(e):
         return len(e._placements) if game == "tetris" else None
 

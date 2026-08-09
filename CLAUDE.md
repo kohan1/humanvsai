@@ -911,6 +911,25 @@ whole session's worth of verification, during which two browser-side bugs
 (#19, #20) shipped unnoticed because they could only be caught by watching the
 game actually play.
 
+**Check the frame rate before believing anything about the physics.** When the
+Browser pane is hidden or not compositing, the browser throttles
+requestAnimationFrame to about 2 fps. p5play steps physics per frame, so fruit
+crawl downward and a mid-fall board looks exactly like frozen or floating
+sprites — the symptom that a reverted `p.world.step()` change once produced for
+real. Measured 2026-08-08 at 2 fps against 292 fps in a fronted tab.
+
+```js
+let n=0, t0=performance.now();
+// count requestAnimationFrame callbacks for ~1.5s; under ~30 means throttled
+```
+
+`tabs_create` then `tabs_select` restores compositing. Two other things also
+throttle judgement here: a **stale HTTP cache** (python's http.server sends no
+cache headers, so an edited `shared/*.js` can keep serving the old version —
+`fetch(url, {cache:'reload'})` on each changed file, THEN reload, since
+`location.reload(true)` does not bypass it), and training running in the
+background, which is its own section below.
+
 `.claude/launch.json` defines a static server. Start it and navigate:
 
 ```
@@ -1011,6 +1030,28 @@ Measured with `watermelon/training/bench_envs.py`, which times real
 | **20** | **cuda** | **1079** |
 | 24 | cuda | 1028 |
 | 16 | cpu | 217 |
+
+**These numbers are for the 1332-float, 2-channel encoder. Re-measured
+2026-08-08 on the 2652-float, 4-channel one:**
+
+| n_envs | device | fps |
+|---|---|---|
+| 16 | cuda | 449 |
+| **20** | **cuda** | **602** |
+
+Roughly 25-45% slower for double the observation, which is the cost of the
+extra channels showing up where the env's own comment predicted it would not
+("channels are almost free" is true of PARAMETER COUNT — the flatten and the
+Linear are unchanged — but not of throughput). 20 envs is still the sweet spot
+and still worth ~34% over 16.
+
+**Measure the MARGINAL rate, not the fps SB3 prints.** That figure is
+cumulative from process start, so it is dragged down by warm-up for a long
+time: the first table of this run read 222 fps when the true rate was 602.
+Take two tables and divide the step delta by the time delta. Acting on the
+first number would have made a 14-hour run look like a 38-hour one.
+
+At 602 fps, budget ~14 hours for 30M steps.
 
 **CUDA is ~5× CPU here, not the 9% measured on Snake** — Watermelon's env is
 pymunk physics driven per drop, so the per-step Python cost is higher and the
