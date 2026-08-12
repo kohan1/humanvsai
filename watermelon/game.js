@@ -101,6 +101,39 @@
         );
     }
 
+    /* ── Board palette ────────────────────────────────────────────────────
+       The play area follows the site theme, like Snake and Tetris already do.
+       Watermelon was the one game that did not: the canvas was a hardcoded
+       cream #FDFBEC, so on the two paper themes it was a slightly different
+       white than the page, and on the four dark ones a bright slab in the
+       middle of a near-black layout. --board-bg and friends are the same
+       tokens the other two games read, so all three now share one palette.
+
+       Cached rather than read per frame. Snake and Tetris call getComputedStyle
+       inside their draw loop, which is fine for one canvas; Watermelon runs TWO
+       p5 instances at 60fps, so that would be 240 style resolutions a second to
+       return the same four strings. The MutationObserver invalidates the cache
+       the instant data-theme changes, which is the only time they can move. */
+    let _palette = null;
+    function boardColour(name, fallback) {
+        if (!_palette) {
+            const cs = getComputedStyle(document.documentElement);
+            _palette = {
+                bg:   cs.getPropertyValue('--board-bg').trim(),
+                ink:  cs.getPropertyValue('--board-ink').trim(),
+                edge: cs.getPropertyValue('--board-edge').trim(),
+            };
+        }
+        return _palette[name] || fallback;
+    }
+    new MutationObserver(() => { _palette = null; })
+        .observe(document.documentElement,
+                 { attributes: true, attributeFilter: ['data-theme'] });
+
+    function boardBg()   { return boardColour('bg',   '#FDFBEC'); }
+    function boardInk()  { return boardColour('ink',  'black'); }
+    function boardEdge() { return boardColour('edge', 'gray'); }
+
     const WEIGHTED = {
         initGame: [0, 1, 2, 3, 4],
         midGame:  [0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4],
@@ -268,13 +301,16 @@
                 bounds = new p.Group();
                 loss   = new p.Group();
 
+                // Walls and floor take the theme's board edge. They are 1px
+                // and mostly sit outside the visible area, but "gray" against
+                // a near-white board on the paper themes was invisible.
                 wall1 = new bounds.Sprite(0, CANVAS_H / 2, 1, CANVAS_H, "s");
-                wall1.color = "gray";
+                wall1.color = boardEdge();
                 wall2 = new bounds.Sprite(CANVAS_W, CANVAS_H / 2, 1, CANVAS_H, "s");
-                wall2.color = "gray";
+                wall2.color = boardEdge();
 
                 ground = new bounds.Sprite(CANVAS_W / 2, CANVAS_H, CANVAS_W * 2, 1, "s");
-                ground.color = "gray";
+                ground.color = boardEdge();
                 ground.bounciness = 0;
 
                 // Collision sensor only — it is never drawn. Setting .stroke
@@ -321,7 +357,7 @@
             /* ── Draw ─────────────────────────────────────────────────────── */
 
             p.draw = () => {
-                p.background("#FDFBEC");
+                p.background(boardBg());
 
                 // The human board's cloud tracks the pointer; the AI board's
                 // tracks whatever its policy asks for, and parks centre when
@@ -362,16 +398,22 @@
                     if (x.overlapping(lossLine) > 60) gameOver();
                 }
 
-                p.stroke("gray");
+                // The drop guide. Was "gray", which sat at 2.3:1 on the paper
+                // themes' near-white board and vanished; --board-edge is the
+                // token the other two games already use for exactly this.
+                p.stroke(boardEdge());
                 p.strokeWeight(6);
                 p.line(cloud.x, cloud.y, cloud.x, CANVAS_H);
 
                 // Stack limit — fruit resting above this line ends the game.
+                // Stays red on every theme: it is the one mark on the board
+                // that means "you are about to lose", and a warning that
+                // restyles itself per palette stops reading as a warning.
                 p.stroke("red");
                 p.strokeWeight(3);
                 p.line(0, LOSS_LINE_Y, CANVAS_W, LOSS_LINE_Y);
 
-                p.stroke("black");
+                p.stroke(boardInk());
                 p.strokeWeight(1);
             };
 

@@ -45,8 +45,18 @@
             document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
         } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
         </script>
+        <style>
+        /* The theme's background renderer. z-index -1, not 0: a fixed element
+           at z-index 0 paints ABOVE static content, which is why index.html
+           and select.html have to give every foreground element an explicit
+           z-index. A negative value paints above the page background and below
+           everything else, so no game markup had to be restacked. */
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%;
+                z-index: -1; pointer-events: none; }
+        </style>
     </head>
     <body>
+        <canvas id="mesh"></canvas>
 
         <a class="back-nav" href="../select.html">← back</a>
 
@@ -122,5 +132,12 @@
     <section class="insp-section">
         <div id="insp-mount-ai"></div>
     </section>
+        <script src="../shared/backgrounds.js"></script>
+        <script src="../shared/mesh.js"></script>
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            initMesh('mesh', { intensity: 0.55 });
+        });
+        </script>
     </body>
 </html>
