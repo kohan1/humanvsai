@@ -205,8 +205,12 @@
             window.addEventListener("keyup",   function(e){ self.keys[e.key.toLowerCase()] = false; });
             window.addEventListener("keydown", function(e){
                 var key = e.key.toLowerCase();
-                if ([" ","arrowup","arrowdown","arrowleft","arrowright"].indexOf(key) !== -1)
-                    e.preventDefault();
+                // Scroll suppression moved to shared/keyscroll.js, which all
+                // three games load. This version fired regardless of what had
+                // focus, so space on a focused button — the speed controls,
+                // the checkpoint switcher — was swallowed instead of
+                // activating it. The shared one skips anything with its own
+                // keyboard behaviour.
                 self._emit(key, e);
                 self._emit(KB.ANY, e);
                 self.keys[key] = true;
