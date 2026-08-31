@@ -81,10 +81,11 @@ for game in snake tetris watermelon; do
     # a rung, so they cost nothing on a normal load.
     [ -d "$game/checkpoints" ] && cp -r "$game/checkpoints" "$STAGE/$game/"
 
-    # Drop the model_data.js <script> tag. Without this the deployed page
-    # requests a file that is not there; the fallback would still work, but it
-    # would log a 404 on every load and invite someone to "fix" it by shipping
-    # the base64 again.
+    # Belt and braces: the model_data.js <script> tag is no longer in the
+    # source pages at all — shared/model-source.js injects it, and only under
+    # file:// — so this matches nothing today. Kept because a re-added tag
+    # would put a 30-46 MB render-blocking script back on every visit, and
+    # that failure looks like "the site is slow" rather than like a mistake.
     sed -i '/<script src="model_data\.js">/d' "$STAGE/$game/game.html"
 done
 
