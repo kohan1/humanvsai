@@ -1,0 +1,143 @@
+/* The in-game checkpoint switcher. Same approach as inspector.css: custom
+ * properties with sensible defaults for the dark games, overridden per game and
+ * per theme rather than by restating these rules. */
+
+.ckpt {
+    --ckpt-fg:     #ddd;
+    --ckpt-dim:    #666;
+    --ckpt-line:   #242424;
+    --ckpt-panel:  rgba(255, 255, 255, 0.02);
+    --ckpt-accent: #9ec7ff;
+
+    /* FIXED WIDTH, and a reserved line for the note — for the same reason
+     * inspector.css pins its own width. The note's text changes while a rung
+     * downloads ("downloading 7%" -> "downloading 84%") and again on every
+     * selection, and with an auto width the control jittered horizontally as
+     * the percentage gained a digit. */
+    width: min(420px, 100%);
+    margin: 0.9rem auto 0;
+    text-align: center;
+    color: var(--ckpt-fg);
+    font-size: 12px;
+}
+
+.ckpt-head { margin-bottom: 0.5rem; }
+
+.ckpt-title {
+    font-size: 0.53rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ckpt-dim);
+}
+
+/* One equal column per rung, so the row's geometry does not depend on how many
+ * digits a score happens to have. */
+.ckpt-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 6px;
+}
+
+.ckpt-btn {
+    position: relative;
+    padding: 0.42rem 0.2rem;
+    border: 1px solid var(--ckpt-line);
+    background: var(--ckpt-panel);
+    color: var(--ckpt-dim);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.ckpt-btn:hover:not(.is-active) {
+    color: var(--ckpt-fg);
+    border-color: var(--ckpt-dim);
+}
+.ckpt-btn.is-active {
+    color: var(--ckpt-fg);
+    border-color: var(--ckpt-accent);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* The rung being downloaded, distinguished from the active one — a 34 MB fetch
+ * takes long enough that "which one did I just click" needs an answer. */
+.ckpt-btn.is-loading {
+    border-style: dashed;
+    border-color: var(--ckpt-accent);
+    color: var(--ckpt-fg);
+}
+
+.ckpt-score { font-size: 13px; }
+
+/* While a switch is in flight the other rungs stop responding, but stay
+ * legible — greying them out entirely would hide the ladder mid-download. */
+.ckpt.is-busy .ckpt-btn { pointer-events: none; }
+.ckpt.is-busy .ckpt-btn:not(.is-loading) { opacity: 0.45; }
+
+.ckpt-note {
+    /* Two lines' worth, reserved. The text wraps to two lines on the narrower
+     * boards and unreserved height made the board below it jump. */
+    min-height: 2.4em;
+    margin-top: 0.5rem;
+    color: var(--ckpt-dim);
+    font-size: 10.5px;
+    line-height: 1.2;
+}
+
+/* ── Watermelon's variant ────────────────────────────────────────────────────
+ * Measured on the staged site at a 899px viewport: Watermelon's AI column runs
+ * label 32 -> info row 208 -> board 816 -> speed controls 858, so the stacked
+ * control ended at 956 — 57px BELOW THE FOLD, with its buttons half cut off.
+ * Snake ends at 739 and has no such problem; Watermelon's board is 599px tall
+ * with a 150px score row above it, and it is the page whose bottom edge has
+ * already had to be rescued once.
+ *
+ * So this variant lays the same control out on ONE LINE — the label and its
+ * note stacked at the left, the rungs filling the rest — which trades a little
+ * horizontal room, of which that column has plenty, for ~50px of vertical, of
+ * which it has none. */
+.ckpt--compact {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+        "head rungs"
+        "note rungs";
+    align-items: center;
+    column-gap: 10px;
+    /* Zero, not the default margin: this column is a flex column with a 9.6px
+       row-gap, so any margin here is ADDED to that gap. With 0.35rem the
+       control started 16px below the speed controls and its last 6px fell off
+       the bottom of the viewport. */
+    margin-top: 0;
+    text-align: left;
+}
+.ckpt--compact .ckpt-head { grid-area: head; margin-bottom: 0; }
+.ckpt--compact .ckpt-note { grid-area: note; }
+.ckpt--compact .ckpt-row  { grid-area: rungs; }
+.ckpt--compact .ckpt-btn { padding: 0.2rem 0.2rem; }
+
+/* One line, clipped rather than wrapped. Wrapping is what would grow the
+ * column again, and the full text is on the control's tooltip either way. */
+.ckpt--compact .ckpt-note {
+    min-height: 0;
+    margin-top: 0.15rem;
+    font-size: 9.5px;
+    max-width: 15ch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+@media (max-width: 560px) {
+    .ckpt { width: 100%; }
+    .ckpt-note { min-height: 3.6em; }
+}
+
+/* Space held for the switcher before it mounts — see CheckpointSwitcher.reserve.
+   Matches the control's rendered height (title + button row + note line), so
+   the AI column is its final size from first paint and the vertically-centred
+   screen does not jump when the model finishes loading. */
+.ckpt-reserved { min-height: 89px; }
+.ckpt-reserved--compact { min-height: 28px; }

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Tetris — Human vs AI</title>
+        <link rel="stylesheet" href="../shared/inspector.css" />
+        <link rel="stylesheet" href="../shared/checkpoints.css" />
+        <link rel="stylesheet" href="style.css" />
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+        <script src="../shared/model-source.js"></script>
+        <script src="../shared/settings.js"></script>
+        <script src="../shared/results.js"></script>
+        <script src="../shared/inspector.js"></script>
+        <script src="../shared/checkpoints.js"></script>
+        <script src="../shared/checkpoint_switcher.js"></script>
+        <script src="../shared/keyscroll.js"></script>
+        <script src="../shared/confirm-exit.js"></script>
+        <script src="game.js" defer></script>
+        <style>
+            /* Back nav — minimal, floats above the game */
+            .back-nav {
+                position: fixed;
+                top: 1.5rem;
+                left: 1.75rem;
+                z-index: 100;
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4em;
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                font-size: 0.65rem;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                color: #555;
+                text-decoration: none;
+                transition: color 0.15s;
+            }
+            .back-nav:hover { color: #aaa; }
+        </style>
+        <link rel="stylesheet" href="../shared/themes.css" />
+        <script>
+        // Applied before first paint so a themed page never flashes
+        // the default palette while the scripts load.
+        try {
+            var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+            document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+        } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+        </script>
+        <style>
+        /* The theme's background renderer. z-index -1, not 0: a fixed element
+           at z-index 0 paints ABOVE static content, which is why index.html
+           and select.html have to give every foreground element an explicit
+           z-index. A negative value paints above the page background and below
+           everything else, so no game markup had to be restacked. */
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%;
+                z-index: -1; pointer-events: none; }
+        </style>
+    </head>
+    <body>
+        <canvas id="mesh"></canvas>
+
+        <a class="back-nav" href="../select.html">← back</a>
+
+        <div class="screen">
+        <div id="arena">
+
+            <!-- ── Human board ── -->
+            <div class="board-wrap" id="board-human">
+                <div class="board-label">YOU</div>
+                <main>
+                    <canvas id="canvas-human" width="300" height="540"></canvas>
+                    <button id="restart-human" title="Restart">
+                        <img src="assets/restart.png" alt="Restart" />
+                    </button>
+                    <div class="controls" hidden>
+                        <div class="row">
+                            <kbd>&uparrow;</kbd>
+                            <div class="spacer"></div>
+                            <kbd>W</kbd>
+                        </div>
+                        <p>&circlearrowright; Rotate</p>
+                        <div class="row">
+                            <kbd>&leftarrow;</kbd>
+                            <kbd>&rightarrow;</kbd>
+                            <div class="spacer"></div>
+                            <kbd>A</kbd>
+                            <kbd>D</kbd>
+                        </div>
+                        <p>&leftarrow; Left / Right &rightarrow;</p>
+                        <div class="row">
+                            <kbd>&downarrow;</kbd>
+                            <div class="spacer"></div>
+                            <kbd>S</kbd>
+                        </div>
+                        <p>&downarrow; Soft drop</p>
+                        <kbd class="space">Space</kbd>
+                        <p>&dArr; Hard drop</p>
+                        <p style="margin-top:1em;font-size:0.8em;color:#aaa">Press any key to start</p>
+                    </div>
+                </main>
+            </div>
+
+            <!-- ── VS divider ── -->
+            <div id="vs">VS</div>
+
+            <!-- ── AI board ── -->
+            <div class="board-wrap" id="board-ai">
+                <div class="board-label">AI</div>
+                <main>
+                    <canvas id="canvas-ai" width="300" height="540"></canvas>
+                    <button id="restart-ai" title="Restart">
+                        <img src="assets/restart.png" alt="Restart" />
+                    </button>
+                </main>
+
+                <!-- Speed multiplier for the AI. Scales both its think
+                     interval and its drop animation. -->
+                <div class="speed-controls" id="speed-ai" role="group" aria-label="AI speed">
+                    <button type="button" data-speed="0.25">0.25x</button>
+                    <button type="button" data-speed="0.5">0.5x</button>
+                    <button type="button" data-speed="0.75">0.75x</button>
+                    <button type="button" data-speed="1" class="active">1x</button>
+                    <button type="button" data-speed="1.5">1.5x</button>
+                    <button type="button" data-speed="1.75">1.75x</button>
+                    <button type="button" data-speed="2">2x</button>
+                </div>
+            </div>
+
+        </div>
+        </div>
+    <!-- The inspector lives below the fold; the scroll cue that
+         points at it is created by inspector.js. -->
+    <section class="insp-section">
+        <div id="insp-mount-ai"></div>
+    </section>
+        <script src="../shared/backgrounds.js"></script>
+        <script src="../shared/mesh.js"></script>
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            initMesh('mesh', { intensity: 0.55 });
+        });
+        </script>
+    </body>
+</html>
