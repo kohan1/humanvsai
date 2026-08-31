@@ -134,3 +134,10 @@
     .ckpt { width: 100%; }
     .ckpt-note { min-height: 3.6em; }
 }
+
+/* Space held for the switcher before it mounts — see CheckpointSwitcher.reserve.
+   Matches the control's rendered height (title + button row + note line), so
+   the AI column is its final size from first paint and the vertically-centred
+   screen does not jump when the model finishes loading. */
+.ckpt-reserved { min-height: 89px; }
+.ckpt-reserved--compact { min-height: 28px; }

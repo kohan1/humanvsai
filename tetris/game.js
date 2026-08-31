@@ -912,6 +912,23 @@
 
         var humanGame = createGame(humanCanvas, false, null, null);
 
+        // Hold the switcher's space from first paint — it mounts only after the
+        // model loads, and the page is vertically centred, so a late insert
+        // shifts everything. See CheckpointSwitcher.reserve.
+        if (typeof CheckpointSwitcher !== "undefined") {
+            CheckpointSwitcher.reserve("tetris", document.getElementById("board-ai"), true);
+        }
+
+        /* Read by shared/confirm-exit.js. A run counts as in progress once the
+           first key has released the boards and while the human has not lost
+           — a board still showing the controls overlay has nothing to lose. */
+        window.gameInProgress = function () {
+            try {
+                var st = humanGame.getState();
+                return matchStarted && !st.lost;
+            } catch (e) { return false; }
+        };
+
         showControls(controlsEl, true, false);
         KB.once(KB.ANY, function(){
             showControls(controlsEl, false, true);
@@ -954,30 +971,18 @@
         var aiPlayer  = null;
         var aiGame    = createGame(aiCanvas, true, aiPlayer, null);
 
-        // Try to load ONNX model.
-        // Prefer the embedded base64 model (model_data.js) so this works when
-        // game.html is opened directly (file://) with no local server.
-        // Falls back to fetch("tetris_ai.onnx") if model_data.js isn't present,
-        // which still requires a local server due to browser file:// restrictions.
+        // Try to load ONNX model. The .onnx is preferred over HTTP; the
+        // base64 in model_data.js is for opening game.html straight from disk,
+        // where fetch() cannot read a sibling file.
         try {
             ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
-            var session;
-            if (typeof TETRIS_MODEL_B64 !== "undefined") {
-                // Decode base64 -> Uint8Array, feed straight to onnxruntime-web
-                var binaryStr = atob(TETRIS_MODEL_B64);
-                var bytes = new Uint8Array(binaryStr.length);
-                for (var i = 0; i < binaryStr.length; i++) {
-                    bytes[i] = binaryStr.charCodeAt(i);
-                }
-                session = await ort.InferenceSession.create(bytes, {
-                    executionProviders: ["wasm"]
-                });
-            } else {
-                session = await ort.InferenceSession.create("tetris_ai.onnx", {
-                    executionProviders: ["wasm"]
-                });
-            }
+            // .onnx over HTTP, base64 only under file:// — see
+            // shared/model-source.js.
+            var src = await modelSource("tetris_ai.onnx", "TETRIS_MODEL_B64");
+            var session = await ort.InferenceSession.create(src, {
+                executionProviders: ["wasm"]
+            });
 
             aiPlayer = new AIPlayer(session);
             // Patch aiPlayer into the game loop by replacing the reference

@@ -112,6 +112,13 @@
         var g = ladder(game);
         if (!g) return null;
 
+        // Drop the placeholder reserve() left holding this space, now that the
+        // real control is about to occupy it.
+        if (opts.container) {
+            var slot = opts.container.querySelector('.ckpt-reserved');
+            if (slot) slot.remove();
+        }
+
         var rungs = g.rungs;
         var top = rungs[rungs.length - 1];   // strongest; the model the site ships
         var sessions = {};                   // id -> session, cached
@@ -241,5 +248,27 @@
         };
     }
 
-    global.CheckpointSwitcher = { mount: mount, ladder: ladder };
+    /* Hold the switcher's space before it exists.
+     *
+     * mount() runs only once the model has loaded, and the control is ~89px
+     * tall. The game screen is centred vertically, so that block appearing
+     * mid-load grew the AI column and shoved the whole page up by about half
+     * its height — the page visibly jerking under the cursor just as someone
+     * starts playing. Reserving the space up front costs nothing and removes
+     * the shift entirely.
+     *
+     * Does nothing when the ladder has fewer than two rungs, because then
+     * mount() renders no control and there is no space to hold. */
+    function reserve(game, container, compact) {
+        if (!container || !ladder(game)) return;
+        if (container.querySelector('.ckpt, .ckpt-reserved')) return;
+        var slot = document.createElement('div');
+        // The compact variant is 28px against the stacked one's 89px, so the
+        // placeholder has to match the variant the game will actually mount or
+        // it trades one layout shift for a smaller one in the other direction.
+        slot.className = 'ckpt-reserved' + (compact ? ' ckpt-reserved--compact' : '');
+        container.appendChild(slot);
+    }
+
+    global.CheckpointSwitcher = { mount: mount, ladder: ladder, reserve: reserve };
 })(window);

@@ -231,14 +231,28 @@ function createInspector(config) {
        screen of warning so it is already populated by the time it scrolls in,
        rather than appearing blank for one AI decision. */
     if ('IntersectionObserver' in window) {
+        // Painting: warm up a screen early so the panel is populated before it
+        // scrolls in. Cheap — it only draws to a few small canvases.
         new IntersectionObserver((entries) => {
             open = entries[0].isIntersecting;
-            if (open && !revealed) {
-                revealed = true;
-                if (onReveal) onReveal();
-            }
             render();
         }, { rootMargin: '400px 0px' }).observe(root);
+
+        /* onReveal is a SEPARATE observer with no margin, because it is not
+           cheap: it fetches the critic — 34 MB on Snake, 23 MB on Watermelon.
+           Sharing the 400px margin above meant that on a page barely taller
+           than the viewport the panel counted as "near" at scroll 0, so the
+           critic downloaded on every single page load for a panel nobody had
+           opened. Measured: snake_critic.onnx, 34.8 MB, starting 1.2s after
+           navigation, while the game itself was still loading.
+
+           At 0px it fires when the panel actually reaches the viewport, which
+           is what the deploy script's comment has always claimed happens. */
+        new IntersectionObserver((entries) => {
+            if (!entries[0].isIntersecting || revealed) return;
+            revealed = true;
+            if (onReveal) onReveal();
+        }, { rootMargin: '0px' }).observe(root);
     } else {
         open = true;                       // no observer: just keep it live
         if (onReveal) onReveal();

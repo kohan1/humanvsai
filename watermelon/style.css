@@ -7,9 +7,7 @@
 :root {
     /* Lifted verbatim from the original game. */
     --backdrop:   #bfcca4;
-    /* Falls back to the original cream only if themes.css is missing. The
-       theme's board colour wins, so the play area matches Snake and Tetris. */
-    --canvas-bg:  var(--board-bg, #FDFBEC);
+    --canvas-bg:  #FDFBEC;
     --bubble-bg:  whitesmoke;
     --accent:     #675424;
     --canvas-w:   448px;
@@ -192,11 +190,9 @@ main canvas {
     align-items: center;
     justify-content: center;
     gap: 1rem;
-    /* Was the cream board colour at 88%, which on a dark theme flashed a
-       pale sheet over a dark board every game-over. --board-scrim is the same
-       token Tetris's overlays use and inverts with the palette. */
-    background: rgba(var(--board-scrim, 253, 251, 236), 0.88);
-    color: var(--board-ink, var(--accent));
+    /* Matches the cream board it covers — see BOARD_BG in game.js. */
+    background: rgba(253, 251, 236, 0.88);
+    color: var(--accent);
     pointer-events: none;
 }
 

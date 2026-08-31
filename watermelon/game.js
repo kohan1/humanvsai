@@ -101,38 +101,19 @@
         );
     }
 
-    /* ── Board palette ────────────────────────────────────────────────────
-       The play area follows the site theme, like Snake and Tetris already do.
-       Watermelon was the one game that did not: the canvas was a hardcoded
-       cream #FDFBEC, so on the two paper themes it was a slightly different
-       white than the page, and on the four dark ones a bright slab in the
-       middle of a near-black layout. --board-bg and friends are the same
-       tokens the other two games read, so all three now share one palette.
+    /* ── Board colour ─────────────────────────────────────────────────────
+       Deliberately NOT themed, unlike Snake's and Tetris's boards.
 
-       Cached rather than read per frame. Snake and Tetris call getComputedStyle
-       inside their draw loop, which is fine for one canvas; Watermelon runs TWO
-       p5 instances at 60fps, so that would be 240 style resolutions a second to
-       return the same four strings. The MutationObserver invalidates the cache
-       the instant data-theme changes, which is the only time they can move. */
-    let _palette = null;
-    function boardColour(name, fallback) {
-        if (!_palette) {
-            const cs = getComputedStyle(document.documentElement);
-            _palette = {
-                bg:   cs.getPropertyValue('--board-bg').trim(),
-                ink:  cs.getPropertyValue('--board-ink').trim(),
-                edge: cs.getPropertyValue('--board-edge').trim(),
-            };
-        }
-        return _palette[name] || fallback;
-    }
-    new MutationObserver(() => { _palette = null; })
-        .observe(document.documentElement,
-                 { attributes: true, attributeFilter: ['data-theme'] });
+       Those two draw flat-coloured shapes, so a board that inverts with the
+       palette still reads. Watermelon draws eleven illustrated fruit that were
+       all painted against this cream, and the well is the lit surface they sit
+       on — the game's whole look is a bright playfield inside a dark page.
 
-    function boardBg()   { return boardColour('bg',   '#FDFBEC'); }
-    function boardInk()  { return boardColour('ink',  'black'); }
-    function boardEdge() { return boardColour('edge', 'gray'); }
+       Wiring it to --board-bg produced a #000000 board on the #080808 default
+       page: the play area vanished, leaving fruit floating in the middle of
+       nothing. The theme still reaches this page through the palette around
+       the board and the animated background behind it, which is enough. */
+    const BOARD_BG = "#FDFBEC";
 
     const WEIGHTED = {
         initGame: [0, 1, 2, 3, 4],
@@ -305,12 +286,15 @@
                 // and mostly sit outside the visible area, but "gray" against
                 // a near-white board on the paper themes was invisible.
                 wall1 = new bounds.Sprite(0, CANVAS_H / 2, 1, CANVAS_H, "s");
-                wall1.color = boardEdge();
+                wall1.color = BOARD_BG;
+                wall1.visible = false;
                 wall2 = new bounds.Sprite(CANVAS_W, CANVAS_H / 2, 1, CANVAS_H, "s");
-                wall2.color = boardEdge();
+                wall2.color = BOARD_BG;
+                wall2.visible = false;
 
                 ground = new bounds.Sprite(CANVAS_W / 2, CANVAS_H, CANVAS_W * 2, 1, "s");
-                ground.color = boardEdge();
+                ground.color = BOARD_BG;
+                ground.visible = false;
                 ground.bounciness = 0;
 
                 // Collision sensor only — it is never drawn. Setting .stroke
@@ -357,7 +341,7 @@
             /* ── Draw ─────────────────────────────────────────────────────── */
 
             p.draw = () => {
-                p.background(boardBg());
+                p.background(BOARD_BG);
 
                 // The human board's cloud tracks the pointer; the AI board's
                 // tracks whatever its policy asks for, and parks centre when
@@ -401,7 +385,7 @@
                 // The drop guide. Was "gray", which sat at 2.3:1 on the paper
                 // themes' near-white board and vanished; --board-edge is the
                 // token the other two games already use for exactly this.
-                p.stroke(boardEdge());
+                p.stroke("gray");
                 p.strokeWeight(6);
                 p.line(cloud.x, cloud.y, cloud.x, CANVAS_H);
 
@@ -413,7 +397,7 @@
                 p.strokeWeight(3);
                 p.line(0, LOSS_LINE_Y, CANVAS_W, LOSS_LINE_Y);
 
-                p.stroke(boardInk());
+                p.stroke("black");
                 p.strokeWeight(1);
             };
 
@@ -762,6 +746,16 @@
         get ai()    { return getAI(); },
     };
 
+    /* Read by shared/confirm-exit.js. A run counts as in progress once the
+       human board has any fruit on it or any score — a board you have not
+       dropped into yet has nothing to lose. */
+    window.gameInProgress = function () {
+        try {
+            var st = getHuman().getState();
+            return (st.fruit && st.fruit.length > 0) || st.score > 0;
+        } catch (e) { return false; }
+    };
+
     /* ── AI opponent ──────────────────────────────────────────────────────
 
        The encoder below MUST mirror watermelon_env.py's _get_obs()
@@ -950,14 +944,9 @@
         try {
             ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
-            let src;
-            if (typeof WATERMELON_MODEL_B64 !== "undefined") {
-                const raw = atob(WATERMELON_MODEL_B64);
-                src = new Uint8Array(raw.length);
-                for (let i = 0; i < raw.length; i++) src[i] = raw.charCodeAt(i);
-            } else {
-                src = "watermelon_ai.onnx";
-            }
+            // .onnx over HTTP, base64 only under file:// — see
+            // shared/model-source.js.
+            const src = await modelSource("watermelon_ai.onnx", "WATERMELON_MODEL_B64");
 
             aiSession = await ort.InferenceSession.create(src, {
                 executionProviders: ["wasm"],

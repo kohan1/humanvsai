@@ -59,6 +59,7 @@
             // already moving, which never happened.
             this.dir = { x: 1, y: 0 };
             this.newDir = { x: 1, y: 0 };
+            this.pending = [];      // queued turns, consumed one per cell
             this.frameCount = 0;
             this.greenFace = new Image();
             this.greenFace.src = "images/head.png";
@@ -75,8 +76,43 @@
         // translates a relative action into an absolute dx/dy.
         turn(dx, dy) {
             if (this.isDead) return;
-            if (dx !== 0 && this.dir.x === 0) { this.newDir.x = dx; this.newDir.y = 0; }
-            else if (dy !== 0 && this.dir.y === 0) { this.newDir.y = dy; this.newDir.x = 0; }
+
+            /* Queued, not overwritten.
+       
+               The snake only commits a turn at a cell boundary, which is every
+               STEPS_PER_CELL frames. This used to validate the press against
+               `this.dir` — the direction currently being travelled — and write
+               a single `newDir` slot. Two consequences, both of which read as
+               the controls being laggy or ignored:
+
+                 - Travelling right, press Up then Right quickly to round a
+                   corner. Up is accepted. Right is then tested against dir,
+                   which is STILL right because the boundary has not arrived,
+                   so it is rejected as a no-op and the second half of the turn
+                   is silently dropped.
+                 - Any second press inside one cell overwrote the first, so
+                   fast inputs lost the earlier one instead of being played in
+                   order.
+
+               Validating against the LAST QUEUED direction instead, and
+               keeping a short queue, means a sequence pressed faster than the
+               snake moves is played back in order rather than discarded. The
+               queue is capped at 2: enough for one corner, short enough that
+               the snake never feels like it is running on rails. */
+            const last = this.pending.length
+                ? this.pending[this.pending.length - 1]
+                : this.dir;
+
+            let nx = 0, ny = 0;
+            if (dx !== 0 && last.x === 0)      { nx = dx; ny = 0; }
+            else if (dy !== 0 && last.y === 0) { ny = dy; nx = 0; }
+            else return;                        // reversal or no change
+
+            if (this.pending.length >= 2) return;
+            this.pending.push({ x: nx, y: ny });
+            // Kept in step so anything still reading newDir sees the queue head.
+            this.newDir.x = this.pending[0].x;
+            this.newDir.y = this.pending[0].y;
         }
 
         update() {
@@ -90,9 +126,19 @@
             if (this.frameCount % STEPS_PER_CELL === 0) {
                 if (this.checkDeath()) return this.die();
 
-                if (!(this.body[1].xx === this.head.xx + this.newDir.x && this.body[1].yy === this.head.yy + this.newDir.y)) {
-                    this.dir.x = this.newDir.x;
-                    this.dir.y = this.newDir.y;
+                // Take the next queued turn, if there is one. Anything the
+                // player pressed faster than the snake moves is played back in
+                // order here, one turn per cell, instead of the last press
+                // winning and the rest being dropped.
+                const next = this.pending.length ? this.pending.shift() : this.newDir;
+                this.newDir.x = next.x;
+                this.newDir.y = next.y;
+
+                // Never turn straight into the neck — the one case the queue
+                // cannot rule out, since the body has moved since the press.
+                if (!(this.body[1].xx === this.head.xx + next.x && this.body[1].yy === this.head.yy + next.y)) {
+                    this.dir.x = next.x;
+                    this.dir.y = next.y;
                     this.head.dir.x = this.dir.x;
                     this.head.dir.y = this.dir.y;
                 }
@@ -386,24 +432,20 @@
         return obs;
     }
 
-    /* See the equivalent comment in watermelon/game.js. model_data.js is a
-       ~45 MB render-blocking script — the largest of the three games — so over
-       HTTP we fetch the .onnx and let the page paint first. The embedded
-       base64 is used only when it is present, i.e. local file:// use. */
+    /* The model source is resolved by shared/model-source.js: the .onnx over
+       HTTP, the base64 in model_data.js only under file://. This comment used
+       to describe that behaviour while the code did the opposite — game.html
+       loaded model_data.js from a static script tag, so the base64 global was
+       always defined and the 46 MB branch always won. */
     async function loadModel() {
         aiStatusEl.textContent = "loading model…";
         aiStatusEl.hidden = false;
         try {
             ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
 
-            let src;
-            if (typeof SNAKE_MODEL_B64 !== "undefined") {
-                const binaryStr = atob(SNAKE_MODEL_B64);
-                src = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) src[i] = binaryStr.charCodeAt(i);
-            } else {
-                src = "snake_ai.onnx";
-            }
+            // Over HTTP this is the .onnx URL, which streams and is a third
+            // smaller than the base64. See shared/model-source.js.
+            const src = await modelSource("snake_ai.onnx", "SNAKE_MODEL_B64");
 
             aiSession = await ort.InferenceSession.create(src, { executionProviders: ["wasm"] });
             aiReady = true;
@@ -487,6 +529,13 @@
        is this?" rather than as an empty ladder during the initial download.
        Called from loadModel() after its await, so the module's own bindings are
        all initialised by the time this runs. */
+    /* Hold the switcher's space from first paint. It only mounts once the
+       model has loaded, and without this the AI column grew by ~89px at that
+       moment — which, on a vertically centred screen, jerked the whole page. */
+    if (typeof CheckpointSwitcher !== "undefined") {
+        CheckpointSwitcher.reserve("snake", document.getElementById("board-ai"));
+    }
+
     function mountCheckpointSwitcher() {
         if (typeof CheckpointSwitcher === "undefined") return;
         CheckpointSwitcher.mount({
@@ -614,6 +663,13 @@
     // ── Boot ─────────────────────────────────────────────────────────────
     window.tileCount = TILE_COUNT;
     window.speed = SPEED;
+
+    /* Read by shared/confirm-exit.js. A run counts as in progress once the
+       player has actually moved and while they are still alive — a fresh
+       board, or one already showing game over, has nothing left to lose. */
+    window.gameInProgress = function () {
+        return matchStarted && !!window.snake && !window.snake.isDead;
+    };
 
     window.addEventListener("load", () => {
         food = new Food(6, Math.floor(TILE_COUNT / 2), 3);
