@@ -64,9 +64,9 @@ body {
 
 #vs {
     /* The divider still centres against the canvases rather than the top of
-       the column, which is where it reads correctly. 270px is half the 540px
-       canvas, plus the label above it. */
-    margin-top: 290px;
+       the column, which is where it reads correctly: the 28px label row, plus
+       half the 540px canvas, less half this element's own line box. */
+    margin-top: calc(28px + 270px - 0.5 * 2rem * 1.15);
     font-size: 2rem;
     font-weight: 700;
     color: #444;
@@ -114,7 +114,6 @@ main > button {
     cursor: pointer;
     background-color: transparent;
     border-radius: 4px;
-    outline: none;
     transition: background-color 0.08s ease;
     width: 42px;
     height: 42px;
@@ -170,10 +169,13 @@ main div.controls {
 main div.controls[hidden] {
     display: flex !important;
     opacity: 0;
+    /* Transparent was not enough: screen readers still read it. */
+    visibility: hidden;
 }
 
 main div.controls.animated {
-    transition: opacity 0.2s ease;
+    /* Fade out, then hide from assistive tech once the fade has finished. */
+    transition: opacity 0.2s ease, visibility 0s linear 0.2s;
 }
 
 main div.controls p {
@@ -278,4 +280,32 @@ kbd.space {
     main canvas { width: 100%; height: 100%; }
     .board-wrap { width: 100%; }
     .speed-controls { max-width: 100%; }
+}
+
+/* Start hints: keyboard wording by default, touch wording on phones and
+   tablets. Pure CSS, so the right text is there from first paint. */
+.controls-start { margin-top: 1em; font-size: 0.8em; opacity: 0.75; }
+.hint-touch { display: none; }
+@media (hover: none) and (pointer: coarse) {
+    .hint-touch { display: inline; }
+    .hint-keys  { display: none; }
+}
+
+/* A visible focus ring for keyboard users. The buttons set outline: none and
+   had no replacement, so tabbing to Restart showed nothing at all. */
+main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+
+/* The restart icon is a white PNG; invert it on the two light boards. */
+[data-theme="filings"] main > button img,
+[data-theme="dispersion"] main > button img { filter: invert(1); }
+
+/* The switcher defaults to min(420px, 100%), which widened the AI column to
+   420px and overflowed the side-by-side layout between 761 and ~915px. */
+#board-ai .ckpt { width: min(300px, 100%); }
+
+/* On touch screens the keyboard legend is noise: keep only the touch line. */
+@media (hover: none) and (pointer: coarse) {
+    main div.controls div.row,
+    main div.controls kbd,
+    main div.controls p:not(.controls-start) { display: none; }
 }

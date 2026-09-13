@@ -9,7 +9,12 @@
     --backdrop:   #bfcca4;
     --canvas-bg:  #FDFBEC;
     --bubble-bg:  whitesmoke;
-    --accent:     #675424;
+    /* The game's own ink, for text ON the cream board or the whitesmoke buttons.
+       Named apart from --accent deliberately: shared/themes.css defines --accent
+       too and loads later, so this was silently replaced by the theme's accent -
+       pale blue on the default theme, which put "Game Over", "Play Again" and
+       the speed buttons at about 1.2:1 on cream. */
+    --wm-ink:     #675424;
     --canvas-w:   448px;
     --canvas-h:   599px;
 }
@@ -56,8 +61,7 @@ body {
     font-size: 0.65rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--accent);
-    opacity: 0.65;
+    color: var(--dim);
     text-decoration: none;
     transition: opacity 0.15s;
 }
@@ -74,12 +78,18 @@ body {
 }
 
 #vs {
-    align-self: center;
+    /* Centred on the canvas, not the column. align-self: center centred it on
+       label + bubbles + board + speed row + switcher, which sat it 50-90px
+       high. 0.85rem label (line-height is 100% on this page) + two 0.6rem
+       gaps + the 150px bubbles + half the 599px board, less half this line. */
+    align-self: flex-start;
+    /* +11px measured at 1280px: the bubble row's box is taller than its
+       150px circles once their shadows and line boxes are counted. */
+    margin-top: calc(0.85rem + 1.2rem + 150px + 11px + 299.5px - 1rem);
     font-size: 2rem;
     font-weight: 700;
     letter-spacing: 0.05em;
-    color: var(--accent);
-    opacity: 0.5;
+    color: var(--dim);
     flex-shrink: 0;
 }
 
@@ -99,8 +109,7 @@ body {
     font-weight: 700;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--accent);
-    opacity: 0.75;
+    color: var(--dim);
 }
 
 /* ── Info bubbles (original .bubble rules, unchanged) ────────────────────── */
@@ -192,7 +201,7 @@ main canvas {
     gap: 1rem;
     /* Matches the cream board it covers — see BOARD_BG in game.js. */
     background: rgba(253, 251, 236, 0.88);
-    color: var(--accent);
+    color: var(--wm-ink);
     pointer-events: none;
 }
 
@@ -269,7 +278,7 @@ button {
     font-family: inherit;
     font-size: 14px;
     padding: 0.45em 0.9em;
-    color: var(--accent);
+    color: var(--wm-ink);
     background-color: var(--bubble-bg);
     border: 1px solid rgba(103, 84, 36, 0.35);
     border-radius: 4px;
@@ -299,41 +308,46 @@ label { cursor: pointer; }
     .board-main { gap: 0.9rem; }
 }
 
+/* Below 1340px the controls move UNDER each board instead of beside it. That
+   takes a board from 618px to 448px wide, so the two stay side by side down to
+   ~1080px. They used to stack from 1340px, which on a common laptop put the
+   boards one above the other, each ~850px tall, never both in view. */
 @media (max-width: 1340px) {
-    #arena { flex-direction: column; align-items: center; }
-    #vs { align-self: center; }
+    .board-main { flex-direction: column; gap: 0.75rem; }
+    .board-controls {
+        order: 2; width: auto; padding-top: 0;
+        flex-direction: row; flex-wrap: wrap; justify-content: center;
+    }
 }
 
-/* ── Neural-network inspector ───────────────────────────────────────────────
-   inspector.css defaults to the dark palette Snake and Tetris use. This board
-   is cream on sage, so only the custom properties are overridden — none of the
-   layout rules are restated. */
-.insp {
-    --insp-fg:       var(--accent);
-    --insp-dim:      rgba(103, 84, 36, 0.62);
-    --insp-line:     rgba(103, 84, 36, 0.28);
-    --insp-panel:    rgba(255, 255, 255, 0.42);
-    --insp-accent:   #675424;
-    /* Opaque, and the same cream as the board itself, so the heat map
-       reads as a low-resolution version of what is above it. */
-    --insp-cell-bg:  #FDFBEC;
-    --insp-track:    rgba(103, 84, 36, 0.14);
-    --insp-cell-rgb: 103, 84, 36;
+@media (max-width: 1080px) {
+    #arena { flex-direction: column; align-items: center; }
+    #vs { align-self: center; margin-top: 0; }
+}
 
+/* Phones: the 448x599 board scales to the screen. p5 divides pointer
+   coordinates by the canvas's CSS scale, so aiming still lands where you tap.
+   !important because p5 writes the canvas size as an inline style. */
+@media (max-width: 500px) {
+    main { width: min(var(--canvas-w), calc(100vw - 1.5rem)); height: auto; aspect-ratio: 448 / 599; }
+    main canvas { width: 100% !important; height: 100% !important; }
+    .bubble { height: 108px; font-size: 24px; }
+    .bubble.next img { max-width: 62px; max-height: 48px; }
+    .info-row { gap: 1rem; }
+}
+
+/* ── Neural-network inspector and checkpoint switcher ───────────────────────
+   Colours come from inspector.css, checkpoints.css and shared/themes.css,
+   exactly as on Snake and Tetris. They used to be overridden here with this
+   game's brown, which was tuned for the old sage page. Once the theme owned
+   the page background that left brown text on #080808, about 2:1 on the
+   default theme. Only sizing is set here. */
+.insp {
     width: var(--canvas-w);
     max-width: 100%;
 }
 
-/* The checkpoint switcher, same story: checkpoints.css defaults to the dark
-   palette, and this control sits on the sage backdrop under the AI board. Only
-   the custom properties change. */
 .ckpt {
-    --ckpt-fg:     var(--accent);
-    --ckpt-dim:    rgba(103, 84, 36, 0.62);
-    --ckpt-line:   rgba(103, 84, 36, 0.28);
-    --ckpt-panel:  rgba(255, 255, 255, 0.42);
-    --ckpt-accent: #675424;
-
     /* NARROWER THAN THE BOARD, and centred, which is what keeps it off the
        "scroll down to see inside" cue.
        Measured at a 899px viewport: the cue is fixed at x 567-763, y 834-877.
@@ -345,20 +359,9 @@ label { cursor: pointer; }
     margin-left: auto;
     margin-right: auto;
 }
-/* checkpoints.css fills the active rung with a white wash, which vanishes
-   against cream. */
-.ckpt-btn.is-active { background: rgba(255, 255, 255, 0.75); }
 
-/* The scroll cue sits on the sage backdrop, so it needs the dark accent
-   rather than inspector.css's light default. */
-.insp-cue {
-    --insp-cue-fg:    rgba(103, 84, 36, 0.8);
-    --insp-cue-hover: #675424;
-}
-
-/* The label sits on top of a filled bar, and difference-blending against a
-   cream background renders as muddy inversion rather than contrast. */
-.insp-actions-rows .insp-act-label { mix-blend-mode: normal; color: var(--accent); }
+/* Aiming and dropping with a finger must not scroll the page. */
+#canvas-human { touch-action: none; }
 
 /* ── AI speed controls ──────────────────────────────────────────────────────
    Same control as Tetris, restyled for this game's palette. Scales the AI's
@@ -383,7 +386,7 @@ label { cursor: pointer; }
     padding: 3px 7px;
     width: auto;
     cursor: pointer;
-    color: var(--accent);
+    color: var(--wm-ink);
     opacity: 0.6;
     background-color: var(--bubble-bg);
     border: 1px solid rgba(103, 84, 36, 0.3);
@@ -396,6 +399,6 @@ label { cursor: pointer; }
 .speed-controls button.active {
     opacity: 1;
     background-color: #fff;
-    border-color: var(--accent);
+    border-color: var(--wm-ink);
     font-weight: 700;
 }

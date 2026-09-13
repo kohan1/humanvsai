@@ -46,24 +46,47 @@ function makeNoise(seed) {
     };
 }
 
-function particleRgb() {
-    const s = getComputedStyle(document.documentElement);
-    return (s.getPropertyValue('--particle-rgb').trim() || '235, 235, 235');
+/* Read once per theme, not every frame. Each renderer called these inside its
+ * draw loop: a style resolution per frame for values that only change with
+ * data-theme, and a theme change remounts the renderer anyway. */
+let _bgColours = null;
+new MutationObserver(() => { _bgColours = null; })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+function bgColours() {
+    if (!_bgColours) {
+        const s = getComputedStyle(document.documentElement);
+        _bgColours = {
+            particle: s.getPropertyValue('--particle-rgb').trim() || '235, 235, 235',
+            bg: s.getPropertyValue('--bg-rgb').trim() || '8, 8, 8',
+        };
+    }
+    return _bgColours;
 }
-function themeBgRgb() {
-    const s = getComputedStyle(document.documentElement);
-    return (s.getPropertyValue('--bg-rgb').trim() || '8, 8, 8');
-}
+function particleRgb() { return bgColours().particle; }
+function themeBgRgb() { return bgColours().bg; }
 
 /* Boilerplate every renderer needs: sizing, pointer tracking, teardown. */
 function bgHarness(cvs, setup) {
     const ctx = cvs.getContext('2d');
     const state = { W: 0, H: 0, mx: -9999, my: -9999, raf: 0, down: false };
 
-    const onMove = (e) => { state.mx = e.clientX; state.my = e.clientY; };
+    /* prefers-reduced-motion: settle for a moment, then hold a still frame.
+     * The pointer still wakes it for a short burst, because that motion is the
+     * visitor's own doing rather than something moving by itself (WCAG 2.2.2
+     * is about content that animates unprompted and cannot be paused). */
+    const reduce = !!(window.matchMedia &&
+                      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    let budget = reduce ? 90 : Infinity;
+    const wake = () => {
+        if (!reduce) return;
+        budget = Math.max(budget, 45);
+        if (!state.raf) state.raf = requestAnimationFrame(frame);
+    };
+    const onMove = (e) => { state.mx = e.clientX; state.my = e.clientY; wake(); };
     const onTouch = (e) => {
         if (!e.touches.length) return;
         state.mx = e.touches[0].clientX; state.my = e.touches[0].clientY;
+        wake();
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('touchmove', onTouch, { passive: true });
@@ -77,15 +100,16 @@ function bgHarness(cvs, setup) {
         state.W = cvs.width = cvs.clientWidth || window.innerWidth;
         state.H = cvs.height = cvs.clientHeight || window.innerHeight;
         if (api.resize) api.resize();
+        wake();
     }
     window.addEventListener('resize', resize);
     resize();
 
     function frame(now) {
         api.draw(now);
-        state.raf = requestAnimationFrame(frame);
+        state.raf = --budget > 0 ? requestAnimationFrame(frame) : 0;
     }
-    state.raf = requestAnimationFrame(frame);
+    if (!state.raf) state.raf = requestAnimationFrame(frame);
 
     return function () {
         cancelAnimationFrame(state.raf);
@@ -226,7 +250,10 @@ function initFilings(cvs, opts) {
         return {
             resize() {
                 cells = [];
-                const gap = GAP / Math.max(0.6, INTENSITY);
+                // Capped at ~4000 segments. Density used to scale with the
+                // screen with no ceiling: ~12k per frame at 4K, on the same
+                // thread as the games' physics and inference.
+                const gap = Math.max(GAP / Math.max(0.6, INTENSITY), Math.sqrt((st.W * st.H) / 4000));
                 for (let y = gap / 2; y < st.H + gap; y += gap) {
                     for (let x = gap / 2; x < st.W + gap; x += gap) {
                         cells.push({ x, y, a: 0, cur: 0 });
@@ -294,7 +321,8 @@ function initSand(cvs, opts) {
         return {
             resize() {
                 parts = [];
-                const gap = GAP / Math.max(0.6, INTENSITY);
+                // Capped at ~5000 grains, for the same reason as Filings.
+                const gap = Math.max(GAP / Math.max(0.6, INTENSITY), Math.sqrt((st.W * st.H) / 5000));
                 for (let y = gap / 2; y < st.H + gap; y += gap) {
                     for (let x = gap / 2; x < st.W + gap; x += gap) {
                         const jx = (Math.random() - 0.5) * gap * 0.45;
@@ -326,9 +354,10 @@ function initSand(cvs, opts) {
                     const off = Math.min(1, Math.hypot(p.x - p.hx, p.y - p.hy) / 26);
                     const a = (0.2 + off * 0.65) * INTENSITY;
                     ctx.fillStyle = 'rgba(' + rgb + ',' + a.toFixed(3) + ')';
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, p.r + off * 1.1, 0, Math.PI * 2);
-                    ctx.fill();
+                    // A 2-5px square is indistinguishable from a circle at this
+                    // size, and skips building a path per grain per frame.
+                    const rr = p.r + off * 1.1;
+                    ctx.fillRect(p.x - rr, p.y - rr, rr * 2, rr * 2);
                 }
             },
         };

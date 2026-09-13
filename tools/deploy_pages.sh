@@ -89,6 +89,17 @@ for game in snake tetris watermelon; do
     sed -i '/<script src="model_data\.js">/d' "$STAGE/$game/game.html"
 done
 
+# Cache-busting. GitHub Pages lets browsers keep files for about ten minutes,
+# so a visitor who arrived before a deploy could run the new game.js against a
+# cached old shared/*.js — and these pages depend on the two staying in step.
+# Every relative .js/.css reference in the staged HTML gets ?v=<commit>, making
+# each deploy a fresh set of URLs. CDN URLs (anything with a ':') are untouched.
+VER=$(git rev-parse --short HEAD 2>/dev/null || date +%s)
+for html in "$STAGE"/*.html "$STAGE"/*/game.html; do
+    sed -i -E "s#(src|href)=\"([^\":?]+\.(js|css))\"#\1=\"\2?v=$VER\"#g" "$html"
+done
+echo "  cache-busting     : ?v=$VER on every local script and stylesheet"
+
 # The models themselves, fetched at runtime by each game's loader. Tetris keeps
 # its .onnx under training/; the other two sit beside their page.
 cp snake/snake_ai.onnx           "$STAGE/snake/"
@@ -190,6 +201,7 @@ git -c user.name="kohan1" -c user.email="309233267+kohan1@users.noreply.github.c
     commit -q -m "Deploy site $(date -u '+%Y-%m-%d %H:%M UTC')"
 git remote add origin "https://github.com/$REPO.git"
 git push -q --force origin gh-pages
+PUSHED=$(git rev-parse HEAD)
 
 echo "deployed to https://kohan1.github.io/humanvsai/"
 
@@ -211,11 +223,16 @@ echo "deployed to https://kohan1.github.io/humanvsai/"
 GH="/c/Program Files/GitHub CLI/gh.exe"
 if [ -x "$GH" ]; then
     printf "waiting for the Pages deployment"
+    confirmed=
     for _ in $(seq 1 40); do
         sleep 15
-        status=$("$GH" api repos/"$REPO"/pages/builds/latest --jq .status 2>/dev/null || echo "")
+        # Status AND commit. Straight after a push, builds/latest can still be
+        # the PREVIOUS build, already "built", which used to end this wait
+        # before the new deployment had even started.
+        read -r status commit < <("$GH" api repos/"$REPO"/pages/builds/latest                                   --jq '"\(.status) \(.commit)"' 2>/dev/null || echo "")
+        if [ -n "$PUSHED" ] && [ "$commit" != "$PUSHED" ]; then printf "."; continue; fi
         case "$status" in
-            built)   echo " -> built"; break ;;
+            built)   echo " -> built"; confirmed=1; break ;;
             errored) echo " -> ERRORED"
                      echo "the branch was pushed but Pages refused to publish it."
                      echo "check: gh api repos/$REPO/pages/builds/latest"
@@ -223,6 +240,7 @@ if [ -x "$GH" ]; then
             *)       printf "." ;;
         esac
     done
+    [ -n "$confirmed" ] || echo " -> still not confirmed after 10 minutes; check before deploying again."
 else
     echo "(gh not found — cannot confirm the deployment; wait ~90s before deploying again)"
 fi

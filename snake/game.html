@@ -2,21 +2,23 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="Play Snake against a neural network trained with reinforcement learning, running live in your browser." />
+        <meta name="theme-color" content="#080808" />
+        <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080808'/%3E%3Ctext x='16' y='21' font-family='Arial' font-size='13' font-weight='700' fill='%23cfe4ff' text-anchor='middle'%3Evs%3C/text%3E%3C/svg%3E" />
         <title>Snake — Human vs AI</title>
         <link rel="stylesheet" href="../shared/inspector.css" />
         <link rel="stylesheet" href="../shared/checkpoints.css" />
         <link rel="stylesheet" href="style.css" />
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-        <script src="../shared/model-source.js"></script>
-        <script src="../shared/settings.js"></script>
-        <script src="../shared/results.js"></script>
-        <script src="../shared/inspector.js"></script>
-        <script src="../shared/checkpoints.js"></script>
-        <script src="../shared/checkpoint_switcher.js"></script>
-        <script src="../shared/keyscroll.js"></script>
-        <script src="../shared/confirm-exit.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <script src="../shared/model-source.js" defer></script>
+        <script src="../shared/settings.js" defer></script>
+        <script src="../shared/results.js" defer></script>
+        <script src="../shared/inspector.js" defer></script>
+        <script src="../shared/checkpoints.js" defer></script>
+        <script src="../shared/checkpoint_switcher.js" defer></script>
+        <script src="../shared/keyscroll.js" defer></script>
+        <script src="../shared/confirm-exit.js" defer></script>
         <script src="game.js" defer></script>
         <link rel="stylesheet" href="../shared/themes.css" />
         <script>
@@ -57,8 +59,8 @@
                         </svg>
                     </button>
                     <div class="controls" hidden>
-                        <p>&uparrow; &leftarrow; &downarrow; &rightarrow; or WASD to move</p>
-                        <p style="margin-top:1em;font-size:0.8em;color:#aaa">Press any key to start</p>
+                        <p><span class="hint-keys">&uparrow; &leftarrow; &downarrow; &rightarrow; or WASD to move</span><span class="hint-touch">Swipe on the board to steer</span></p>
+                        <p class="controls-start"><span class="hint-keys">Press an arrow key or WASD to start</span><span class="hint-touch">Swipe to start</span></p>
                     </div>
                 </main>
             </div>
@@ -88,8 +90,8 @@
     <section class="insp-section">
         <div id="insp-mount-ai"></div>
     </section>
-        <script src="../shared/backgrounds.js"></script>
-        <script src="../shared/mesh.js"></script>
+        <script src="../shared/backgrounds.js" defer></script>
+        <script src="../shared/mesh.js" defer></script>
         <script>
         document.addEventListener('DOMContentLoaded', function () {
             initMesh('mesh', { intensity: 0.55 });

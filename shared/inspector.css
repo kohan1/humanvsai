@@ -238,3 +238,11 @@ body:has(.insp-section) .screen {
 @media (prefers-reduced-motion: reduce) {
     .insp-cue-arrow { animation: none; opacity: 0.9; }
 }
+
+/* The cue is pinned to the bottom of the viewport. On a phone or tablet the
+   boards stack and fill the screen, so it sat on top of the game — over the VS
+   divider and the AI board — and a page that tall is obviously scrollable
+   without it. */
+@media (max-width: 760px) {
+    .insp-cue { display: none; }
+}

@@ -33,6 +33,10 @@
 
     let matchStarted = false;
 
+    // Phones and tablets: no hover, coarse pointer. Only changes prompt wording;
+    // swipe controls are wired up regardless.
+    const TOUCH = !!(window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+
     class Segment {
         constructor(x, y, dir) {
             this.x = x;
@@ -194,9 +198,12 @@
             // that instant. update() returns early once isDead, so this fires
             // exactly once. The identity check is needed because both snakes
             // share this class.
-            if (this === window.snake && typeof MatchResults !== "undefined") {
+            // Only a real match counts: not a human run that finished before
+            // the AI had a model to play with.
+            if (this === window.snake && aiReady && typeof MatchResults !== "undefined") {
                 MatchResults.record("snake", score, aiScore, Date.now());
             }
+            this.diedAt = performance.now();
 
             const original = this.color;
             this.color = "red";
@@ -230,11 +237,30 @@
         // both boards have their own snake and food, so this has to know
         // which one it's avoiding.
         generateNew(snakeRef) {
-            this.xx = Math.round(Math.random() * (TILE_COUNT - 1));
-            this.yy = Math.round(Math.random() * (TILE_COUNT - 1));
-            const onSnake = snakeRef.body.some(seg => seg.xx === this.xx && seg.yy === this.yy);
-            if (onSnake) this.generateNew(snakeRef);
-            else this.p = scl / 2;
+            /* Excludes every cell a segment touches, not only the one it
+               rounds to. Eating is detected halfway across a cell, when
+               Segment.xx has already flipped to the cell being entered, so a
+               segment moving left or up still counted as being in its OLD cell
+               and the cell it was sliding into looked free. Food could appear
+               underneath the body, hidden — a state the training env never
+               produces. */
+            const taken = new Set();
+            for (const seg of snakeRef.body) {
+                const x0 = Math.floor(seg.x / scl), x1 = Math.ceil(seg.x / scl);
+                const y0 = Math.floor(seg.y / scl), y1 = Math.ceil(seg.y / scl);
+                taken.add(y0 * TILE_COUNT + x0); taken.add(y0 * TILE_COUNT + x1);
+                taken.add(y1 * TILE_COUNT + x0); taken.add(y1 * TILE_COUNT + x1);
+            }
+            const free = [];
+            for (let k = 0; k < TILE_COUNT * TILE_COUNT; k++) if (!taken.has(k)) free.push(k);
+            if (!free.length) return;          // board full: nowhere to put it
+            // Uniform over the free cells. Math.round(random * 15) made the edge
+            // rows and columns half as likely as the rest, and the old retry
+            // was unbounded recursion.
+            const k = free[Math.floor(Math.random() * free.length)];
+            this.xx = k % TILE_COUNT;
+            this.yy = Math.floor(k / TILE_COUNT);
+            this.p = scl / 2;
         }
         draw(ctx) {
             ctx.fillStyle = this.color;
@@ -247,25 +273,51 @@
 
     // Separate keys per board — the AI's record is its own, and mixing them
     // would let one board overwrite the other's best.
+    // localStorage throws when site data is blocked. Unguarded, that killed the
+    // load handler and the game never started.
     function loadHighScore(key = "snake_high_score") {
-        const v = parseInt(localStorage.getItem(key), 10);
-        return Number.isFinite(v) ? v : 0;
+        try {
+            const v = parseInt(localStorage.getItem(key), 10);
+            return Number.isFinite(v) ? v : 0;
+        } catch (e) { return 0; }
     }
     function saveHighScore(v, key = "snake_high_score") {
-        localStorage.setItem(key, String(v));
+        try { localStorage.setItem(key, String(v)); } catch (e) { /* non-fatal */ }
     }
 
 
     /* Board colours come from the theme (see --board-* in shared/themes.css).
-       Read fresh on each frame: the theme can change at runtime and a cached
-       value would leave the play area on the previous palette. */
+       Cached and invalidated when data-theme changes. Reading them fresh cost
+       several getComputedStyle calls per tick at 90 Hz, to return the same
+       strings; a runtime theme switch still repaints the play area. */
+    let themeCache = {};
+    new MutationObserver(() => { themeCache = {}; })
+        .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     function themeVar(name, fallback) {
-        var v = getComputedStyle(document.documentElement)
-                    .getPropertyValue(name).trim();
-        return v || fallback;
+        if (!(name in themeCache)) {
+            themeCache[name] = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
+        return themeCache[name] || fallback;
     }
     function boardBg() { return themeVar("--board-bg", "#000"); }
     function boardInk() { return themeVar("--board-ink", "#fff"); }
+    function boardScrim(a) { return "rgba(" + themeVar("--board-scrim", "0, 0, 0") + ", " + a + ")"; }
+
+    function drawGameOver(c, cvs, title, sub) {
+        c.fillStyle = boardScrim(0.62);
+        c.fillRect(0, 0, cvs.width, cvs.height);
+        c.fillStyle = boardInk();
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+        c.font = "bold " + scl + "px Arial";
+        c.fillText(title, cvs.width / 2, cvs.height / 2 - scl * 0.4);
+        c.font = 0.45 * scl + "px Arial";
+        c.globalAlpha = 0.75;
+        c.fillText(sub, cvs.width / 2, cvs.height / 2 + scl * 0.6);
+        c.globalAlpha = 1;
+        c.textAlign = "start";
+        c.textBaseline = "alphabetic";
+    }
     // ── Human board ──────────────────────────────────────────────────────
     let food, score = 0, highScore;
 
@@ -294,6 +346,13 @@
             highScore = score;
             saveHighScore(highScore);
         }
+
+        // Game over used to be only the snake turning red, with no
+        // instruction, and any key at all reloaded the page.
+        if (snake.isDead && performance.now() - (snake.diedAt || 0) > 500) {
+            drawGameOver(ctx, canvas, "GAME OVER",
+                         TOUCH ? "Tap to play again" : "Press Enter or Space to play again");
+        }
     }
 
     // ── AI board ─────────────────────────────────────────────────────────
@@ -302,6 +361,7 @@
     // Mirrors snake_env's steps_since_food, which feeds the hunger scalar in
     // the observation. Counts AI decision steps (one per cell), not frames.
     let aiStepsSinceFood = 0;
+    let aiAteThisCell = false, aiRestartTimer = null;
     let aiSession = null, aiReady = false, aiInferencePending = false;
 
     function dirToIndex(dir) {
@@ -427,7 +487,9 @@
         obs[p + 1] = (fy - hy) / TILE_COUNT;
         p += 2;
 
-        obs[p] = (stepsSinceFood || 0) / MAX_STEPS_WITHOUT_FOOD;
+        // Python truncates the episode at MAX_STEPS_WITHOUT_FOOD, so the model
+        // never saw this above 1; the browser has no such cap.
+        obs[p] = Math.min(1, (stepsSinceFood || 0) / MAX_STEPS_WITHOUT_FOOD);
 
         return obs;
     }
@@ -441,7 +503,7 @@
         aiStatusEl.textContent = "loading model…";
         aiStatusEl.hidden = false;
         try {
-            ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+            ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/";
 
             // Over HTTP this is the .onnx URL, which streams and is a third
             // smaller than the base64. See shared/model-source.js.
@@ -490,7 +552,10 @@
             return [
                 { label: "heading", value: heading },
                 { label: "length", value: Math.round(obs[p + 4] * CELLS) },
-                { label: "free space ahead", value: (obs[p + 8] * 100).toFixed(0) + "%" },
+                // p+5..7 are the kill flags and p+8..10 the free space for
+                // left / straight / right. This read p+8, the space after
+                // turning LEFT, under the label "ahead".
+                { label: "free space ahead", value: (obs[p + 9] * 100).toFixed(0) + "%" },
             ];
         },
         valueLabel: "expected score from here",
@@ -517,7 +582,9 @@
         if (criticSession || criticPending) return criticPending;
         criticPending = ort.InferenceSession
             .create("snake_critic.onnx", { executionProviders: ["wasm"] })
-            .then((s) => { criticSession = s; })
+            // A switch to an earlier rung while this was downloading must not
+            // leave the shipped critic paired with that rung.
+            .then((s) => { if (criticMatchesModel) criticSession = s; criticPending = null; })
             .catch((err) => {
                 console.warn("Snake critic unavailable — value readout hidden.", err);
             });
@@ -548,7 +615,10 @@
                 if (!rung.shipped) {
                     criticSession = null;
                     criticPending = null;
-                } else if (inspector.isOpen) {
+                } else if (inspector.isRevealed) {
+                    // isRevealed, not isOpen: isOpen uses a 400px warm-up
+                    // margin and is true at scroll 0, which re-fetched the
+                    // 34 MB critic on load for a panel nobody had reached.
                     loadCritic();
                 }
             },
@@ -570,15 +640,17 @@
         const results = await aiSession.run({ observation: tensor });
         const logits = results.action_logits.data;
 
-        // Feed the inspector the exact tensor the model just consumed, so
-        // what it draws cannot drift from what the network actually saw.
+        /* Feed the inspector the exact tensor the model just consumed, but do
+           not wait for it. The critic run and the redraw used to be awaited
+           before the action was returned, so with the panel open each decision
+           paid for two model runs and a repaint inside a ~44 ms window, and a
+           slow machine missed the cell boundary and turned a cell late. */
         if (inspector.isOpen) {
-            let value;
-            if (criticSession) {
-                const v = await criticSession.run({ observation: tensor });
-                value = v.value.data[0];
-            }
-            inspector.update({ obs, logits, value });
+            const critic = criticSession;
+            (critic ? critic.run({ observation: tensor }).then(v => v.value.data[0])
+                    : Promise.resolve(undefined))
+                .then(value => inspector.update({ obs, logits, value }))
+                .catch(() => inspector.update({ obs, logits }));
         }
 
         // Difficulty: at full strength this is the old argmax; easing off
@@ -624,6 +696,7 @@
             aiSnake.appendNew();
             aiScore++;
             aiStepsSinceFood = 0;
+            aiAteThisCell = true;
         }
         if (aiScore > aiHighScore) {
             aiHighScore = aiScore;
@@ -653,10 +726,32 @@
             !aiInferencePending
         ) {
             aiInferencePending = true;
-            aiStepsSinceFood++;
+            // snake_env: steps_since_food resets on the step that eats and
+            // counts up otherwise. Incrementing unconditionally put the browser
+            // one ahead of Python on every cell after the first food.
+            if (aiAteThisCell) aiAteThisCell = false;
+            else aiStepsSinceFood++;
+
+            // A decision belongs to THIS cell. update() commits a turn at the
+            // boundary frame, (cell + 1) * STEPS_PER_CELL; if inference resolves
+            // after that, the observation is stale and the turn would land a
+            // cell late, so it is dropped and the next cell decides afresh.
+            const decidedFor = aiSnake;
+            const deadline = (Math.floor(aiSnake.frameCount / STEPS_PER_CELL) + 1) * STEPS_PER_CELL;
             runAiInference()
-                .then(action => { applyAiAction(action); aiInferencePending = false; })
+                .then(action => {
+                    if (decidedFor === aiSnake && aiSnake.frameCount <= deadline) applyAiAction(action);
+                    aiInferencePending = false;
+                })
                 .catch(err => { console.error("AI inference failed:", err); aiInferencePending = false; });
+        }
+
+        // The AI board restarts itself, as Tetris's and Watermelon's do.
+        if (aiSnake.isDead) {
+            if (!aiRestartTimer) aiRestartTimer = setTimeout(resetAi, 1500);
+            if (performance.now() - (aiSnake.diedAt || 0) > 500) {
+                drawGameOver(ctxAi, canvasAi, "AI DIED", "Restarting\u2026");
+            }
         }
     }
 
@@ -671,20 +766,51 @@
         return matchStarted && !!window.snake && !window.snake.isDead;
     };
 
-    window.addEventListener("load", () => {
+    /* In-place resets. Death and both restart buttons used to reload the whole
+       page, which rebuilt the 34 MB model, re-downloaded any earlier model
+       picked in the switcher, and ended the other board's game too. */
+    function resetHuman() {
         food = new Food(6, Math.floor(TILE_COUNT / 2), 3);
         window.snake = new Snake(4, Math.floor(TILE_COUNT / 2), START_LENGTH, "rgb(50, 255, 50)");
-        highScore = loadHighScore();
-
+        score = 0;
+    }
+    function resetAi() {
+        clearTimeout(aiRestartTimer);
+        aiRestartTimer = null;
         aiFood = new Food(6, Math.floor(TILE_COUNT / 2), 3);
         aiSnake = new Snake(4, Math.floor(TILE_COUNT / 2), START_LENGTH, "rgb(50, 255, 50)");
+        aiScore = 0;
+        aiStepsSinceFood = 0;
+        aiAteThisCell = false;
+    }
+
+    window.addEventListener("load", () => {
+        resetHuman();
+        highScore = loadHighScore();
+        resetAi();
         aiHighScore = loadHighScore(AI_HIGH_SCORE_KEY);
 
         if (controlsOverlay) controlsOverlay.hidden = false;
 
         loadModel();
 
-        setInterval(() => { tick(); tickAi(); }, 1000 / 90);
+        /* A fixed 90 Hz simulation driven by requestAnimationFrame instead of
+           setInterval. The step is unchanged, so speed and the AI's decision
+           timing are exactly as before. Paints now land on display frames
+           rather than drifting against them (which juddered on 60 Hz screens),
+           and the loop stops in background tabs. Catch-up is capped so coming
+           back to the tab cannot fast-forward the game. */
+        const STEP_MS = 1000 / 90;
+        let acc = 0, last = performance.now();
+        function frame(now) {
+            acc += Math.min(250, now - last);
+            last = now;
+            let steps = 0;
+            while (acc >= STEP_MS && steps < 8) { tick(); tickAi(); acc -= STEP_MS; steps++; }
+            if (steps === 8) acc = 0;
+            requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
     });
 
     const KEY_MAP = {
@@ -694,16 +820,71 @@
         arrowright: [1, 0], d: [1, 0],
     };
 
+    function startMatch() {
+        if (matchStarted) return;
+        matchStarted = true;
+        if (controlsOverlay) controlsOverlay.hidden = true;
+    }
+
+    // Not during the death flash, or the final score is never seen.
+    function canRestartHuman() {
+        return !!window.snake && window.snake.isDead &&
+               performance.now() - (window.snake.diedAt || 0) > 500;
+    }
+
     document.addEventListener("keydown", e => {
-        if (window.snake && window.snake.isDead) { window.location.reload(); return; }
+        if (!window.snake) return;                       // pressed before load
+        if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
         const key = e.key.toLowerCase();
+
+        if (window.snake.isDead) {
+            // A deliberate Enter or Space. This used to be ANY key — including
+            // held-key repeats, Tab and modifiers — and it reloaded the page.
+            if ((key === "enter" || key === " ") && canRestartHuman()) {
+                e.preventDefault();
+                resetHuman();
+            }
+            return;
+        }
         if (!(key in KEY_MAP)) return;
-        if (!matchStarted) matchStarted = true;
-        if (controlsOverlay && !controlsOverlay.hidden) controlsOverlay.hidden = true;
+        startMatch();
         const [dx, dy] = KEY_MAP[key];
         window.snake.turn(dx, dy);
     });
 
-    if (restartBtn) restartBtn.addEventListener("click", () => window.location.reload());
-    if (restartAiBtn) restartAiBtn.addEventListener("click", () => window.location.reload());
+    /* Touch: swipe on the board to steer, tap to start or to play again. The
+       game was keyboard-only, so on a phone both boards sat behind "Press any
+       key to start" forever. A turn fires as soon as the finger has travelled
+       far enough rather than on release, and one drag can chain turns.
+       touch-action: none stops a swipe from scrolling the page. */
+    canvas.style.touchAction = "none";
+    let swipeFrom = null;
+    canvas.addEventListener("pointerdown", e => {
+        if (e.pointerType === "mouse") return;
+        swipeFrom = { x: e.clientX, y: e.clientY, moved: false };
+    });
+    canvas.addEventListener("pointermove", e => {
+        if (!swipeFrom || !window.snake || window.snake.isDead) return;
+        const dx = e.clientX - swipeFrom.x, dy = e.clientY - swipeFrom.y;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+        startMatch();
+        if (Math.abs(dx) > Math.abs(dy)) window.snake.turn(dx > 0 ? 1 : -1, 0);
+        else window.snake.turn(0, dy > 0 ? 1 : -1);
+        swipeFrom = { x: e.clientX, y: e.clientY, moved: true };
+    });
+    canvas.addEventListener("pointerup", e => {
+        if (e.pointerType === "mouse" || !swipeFrom || !window.snake) return;
+        const wasTap = !swipeFrom.moved;
+        swipeFrom = null;
+        if (!wasTap) return;
+        if (window.snake.isDead) { if (canRestartHuman()) resetHuman(); }
+        else startMatch();
+    });
+    canvas.addEventListener("pointercancel", () => { swipeFrom = null; });
+    canvasAi.addEventListener("pointerup", e => { if (e.pointerType !== "mouse") startMatch(); });
+
+    // Restart in place, then hand the keyboard back to the board so Space does
+    // not press Restart again.
+    if (restartBtn) restartBtn.addEventListener("click", e => { resetHuman(); e.currentTarget.blur(); });
+    if (restartAiBtn) restartAiBtn.addEventListener("click", e => { resetAi(); e.currentTarget.blur(); });
 })();

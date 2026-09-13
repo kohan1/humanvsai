@@ -1,11 +1,18 @@
 (() => {
     "use strict";
-    /* Board colours from the theme (see --board-* in shared/themes.css). Read
-       per frame, so switching theme at runtime repaints the play area too. */
+    /* Board colours from the theme (see --board-* in shared/themes.css).
+       Cached, and invalidated when data-theme changes: this used to call
+       getComputedStyle several times per board per frame to return the same
+       strings. Switching theme at runtime still repaints the play area. */
+    var _themeCache = {};
+    new MutationObserver(function () { _themeCache = {}; })
+        .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     function themeVar(name, fallback) {
-        var v = getComputedStyle(document.documentElement)
-                    .getPropertyValue(name).trim();
-        return v || fallback;
+        if (!(name in _themeCache)) {
+            _themeCache[name] = getComputedStyle(document.documentElement)
+                                    .getPropertyValue(name).trim();
+        }
+        return _themeCache[name] || fallback;
     }
     function boardBg() { return themeVar("--board-bg", "#000"); }
     function boardInk() { return themeVar("--board-ink", "#fff"); }
@@ -147,6 +154,14 @@
     // keyboard handler live in different closures.
     var matchStarted = false;
 
+    // Set if the model cannot be fetched or parsed, so the AI board says so
+    // instead of reading "Loading AI..." forever.
+    var aiLoadFailed = false;
+
+    // Phones and tablets: no hover, coarse pointer. Only changes the start
+    // prompt; the touch controls are wired up regardless.
+    var TOUCH = !!(window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches);
+
     // ─── Persistence ─────────────────────────────────────────────────────────
     // Board state is plain data — arena and bag are arrays, player is
     // {x, y, shape} — so the whole thing round-trips through JSON with no
@@ -180,20 +195,6 @@
         return true;
     }
 
-    // Set when the user deliberately restarts. The restart buttons reload the
-    // page, which fires `beforeunload` — without this flag the unload handler
-    // would write the boards straight back out after clearSavedGames() wiped
-    // them, and the reload would restore the game being restarted.
-    var suppressSave = false;
-
-    // Clears both boards' in-progress games but keeps high scores. Used by the
-    // restart buttons, which reload the page — without this the reload would
-    // restore the very game the user asked to abandon.
-    function clearSavedGames() {
-        suppressSave = true;
-        Store.clear("tetris.human.savedGame");
-        Store.clear("tetris.ai.savedGame");
-    }
 
     // ─── Keyboard ────────────────────────────────────────────────────────────
     var KB = {
@@ -205,12 +206,13 @@
             window.addEventListener("keyup",   function(e){ self.keys[e.key.toLowerCase()] = false; });
             window.addEventListener("keydown", function(e){
                 var key = e.key.toLowerCase();
-                // Scroll suppression moved to shared/keyscroll.js, which all
-                // three games load. This version fired regardless of what had
-                // focus, so space on a focused button — the speed controls,
-                // the checkpoint switcher — was swallowed instead of
-                // activating it. The shared one skips anything with its own
-                // keyboard behaviour.
+                // Space and Enter on a focused button or link belong to that
+                // control. Without this, Space on a speed button hard-dropped
+                // the human's piece AND pressed the button. Scroll suppression
+                // lives in shared/keyscroll.js.
+                var t = e.target;
+                if ((key === " " || key === "enter") && t && t.closest &&
+                    t.closest("button, a, input, select, textarea, [role='button']")) return;
                 self._emit(key, e);
                 self._emit(KB.ANY, e);
                 self.keys[key] = true;
@@ -227,6 +229,14 @@
             });
             var arr = this.listeners[key];
             toRemove.forEach(function(fn){ arr.splice(arr.indexOf(fn), 1); });
+        },
+        // Navigation and modifier keys never start a match or restart a board:
+        // a keyboard user tabbing to the controls was releasing both boards.
+        isIgnoredKey: function(e) {
+            var k = e.key;
+            if (k === "Tab" || k === "Escape" || k === "Shift" || k === "Control" ||
+                k === "Alt" || k === "Meta" || k === "CapsLock") return true;
+            return !!(e.ctrlKey || e.metaKey || e.altKey);
         },
         isDown: function(key) {
             if (key === this.ANY) return Object.values(this.keys).some(Boolean);
@@ -403,21 +413,27 @@
         return 0;
     }
 
-    // Peek at the next N pieces from the bag without mutating game state.
-    // Mirrors the 7-bag randomiser: pieces come off the end of the bag
-    // (bag.pop() order). If the bag runs low, simulates a fresh shuffled
-    // refill so the lookahead never runs out.
+    /* The next N pieces, in the order they will actually arrive.
+
+       tetris_env.py keeps a real five-piece queue, so the model was trained on
+       the true upcoming pieces. This used to copy the bag and, whenever it ran
+       short (five placements in every seven), invent a freshly shuffled refill
+       for the tail of the preview. The real refill in newPiece() shuffles
+       independently, so up to four of the five "next" pieces the AI saw were
+       fiction.
+
+       Topping the real bag up from the FRONT keeps it deep enough to read
+       directly. Pieces come off the end with pop(), so everything already in
+       the bag is still drawn first and the fresh bag queues behind it: the
+       same 7-bag order newPiece() would have produced. */
     function peekNextPieces(bag, n) {
-        var virtualBag = bag.slice(); // shallow copy — shape refs are fine, we only read ids
-        var result = [];
-        for (var i = 0; i < n; i++) {
-            if (virtualBag.length === 0) {
-                var fresh = cloneShapes(CONFIG.SHAPES);
-                shuffle(fresh);
-                fresh.forEach(function(s){ virtualBag.push(s); });
-            }
-            result.push(virtualBag.pop());
+        while (bag.length < n) {
+            var fresh = cloneShapes(CONFIG.SHAPES);
+            shuffle(fresh);
+            Array.prototype.unshift.apply(bag, fresh);
         }
+        var result = [];
+        for (var i = 0; i < n; i++) result.push(bag[bag.length - 1 - i]);
         return result;
     }
 
@@ -547,7 +563,10 @@
                     var v = await criticSession.run({ observation: tensor });
                     value = v.value.data[0];
                 }
-                inspector.update({ obs: obs, logits: logits, value: value });
+                // Only the first placements.length logits are legal moves. The
+                // softmax used to include the rest, so confidence and the
+                // highlighted "best" could show a move the AI can never make.
+                inspector.update({ obs: obs, logits: logits.subarray(0, placements.length), value: value });
             }
 
             // Pick a valid placement. Only the first placements.length logits
@@ -605,6 +624,32 @@
         // animation finishes — see the loop's AI branch in createGame().
     };
 
+    /* Remove full rows and return how many went, which the AI's combo needs.
+       Plain loops: this runs every frame on both boards. */
+    function clearLines(state) {
+        var cleared = 0;
+        for (var r = CONFIG.ARENA_HEIGHT - 1; r >= 0; r--) {
+            var row = state.arena[r], full = true;
+            for (var c = 0; c < CONFIG.ARENA_WIDTH; c++) {
+                if (!(row[c] > 0)) { full = false; break; }
+            }
+            if (!full) continue;
+            state.arena.splice(r, 1);
+            state.arena.unshift(new Array(CONFIG.ARENA_WIDTH).fill(0));
+            state.score += CONFIG.scorePoints.LINECLEAR;
+            cleared++;
+            r++;
+        }
+        return cleared;
+    }
+
+    function toppedOut(state) {
+        for (var r = 0; r < 3; r++)
+            for (var c = 0; c < CONFIG.ARENA_WIDTH; c++)
+                if (state.arena[r][c] > 0) return true;
+        return false;
+    }
+
     // ─── Game loop factory ────────────────────────────────────────────────────
 
     function createGame(canvasEl, isAI, aiPlayer, getNextPiece) {
@@ -612,8 +657,9 @@
         var CSS_W = 300, CSS_H = 540;
         canvasEl.width  = CSS_W * dpr;
         canvasEl.height = CSS_H * dpr;
-        canvasEl.style.width  = CSS_W + "px";
-        canvasEl.style.height = CSS_H + "px";
+        // No inline width/height: style.css sizes the canvas, and inline sizes
+        // overrode its narrow-screen rule, so at 375px the canvas stayed 300px
+        // inside a 292px board and spilled out.
         var ctx = canvasEl.getContext("2d");
         ctx.scale(dpr, dpr);
 
@@ -626,7 +672,6 @@
         }
 
         function saveGame() {
-            if (suppressSave) return;
             // A finished board is not worth restoring — drop it and keep only
             // the high score, so a reload starts fresh instead of reopening on
             // a game-over screen.
@@ -661,15 +706,44 @@
         var timers = { lastTime: 0, dropCounter: 0, lockCounter: 0, horizCounter: 0 };
         var aiThinkTimer = 0;
         var AI_THINK_INTERVAL = 300; // ms between AI moves
+        var restartRequested = false;
+
+        /* A fresh board in place, keeping the high score. Used by the restart
+           buttons, restart-after-loss and the AI's auto-restart, none of which
+           reload the page any more. The buttons used to reload, so restarting
+           the AI also threw away the human's game. */
+        function resetBoard() {
+            state = createState(Math.max(state.highScore || 0, state.score || 0, loadHighScore()));
+            timers = { lastTime: performance.now(), dropCounter: 0, lockCounter: 0, horizCounter: 0 };
+            aiThinkTimer = 0;
+            restartRequested = false;
+            if (aiPlayer) { aiPlayer.combo = 0; aiPlayer.busy = false; }
+            Store.clear(SAVE_KEY);
+        }
+
+        if (!isAI) {
+            // A deliberate keypress after GAME OVER has been up briefly. The
+            // grace period stops the key you died holding, or a hard drop still
+            // in flight, from dismissing the screen before it is seen.
+            KB.on(KB.ANY, function (e) {
+                if (!state.lost || KB.isIgnoredKey(e)) return;
+                if (performance.now() - (state.lostAt || 0) < 450) return;
+                restartRequested = true;
+            });
+        }
 
         function loop(ts) {
             var dt = ts - timers.lastTime;
             timers.lastTime = ts;
             if (dt > 200) dt = 200;
+            var lockedThisFrame = false;
 
             if (!state.paused && !state.lost) {
                 timers.dropCounter  += dt;
                 timers.horizCounter += dt;
+                // Do not bank gravity while waiting for the first key, or the
+                // piece jumps a row the instant the match starts.
+                if (!isAI && !matchStarted) { timers.dropCounter = 0; timers.horizCounter = 0; }
 
                 if (isAI && matchStarted && aiPlayer && aiPlayer.session && !state.restarting) {
                     if (state.player.anim) {
@@ -693,6 +767,7 @@
                             state.player.y = anim.toY;
                             state.player.anim = null;
                             lockPiece(state, true);
+                            lockedThisFrame = true;
                             aiPlayer.busy = false;
                         }
                     } else {
@@ -702,18 +777,24 @@
                         if (aiThinkTimer >= AI_THINK_INTERVAL / AI_SPEED && !aiPlayer.busy) {
                             aiThinkTimer = 0;
                             var nextPieces = peekNextPieces(state.bag, 5);
+                            var thinkState = state;
                             aiPlayer.chooseMove(state, nextPieces).then(function(placement) {
-                                if (placement && !state.lost) {
+                                // `state` may have been replaced while the model
+                                // was thinking (restart, auto-restart). A move
+                                // worked out for the old board must not land on
+                                // the new one.
+                                if (placement && !state.lost && state === thinkState) {
                                     aiPlayer.applyMove(state, placement);
                                 } else {
-                                    // No valid placement (or lost mid-think) — release the lock
                                     aiPlayer.busy = false;
                                 }
                             });
                         }
                     }
-                } else if (!isAI) {
-                    // Human: gravity + controls
+                } else if (!isAI && matchStarted) {
+                    // Human: gravity + controls. Gated on matchStarted: pieces
+                    // used to fall under the "Press any key" overlay, so an
+                    // idle tab topped out on its own and recorded a result.
                     state.player.y += 1;
                     var resting = hasCollision(state);
                     state.player.y -= 1;
@@ -750,47 +831,47 @@
                     }
                 }
 
-                // Clear full lines (both human and AI)
-                for (var r = CONFIG.ARENA_HEIGHT - 1; r >= 0; r--) {
-                    if (state.arena[r].every(function(v){ return v > 0; })) {
-                        state.arena.splice(r, 1);
-                        state.arena.unshift(Array(CONFIG.ARENA_WIDTH).fill(0));
-                        state.score += CONFIG.scorePoints.LINECLEAR;
-                        r++;
-                    }
+                var cleared = clearLines(state);
+
+                // tetris_env.py: combo += 1 on a lock that clears, else 0. The
+                // browser never updated it, so the model's combo input sat at
+                // zero for every move it ever made here.
+                if (isAI && lockedThisFrame && aiPlayer) {
+                    aiPlayer.combo = cleared > 0 ? aiPlayer.combo + 1 : 0;
                 }
 
-                // Detect loss
-                if (state.arena.slice(0, 3).some(function(row){
-                    return row.some(function(v){ return v > 0; });
-                })) {
-                    // Record once, on the transition into the lost state —
-                    // this block runs every frame while the board sits lost.
-                    if (!isAI && !state.lost && typeof MatchResults !== "undefined") {
-                        var aiState = window.__aiGame ? window.__aiGame.getState() : null;
-                        MatchResults.record("tetris", state.score,
-                                            aiState ? aiState.score : 0, Date.now());
-                    }
+                // Loss. Runs once, on the transition: this block is skipped
+                // while state.lost is set.
+                if (toppedOut(state)) {
                     state.lost = true;
+                    state.lostAt = performance.now();
+                    restartRequested = false;
+                    if (state.score > state.highScore) state.highScore = state.score;
+                    Store.write(HIGH_KEY, state.highScore);
+
+                    // Only a real match is a result: not a board that topped out
+                    // before the AI had loaded, or with no AI at all.
+                    if (!isAI && matchStarted && window.__aiGame &&
+                            typeof MatchResults !== "undefined") {
+                        MatchResults.record("tetris", state.score,
+                                            window.__aiGame.getState().score, Date.now());
+                    }
                 }
             }
 
-            // Restart human game on keypress after loss
-            if (!isAI && state.lost && KB.isDown(KB.ANY)) {
-                var prevHigh = Math.max(state.highScore, state.score);
-                state = createState(prevHigh);
-                timers = { lastTime: ts, dropCounter: 0, lockCounter: 0, horizCounter: 0 };
-            }
+            // Restart the human board after a loss, on a FRESH keypress. This
+            // used to test KB.isDown(ANY) in the very frame the loss was
+            // detected, and people usually top out holding soft drop or right
+            // after Space, so the board reset at once and GAME OVER never showed.
+            if (!isAI && state.lost && restartRequested) resetBoard();
 
             // AI auto-restart after loss
             if (isAI && state.lost && !state.restarting) {
                 state.restarting = true;
-                var prevHighScore = state.highScore;
+                var lostState = state;
                 setTimeout(function() {
-                    state = createState(Math.max(prevHighScore, state ? state.score : 0));
-                    timers = { lastTime: 0, dropCounter: 0, lockCounter: 0, horizCounter: 0 };
-                    aiThinkTimer = 0;
-                    if (aiPlayer) { aiPlayer.combo = 0; aiPlayer.busy = false; }
+                    // Skip if the board was already restarted by hand meanwhile.
+                    if (state === lostState) resetBoard();
                 }, 1500);
             }
 
@@ -824,13 +905,10 @@
                 ctx.globalAlpha = 1;
             }
 
-            // Update high score live as score increases. Written straight
-            // through so a crash or force-close can't lose it — this only
-            // fires on an actual increase, not every frame.
-            if (state.score > state.highScore) {
-                state.highScore = state.score;
-                Store.write(HIGH_KEY, state.highScore);
-            }
+            // Tracked live; persisted on loss and in saveGame(), which runs on
+            // beforeunload and visibilitychange. Writing on every increase was
+            // ~23 synchronous localStorage writes a second during soft drop.
+            if (state.score > state.highScore) state.highScore = state.score;
             drawScore(ctx, state.score, CONFIG.SCALE);
             drawHighScore(ctx, state.highScore, CONFIG.SCALE);
 
@@ -863,12 +941,16 @@
                 ctx.font = "bold 18px " + CONFIG.FONT_FAMILY;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.fillText(loading ? "Loading AI..." : "Ready", 150, 260);
+                ctx.fillText(loading ? (aiLoadFailed ? "Couldn't load the AI" : "Loading AI…")
+                                     : "Ready", 150, 260);
                 ctx.font = "13px " + CONFIG.FONT_FAMILY;
                 ctx.globalAlpha = 0.6; ctx.fillStyle = boardInk();
+                // Was "Run embed_model.py, then refresh": developer instructions
+                // shown to every visitor during every normal load.
                 ctx.fillText(
-                    loading ? "Run embed_model.py, then refresh"
-                            : "Press any key to start",
+                    loading ? (aiLoadFailed ? "Check your connection and refresh"
+                                            : "Downloading the model")
+                            : (TOUCH ? "Tap to start" : "Press any key to start"),
                     150, 285
                 );
                 ctx.globalAlpha = 1;
@@ -892,7 +974,9 @@
 
         return {
             getState: function() { return state; },
-            save: saveGame
+            save: saveGame,
+            reset: resetBoard,
+            setAIPlayer: function(p) { aiPlayer = p; }
         };
     }
 
@@ -919,26 +1003,40 @@
             CheckpointSwitcher.reserve("tetris", document.getElementById("board-ai"), true);
         }
 
-        /* Read by shared/confirm-exit.js. A run counts as in progress once the
-           first key has released the boards and while the human has not lost
-           — a board still showing the controls overlay has nothing to lose. */
+        /* Read by shared/confirm-exit.js: in progress once the first key has
+           released the boards and while the human has not lost. Both boards
+           are saved on beforeunload/visibilitychange and restored on return,
+           so the message says that rather than warning the run will be lost. */
         window.gameInProgress = function () {
-            try {
-                var st = humanGame.getState();
-                return matchStarted && !st.lost;
-            } catch (e) { return false; }
+            try { return matchStarted && !humanGame.getState().lost; }
+            catch (e) { return false; }
         };
+        window.gameExitMessage = "Leave the game? Your board is saved and will be here when you come back.";
 
         showControls(controlsEl, true, false);
-        KB.once(KB.ANY, function(){
+        function startMatch() {
+            if (matchStarted) return;
             showControls(controlsEl, false, true);
             matchStarted = true;   // releases the AI board — see the flag above
+        }
+        KB.on(KB.ANY, function(e){
+            if (KB.isIgnoredKey(e)) return;
+            startMatch();
+            return true;           // unsubscribe: start exactly once
         });
 
-        // Rotate (W / Up) — human only
-        KB.onMany(CONFIG.controls.ROTATE, function() {
-            var state = humanGame.getState();
-            if (state.paused || state.lost) return;
+        // Game actions do nothing until the match has started: key handlers run
+        // before the ANY handler, so the key that starts the match (often
+        // Space) used to perform its action as well.
+        function humanPlayable() {
+            var st = humanGame.getState();
+            return matchStarted && !st.paused && !st.lost ? st : null;
+        }
+
+        // Rotate (W / Up, or tap) — human only
+        function humanRotate() {
+            var state = humanPlayable();
+            if (!state) return;
             var prevX = state.player.x;
             rotateMatrix(state.player.shape, 1);
             var kick = 0, attempts = 0;
@@ -946,36 +1044,90 @@
                 state.player.x += kick;
                 kick = kick > 0 ? -(kick + 1) : (1 - kick);
                 attempts++;
-                if (attempts > state.player.shape[0].length * 2) {
+                // Offsets 0, +1, -1, +2, -2, then give up. The old limit scaled
+                // with piece width and let an I piece hop four columns through
+                // part of the stack.
+                if (attempts > 5) {
                     rotateMatrix(state.player.shape, -1);
                     state.player.x = prevX;
                     break;
                 }
             }
-        });
+        }
 
-        // Hard drop (Space) — human only
-        KB.onPress(" ", function() {
-            var state = humanGame.getState();
-            if (state.paused || state.lost) return;
+        // Hard drop (Space, or swipe down) — human only
+        function humanHardDrop() {
+            var state = humanPlayable();
+            if (!state) return;
             var dropped = 0;
             state.player.y += 1;
             while (!hasCollision(state)) { state.player.y++; dropped++; }
             state.player.y--;
             if (dropped > 0) state.score += dropped * CONFIG.scorePoints.HARDDROP;
             lockPiece(state, false);
+        }
+
+        // Sideways by n columns (swipe), stopping at the first collision.
+        function humanShift(n) {
+            var state = humanPlayable();
+            if (!state) return;
+            var step = n > 0 ? 1 : -1;
+            for (var i = 0; i < Math.abs(n); i++) {
+                state.player.x += step;
+                if (hasCollision(state)) { state.player.x -= step; break; }
+            }
+        }
+
+        KB.onMany(CONFIG.controls.ROTATE, humanRotate);
+        KB.onPress(" ", humanHardDrop);
+
+        /* Touch. The game was keyboard-only and the match waits for a first
+           key, so on a phone both boards sat behind "Press any key to start"
+           forever. Tap to rotate, swipe sideways to move (one column per cell
+           of travel), swipe down to hard drop; the first touch starts the
+           match. touch-action: none keeps a swipe from scrolling the page. */
+        humanCanvas.style.touchAction = "none";
+        var touchStart = null;
+        humanCanvas.addEventListener("pointerdown", function (e) {
+            if (e.pointerType === "mouse") return;
+            touchStart = { x: e.clientX, y: e.clientY };
+        });
+        humanCanvas.addEventListener("pointercancel", function () { touchStart = null; });
+        humanCanvas.addEventListener("pointerup", function (e) {
+            if (e.pointerType === "mouse" || !touchStart) return;
+            var dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y;
+            touchStart = null;
+            if (!matchStarted) { startMatch(); return; }
+            var st = humanGame.getState();
+            if (st.lost) {
+                if (performance.now() - (st.lostAt || 0) > 450) humanGame.reset();
+                return;
+            }
+            var cell = humanCanvas.getBoundingClientRect().width / CONFIG.ARENA_WIDTH;
+            if (Math.abs(dx) < 12 && Math.abs(dy) < 12) humanRotate();
+            else if (Math.abs(dx) > Math.abs(dy)) humanShift(Math.round(dx / cell) || (dx > 0 ? 1 : -1));
+            else if (dy > 0) humanHardDrop();
+            else humanRotate();
         });
 
         // ── AI board ──────────────────────────────────────────────────────────
         var aiCanvas  = document.getElementById("canvas-ai");
         var aiPlayer  = null;
-        var aiGame    = createGame(aiCanvas, true, aiPlayer, null);
+        // Created ONCE. It used to be created here with no player and then
+        // again on the same canvas after the model loaded, leaving the first
+        // loop repainting underneath the second forever, with a second set of
+        // save handlers attached.
+        var aiGame    = createGame(aiCanvas, true, null, null);
+        // Tapping the AI board ("Tap to start") starts the match too.
+        aiCanvas.addEventListener("pointerup", function (e) {
+            if (e.pointerType !== "mouse") startMatch();
+        });
 
         // Try to load ONNX model. The .onnx is preferred over HTTP; the
         // base64 in model_data.js is for opening game.html straight from disk,
         // where fetch() cannot read a sibling file.
         try {
-            ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+            ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/";
 
             // .onnx over HTTP, base64 only under file:// — see
             // shared/model-source.js.
@@ -985,11 +1137,7 @@
             });
 
             aiPlayer = new AIPlayer(session);
-            // Patch aiPlayer into the game loop by replacing the reference
-            // The loop checks aiPlayer.session so we just swap it in
-            aiGame._aiPlayer = aiPlayer;
-            // Re-create AI game with the loaded model
-            aiGame = createGame(aiCanvas, true, aiPlayer, null);
+            aiGame.setAIPlayer(aiPlayer);
             // The human board's loop needs the AI's score to record a match,
             // and the two live in separate createGame closures.
             window.__aiGame = aiGame;
@@ -1020,6 +1168,7 @@
                 }
             }
         } catch(e) {
+            aiLoadFailed = true;
             console.warn("AI model failed to load:", e.message);
         }
 
@@ -1027,9 +1176,11 @@
         // Both restart buttons reload the page. Saved boards must be dropped
         // first, or the reload would restore the game being restarted. High
         // scores live under separate keys and survive.
-        document.getElementById("restart-human").addEventListener("click", function() {
-            clearSavedGames();
-            window.location.reload();
+        // Restart in place. Blurred afterwards so Space goes back to the board
+        // rather than pressing Restart again.
+        document.getElementById("restart-human").addEventListener("click", function(e) {
+            humanGame.reset();
+            e.currentTarget.blur();
         });
         // ── AI speed buttons ──────────────────────────────────────────────
         var speedBox = document.getElementById("speed-ai");
@@ -1043,13 +1194,14 @@
                 var all = speedBox.querySelectorAll("button[data-speed]");
                 for (var i = 0; i < all.length; i++) {
                     all[i].classList.toggle("active", all[i] === btn);
+                    all[i].setAttribute("aria-pressed", all[i] === btn ? "true" : "false");
                 }
             });
         }
 
-        document.getElementById("restart-ai").addEventListener("click", function() {
-            clearSavedGames();
-            window.location.reload();
+        document.getElementById("restart-ai").addEventListener("click", function(e) {
+            aiGame.reset();
+            e.currentTarget.blur();
         });
     });
 })();

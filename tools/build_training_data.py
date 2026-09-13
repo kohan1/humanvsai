@@ -74,10 +74,11 @@ RUN_NOTES = {
     ),
     "watermelon/train_v3_resume_done.log": dict(
         game="watermelon", label="resume", evalScore=902.10,
-        outcome="shipped",
+        outcome="improved",
         parent="watermelon/pipeline_v2_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.902pt10.zip",
-        note="The model currently live on the site.",
+        note="Shipped at the time. Replaced by later runs, and since August "
+             "by the model trained on the compressed fruit ladder.",
     ),
     "watermelon/train_v4_done.log": dict(
         game="watermelon", label="resume", evalScore=872.00,
@@ -209,10 +210,15 @@ RUN_NOTES = {
     # charts PPO timestep curves and BC has none, so an entry for it would be a
     # label with no series. The clone's result is stated in the note below.
     "watermelon/train_geometry.log": dict(
-        game="watermelon", label="compressed fruit ladder · 30M PPO",
-        evalScore=4450.00, outcome="rejected",
+        game="watermelon", label="compressed fruit ladder · clone shipped",
+        # The shipped weights are this pipeline's behavioural-cloning stage
+        # (4505.50 on install); its 30M PPO stage scored 4450 and added nothing.
+        # This is the ancestor of what the site serves, so it is marked shipped.
+        # NOTE: scores after this run are for a different game - the fruit
+        # sizes changed - and are not comparable with the ~1000s before it.
+        evalScore=4505.50, outcome="shipped",
         parent="watermelon/train_mergemap.log",
-        checkpoint="watermelon/training/watermelon_final.geometry.zip",
+        checkpoint="watermelon/training/watermelon_final.zip",
         note="Five runs had now landed within a few percent of 107 drops across "
              "two objectives, four reward designs and two observations. None of "
              "them was ever going to work, because the ceiling was not in the "
@@ -291,7 +297,7 @@ RUN_NOTES = {
     ),
     "snake/train_100m.log": dict(
         game="snake", label="100M resume · GPU", evalScore=145.70,
-        outcome="improved",
+        outcome="shipped",
         parent="snake/train_day1.log",
         checkpoint="snake/training/archive/models/snake_final.145pt70_best.zip",
         note="100 million steps in 12h58m. Almost all of the gain arrived "

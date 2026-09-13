@@ -74,7 +74,8 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .how-to-read b { color: var(--fg-muted); }
 .chart-key { color: var(--dim); }
 .omitted { color: var(--dim); }
-.foot { color: var(--faint); }
+/* --dim, not --faint: --faint is a hairline colour and measured ~1.2:1 as text. */
+.foot { color: var(--dim); }
 
 /* index */
 .title .vs { color: var(--dim); }
@@ -92,7 +93,9 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 .settings-btn { color: var(--dim); }
 .settings-btn:hover, .settings-btn[aria-expanded="true"] { color: var(--fg); }
-.settings-panel { background: var(--panel); border-color: var(--line); }
+/* Scrolls rather than running off a short landscape phone screen. */
+.settings-panel { background: var(--panel); border-color: var(--line);
+                  max-height: calc(100vh - 5rem); overflow-y: auto; }
 .settings-title { color: var(--dim); }
 .settings-blurb, .settings-foot { color: var(--dim); }
 .settings-opt { background: var(--bg); border-color: var(--line); color: var(--fg-muted); }
@@ -127,6 +130,8 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .o-shipped { color: var(--accent); }
 .o-improved { color: var(--accent-2); }
 .o-rejected { color: var(--warn); }
+/* Was a fixed amber, 1.75:1 on the light themes. */
+.o-running { color: var(--fg-muted); }
 .o-unknown { color: var(--dim); }
 .arch-flow { background: var(--bg-soft); border-color: var(--line); }
 .arch-step { border-right-color: var(--line-soft); }
@@ -209,7 +214,9 @@ h2 { color: var(--fg); font-family: var(--serif); }
 [data-theme] main div.controls p { color: var(--board-ink); }
 
 /* Theme picker */
-.theme-row { display: flex; gap: 4px; margin-top: 0.35rem; }
+/* A 3x2 grid, not one row of six: at ~43px each, labels like CONSTELLATION
+   were clipped at every panel width. */
+.theme-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 0.35rem; }
 .theme-swatch {
     flex: 1 1 0; cursor: pointer; padding: 0; border: 1px solid var(--line);
     background: none; font-family: inherit; overflow: hidden;
@@ -462,11 +469,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
    #cfcdc5, which against that theme's #f4f3ef page gives a contrast ratio of
    1.43 — the "VS" was effectively invisible on both light themes (1.54 on
    Dispersion). --dim keeps it quiet but legible. */
-[data-theme="flow"] #vs, [data-theme="filings"] #vs, [data-theme="sand"] #vs,
-[data-theme="constellation"] #vs, [data-theme="dispersion"] #vs { color: var(--dim); }
-[data-theme="flow"] .board-label, [data-theme="filings"] .board-label,
-[data-theme="sand"] .board-label, [data-theme="constellation"] .board-label,
-[data-theme="dispersion"] .board-label { color: var(--dim); }
-[data-theme="flow"] .ai-status, [data-theme="filings"] .ai-status,
-[data-theme="sand"] .ai-status, [data-theme="constellation"] .ai-status,
-[data-theme="dispersion"] .ai-status { color: var(--dim); }
+/* On every theme, the default included. These used to skip Mesh, which left
+   the game pages' own #444/#555 greys in place on the theme most people see:
+   about 2:1 against #080808. */
+#vs, .board-label, .ai-status { color: var(--dim); }

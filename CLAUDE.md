@@ -638,6 +638,63 @@ policy, and check the settle thresholds first** — they decide when a drop is
 
 ---
 
+## Polish pass, 2026-09-14 — what five reviewers found
+
+Five parallel read-only reviews (one per game, shared code, cross-site
+consistency) produced ~100 findings; these are the classes worth remembering.
+
+**Encoder drift, again, and in two games.** Tetris never updated `combo` (always
+0; Python increments it on every clearing lock) and invented a random refill
+for the tail of the 5-piece preview whenever the bag ran short, so up to four
+"next" pieces were fiction. Snake counted hunger one step ahead of Python after
+the first food. None of these changed an array length, so no guard caught
+them. **When auditing an encoder, compare how each field EVOLVES over steps,
+not just its shape at one step.**
+
+**Timers vs frames.** Physics and game loops run on `requestAnimationFrame`,
+which the browser stops in background tabs; `setTimeout`/`setInterval` keep
+going. Watermelon's AI kept dropping on a timer while nothing fell and buried
+itself. AI drops now wait for `framesSinceDrop >= 30`. Snake's loop moved from
+`setInterval` to a fixed-step rAF accumulator (same 90 Hz step). **Anything
+that gates on game state must be driven by, or gated on, simulated frames.**
+
+**Loading.** `game.html` loaded `model_data.js` from a static script tag, so
+the base64 global was always defined and the 30-46 MB base64 path always won
+locally; `shared/model-source.js` now decides (`.onnx` over http, base64 only
+under file://). Separately, the inspector fired `onReveal` with the same 400px
+margin it uses for painting, so the 23-34 MB critic downloaded on EVERY load.
+Use `inspector.isRevealed`, never `isOpen`, to decide on an expensive fetch.
+
+**`shared/themes.css` loads after each game's stylesheet and defines `--accent`.**
+Any game-local token named `--accent` is silently replaced. Watermelon's brown
+became pale blue and "Game Over" rendered at ~1.2:1 on cream. It is now
+`--wm-ink`. Prefix game-local tokens.
+
+**Keyboard.** `shared/keyscroll.js` exempts elements PER KEY: buttons and links
+own Space/Enter but never arrows. A clicked button keeps focus, so the first
+version (buttons exempt from everything) let arrows scroll again after any
+click. Game keydown handlers must also ignore Space/Enter when the target is a
+control, or Space both hard-drops and presses the button.
+
+**Restarts reload nothing now.** Every game resets boards in place; reloading
+rebuilt the model and ended the other board's game. Async work that can land
+after a restart (drop timers, merge awaits, AI inference) compares a `gen` or
+a captured state object and stands down.
+
+**Pinned:** onnxruntime-web **1.29.0**, in each `game.html` AND each game's
+`ort.env.wasm.wasmPaths`. Bump both together or the JS and WASM can mismatch.
+
+**Deploy:** staged HTML gets `?v=<commit>` on every local .js/.css (Pages lets
+browsers cache ~10 min, and a new game.js against an old shared/*.js breaks),
+and the Pages wait now matches the build's commit to the pushed one — it used
+to accept the PREVIOUS build's "built" status.
+
+**Verifying in the Browser pane:** if the pane is hidden, `clientWidth` is 0
+and rAF never fires — overflow and frame-rate readings are artifacts. Re-check
+with a visible pane (a screenshot succeeding is the tell) before acting.
+
+---
+
 ## Bugs already found and fixed — don't reintroduce these
 
 **Rendering**

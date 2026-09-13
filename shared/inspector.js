@@ -120,8 +120,10 @@ function createInspector(config) {
         canvases.forEach((cvs, ch) => {
             const dpr = window.devicePixelRatio || 1;
             const w = grid.w * CELL, h = grid.h * CELL;
-            if (cvs.width !== w * dpr) {
-                cvs.width = w * dpr; cvs.height = h * dpr;
+            // Rounded: at fractional zoom w * dpr is never equal to the integer
+            // width the canvas stores, so this reallocated on every paint.
+            if (cvs.width !== Math.round(w * dpr)) {
+                cvs.width = Math.round(w * dpr); cvs.height = Math.round(h * dpr);
                 cvs.style.width = w + 'px'; cvs.style.height = h + 'px';
             }
             const ctx = cvs.getContext('2d');
@@ -222,7 +224,11 @@ function createInspector(config) {
     document.body.append(cue);
 
     const onScroll = () => {
-        cue.classList.toggle('is-gone', window.scrollY > 60);
+        const gone = window.scrollY > 60;
+        cue.classList.toggle('is-gone', gone);
+        // Faded out but still focusable used to leave an invisible tab stop.
+        cue.tabIndex = gone ? -1 : 0;
+        cue.setAttribute('aria-hidden', gone ? 'true' : 'false');
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
@@ -234,7 +240,7 @@ function createInspector(config) {
         // Painting: warm up a screen early so the panel is populated before it
         // scrolls in. Cheap — it only draws to a few small canvases.
         new IntersectionObserver((entries) => {
-            open = entries[0].isIntersecting;
+            open = entries[entries.length - 1].isIntersecting;   // latest, not first
             render();
         }, { rootMargin: '400px 0px' }).observe(root);
 
@@ -249,7 +255,7 @@ function createInspector(config) {
            At 0px it fires when the panel actually reaches the viewport, which
            is what the deploy script's comment has always claimed happens. */
         new IntersectionObserver((entries) => {
-            if (!entries[0].isIntersecting || revealed) return;
+            if (!entries[entries.length - 1].isIntersecting || revealed) return;
             revealed = true;
             if (onReveal) onReveal();
         }, { rootMargin: '0px' }).observe(root);
@@ -261,10 +267,15 @@ function createInspector(config) {
     return {
         /* Called on every AI decision. Returns immediately while off screen. */
         update(payload) {
-            if (!open) return;
+            // Kept even while off screen, so the panel scrolls in showing the
+            // latest decision rather than a stale or empty one.
             lastPayload = payload;
+            if (!open) return;
             render();
         },
         get isOpen() { return open; },
+        // True once the panel has actually entered the viewport. Use this, not
+        // isOpen, to decide whether to fetch anything expensive.
+        get isRevealed() { return revealed; },
     };
 }

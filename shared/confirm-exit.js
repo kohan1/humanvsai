@@ -18,6 +18,9 @@
     document.addEventListener("click", function (e) {
         var link = e.target.closest && e.target.closest(".back-nav");
         if (!link) return;
+        // Ctrl/Cmd/Shift-click and middle-click open the link somewhere else and
+        // leave this tab, and its game, exactly where it is.
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
 
         var running = false;
         try {
@@ -27,7 +30,12 @@
         }
         if (!running) return;
 
-        if (!window.confirm("Leave this game? Your current run will be lost.")) {
+        // A game that saves itself says so (window.gameExitMessage); the default
+        // is for one that does not.
+        var message = typeof window.gameExitMessage === "string"
+            ? window.gameExitMessage
+            : "Leave this game? Your current run will be lost.";
+        if (!window.confirm(message)) {
             e.preventDefault();
         }
     });

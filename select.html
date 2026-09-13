@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="Choose a game to play against a trained AI opponent running in your browser." />
+        <meta name="theme-color" content="#080808" />
+        <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080808'/%3E%3Ctext x='16' y='21' font-family='Arial' font-size='13' font-weight='700' fill='%23cfe4ff' text-anchor='middle'%3Evs%3C/text%3E%3C/svg%3E" />
     <title>select — human vs ai</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -51,7 +54,9 @@
             opacity: 0; animation: up 0.9s cubic-bezier(0.16,1,0.3,1) 0.22s forwards;
         }
         @media (max-width: 720px) {
-            .grid { grid-template-columns: repeat(auto-fit, minmax(220px, 260px)); }
+            /* One column. auto-fit made two columns between ~560 and 720px and
+               left an empty cell showing the grid's background. */
+            .grid { grid-template-columns: minmax(0, 340px); }
         }
         .card {
             display: flex; flex-direction: column; justify-content: space-between;
@@ -250,29 +255,54 @@
         function renderThemes() {
             const t = Settings.get().theme;
             themeRow.innerHTML = Settings.THEMES.map(x => `
-                <button class="theme-swatch${x.id === t ? ' on' : ''}" data-theme-id="${x.id}"
-                        title="${x.label}">
+                <button type="button" class="theme-swatch${x.id === t ? ' on' : ''}"
+                        data-theme-id="${x.id}" aria-pressed="${x.id === t}" title="${x.label}">
                     <i style="background:${x.swatch}"></i><b>${x.label}</b>
                 </button>`).join('');
         }
+        /* Choices update the existing buttons instead of rebuilding them.
+           Rebuilding threw keyboard focus back to the top of the page on every
+           choice, and nothing announced which option was now selected. */
+        function syncThemes() {
+            const t = Settings.get().theme;
+            themeRow.querySelectorAll('[data-theme-id]').forEach(b => {
+                const on = b.dataset.themeId === t;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', String(on));
+            });
+        }
         themeRow.addEventListener('click', (e) => {
             const b = e.target.closest('[data-theme-id]');
-            if (!b) return;
+            // Re-picking the current theme used to restart its background.
+            if (!b || b.dataset.themeId === Settings.get().theme) return;
             Settings.set({ theme: b.dataset.themeId });
             Settings.applyTheme(b.dataset.themeId);
-            renderThemes();
+            syncThemes();
         });
 
         function render() {
             const current = Settings.get().difficulty;
             list.innerHTML = Settings.DIFFICULTY.map(d => `
-                <button class="settings-opt${d.id === current ? ' on' : ''}"
-                        data-id="${d.id}">
+                <button type="button" class="settings-opt${d.id === current ? ' on' : ''}"
+                        data-id="${d.id}" aria-pressed="${d.id === current}">
                     <b>${d.label}</b><span>${d.hint}</span>
                 </button>`).join('');
-            // Surface the choice on the button itself, so a weakened opponent
-            // is never a surprise the player has forgotten about.
-            const chosen = Settings.DIFFICULTY.find(d => d.id === current);
+            syncLabel();
+        }
+        function syncDifficulty() {
+            const current = Settings.get().difficulty;
+            list.querySelectorAll('[data-id]').forEach(b => {
+                const on = b.dataset.id === current;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', String(on));
+            });
+            syncLabel();
+        }
+        // Surface the choice on the button itself, so a weakened opponent
+        // is never a surprise the player has forgotten about.
+        function syncLabel() {
+            const current = Settings.get().difficulty;
+            const chosen = Settings.DIFFICULTY.find(d => d.id === current) || Settings.DIFFICULTY[0];
             label.textContent = current === 'full'
                 ? 'settings' : `settings · ${chosen.label.toLowerCase()}`;
         }
@@ -281,7 +311,7 @@
             const b = e.target.closest('[data-id]');
             if (!b) return;
             Settings.set({ difficulty: b.dataset.id });
-            render();
+            syncDifficulty();
         });
 
         function open(v) {
@@ -307,7 +337,10 @@
             if (btn.getAttribute('aria-expanded') === 'true') open(false);
         });
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') open(false);
+            if (e.key === 'Escape' && btn.getAttribute('aria-expanded') === 'true') {
+                open(false);
+                btn.focus();   // back to where the keyboard user came from
+            }
         });
 
         renderThemes();

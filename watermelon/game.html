@@ -2,8 +2,9 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="Play a Suika-style fruit-merging game against a neural network trained with reinforcement learning." />
+        <meta name="theme-color" content="#080808" />
         <title>Watermelon Game — Human vs AI</title>
         <link rel="shortcut icon" href="assets/watermelon.png" />
         <link rel="stylesheet" href="../shared/inspector.css" />
@@ -12,14 +13,14 @@
 
         <!-- Physics stack. Order matters: planck must load before the
              physics wrapper, and both before the game. -->
-        <script src="lib/p5.min.js"></script>
-        <script src="lib/planck.min.js"></script>
-        <script src="lib/physics.min.js"></script>
+        <script src="lib/p5.min.js" defer></script>
+        <script src="lib/planck.min.js" defer></script>
+        <script src="lib/physics.min.js" defer></script>
 
         <!-- Assets as base64 data URIs. Must not be deferred: game.js reads
              WATERMELON_IMAGES at load. Without this, images fail to load
              under file:// — see embed_assets.py for why. -->
-        <script src="image_data.js"></script>
+        <script src="image_data.js" defer></script>
 
         <!-- AI opponent. model_data.js embeds the model as base64 and must not
              be deferred, because game.js reads WATERMELON_MODEL_B64 at load.
@@ -27,15 +28,15 @@
              blocked — and it is a ~30 MB render-blocking script, so the
              deployed site strips this tag and ships watermelon_ai.onnx for
              loadAiModel() to fetch instead. See tools/deploy_pages.sh. -->
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-        <script src="../shared/model-source.js"></script>
-        <script src="../shared/settings.js"></script>
-        <script src="../shared/results.js"></script>
-        <script src="../shared/inspector.js"></script>
-        <script src="../shared/checkpoints.js"></script>
-        <script src="../shared/checkpoint_switcher.js"></script>
-        <script src="../shared/keyscroll.js"></script>
-        <script src="../shared/confirm-exit.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <script src="../shared/model-source.js" defer></script>
+        <script src="../shared/settings.js" defer></script>
+        <script src="../shared/results.js" defer></script>
+        <script src="../shared/inspector.js" defer></script>
+        <script src="../shared/checkpoints.js" defer></script>
+        <script src="../shared/checkpoint_switcher.js" defer></script>
+        <script src="../shared/keyscroll.js" defer></script>
+        <script src="../shared/confirm-exit.js" defer></script>
         <script src="game.js" defer></script>
         <link rel="stylesheet" href="../shared/themes.css" />
         <script>
@@ -200,8 +201,8 @@
     <section class="insp-section">
         <div id="insp-mount-ai"></div>
     </section>
-        <script src="../shared/backgrounds.js"></script>
-        <script src="../shared/mesh.js"></script>
+        <script src="../shared/backgrounds.js" defer></script>
+        <script src="../shared/mesh.js" defer></script>
         <script>
         document.addEventListener('DOMContentLoaded', function () {
             initMesh('mesh', { intensity: 0.55 });

@@ -123,19 +123,36 @@
         theme: 'mesh',
     };
 
+    /* An in-memory copy for when localStorage is unavailable (site data
+     * blocked, some private modes). Without it a click wrote nowhere, the next
+     * read returned the defaults, and the highlight snapped straight back, so
+     * difficulty and theme could not be changed at all. */
+    var memory = null;
+
+    /* A stored id that no longer exists — a renamed theme or level — falls back
+     * to the default rather than breaking whatever reads it (the settings
+     * button threw reading `.label` of an unknown difficulty). */
+    function valid(key, v) {
+        if (key === 'difficulty') return DIFFICULTY.some(function (d) { return d.id === v; });
+        if (key === 'theme') return THEMES.some(function (t) { return t.id === v; });
+        if (key === 'inspector') return typeof v === 'boolean';
+        return false;
+    }
+
     function read() {
-        try {
-            var raw = localStorage.getItem(KEY);
-            var parsed = raw ? JSON.parse(raw) : {};
-            var out = {};
-            for (var k in DEFAULTS) {
-                out[k] = Object.prototype.hasOwnProperty.call(parsed, k)
-                    ? parsed[k] : DEFAULTS[k];
-            }
-            return out;
-        } catch (e) {
-            return JSON.parse(JSON.stringify(DEFAULTS));
+        var parsed = memory;
+        if (!parsed) {
+            try {
+                var raw = localStorage.getItem(KEY);
+                parsed = raw ? JSON.parse(raw) : {};
+            } catch (e) { parsed = {}; }
         }
+        var out = {};
+        for (var k in DEFAULTS) {
+            out[k] = parsed && Object.prototype.hasOwnProperty.call(parsed, k) && valid(k, parsed[k])
+                ? parsed[k] : DEFAULTS[k];
+        }
+        return out;
     }
 
     function write(patch) {
@@ -143,7 +160,10 @@
         for (var k in patch) next[k] = patch[k];
         try {
             localStorage.setItem(KEY, JSON.stringify(next));
-        } catch (e) { /* private browsing — settings just will not persist */ }
+            memory = null;
+        } catch (e) {
+            memory = next;   // storage unavailable: keep it for this page at least
+        }
         return next;
     }
 
@@ -197,6 +217,11 @@
         document.documentElement.setAttribute('data-theme', t);
         return t;
     }
+
+    // Another tab changed the theme: follow it here as well.
+    window.addEventListener('storage', function (e) {
+        if (e.key === KEY) applyTheme();
+    });
 
     global.Settings = {
         THEMES: THEMES,

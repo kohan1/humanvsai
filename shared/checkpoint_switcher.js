@@ -135,6 +135,8 @@
 
         var note = document.createElement('div');
         note.className = 'ckpt-note';
+        // Announced, so a screen reader hears the download progress and the result.
+        note.setAttribute('aria-live', 'polite');
         root.append(note);
 
         var buttons = {};
@@ -202,7 +204,7 @@
             try {
                 var bytes = await fetchWithProgress(r.file, function (got, total) {
                     note.textContent = total
-                        ? 'downloading ' + Math.round(100 * got / total) + '%  (' +
+                        ? 'downloading ' + Math.min(100, Math.round(100 * got / total)) + '%  (' +
                           fmtBytes(total) + ')'
                         : 'downloading ' + fmtBytes(got) + '…';
                 });

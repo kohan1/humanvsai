@@ -90,11 +90,10 @@ function initReveal(cvs, opts) {
     window.addEventListener('resize', resize);
     resize();
 
-    function inkRgb() {
-        const s = getComputedStyle(document.documentElement);
-        const v = s.getPropertyValue('--grid-ink').trim();
-        return v || '17, 17, 17';
-    }
+    // Read once: a theme change remounts this renderer, so a per-frame style
+    // lookup was only ever returning the same value.
+    const INK = getComputedStyle(document.documentElement).getPropertyValue('--grid-ink').trim() || '17, 17, 17';
+    function inkRgb() { return INK; }
 
     function draw() {
         cx += (mx - cx) * EASE;
@@ -147,7 +146,7 @@ function initReveal(cvs, opts) {
         cancelAnimationFrame(raf);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('touchmove', onTouch);
-        window.removeEventListener('resize', resize);
+        window.removeEventListener('resize', onResize);
         ctx.clearRect(0, 0, cvs.width, cvs.height);
     };
 }
@@ -187,8 +186,22 @@ function initLattice(cvs, opts) {
 
     // Named rather than inline, so switching theme can remove them — an
     // anonymous handler cannot be detached and would keep firing forever.
-    const onMove = (e) => { mouseX = e.clientX; mouseY = e.clientY; };
-    const onTouch = (e) => { mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; };
+    /* prefers-reduced-motion: the lattice drifts and waves on its own, so it
+     * settles for a moment and then holds still; moving the pointer wakes it
+     * briefly, since that motion is the visitor's own doing. */
+    const reduce = !!(window.matchMedia &&
+                      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    let budget = reduce ? 90 : Infinity;
+    const wake = () => {
+        if (!reduce) return;
+        budget = Math.max(budget, 45);
+        if (!raf) raf = requestAnimationFrame(draw);
+    };
+    const onMove = (e) => { mouseX = e.clientX; mouseY = e.clientY; wake(); };
+    const onTouch = (e) => {
+        if (!e.touches.length) return;
+        mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY; wake();
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('touchmove', onTouch, { passive: true });
 
@@ -315,10 +328,11 @@ function initLattice(cvs, opts) {
             ctx.fill();
         }
 
-        raf = requestAnimationFrame(draw);
+        raf = --budget > 0 ? requestAnimationFrame(draw) : 0;
     }
 
-    window.addEventListener('resize', resize);
+    const onResize = () => { resize(); wake(); };
+    window.addEventListener('resize', onResize);
     resize();
     raf = requestAnimationFrame(draw);
 
@@ -326,7 +340,7 @@ function initLattice(cvs, opts) {
         cancelAnimationFrame(raf);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('touchmove', onTouch);
-        window.removeEventListener('resize', resize);
+        window.removeEventListener('resize', onResize);
         ctx.clearRect(0, 0, cvs.width, cvs.height);
     };
 }

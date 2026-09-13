@@ -125,6 +125,15 @@
     const CANVAS_H = 599;
     const LOSS_LINE_Y = 115;   // stack above this and the game ends
 
+    /* Drop positions are clamped the way watermelon_env.py clamps them: the
+       fruit's own radius plus 1px from each wall. The browser used a fixed 5px
+       margin, so a large fruit could be released half inside a wall and pushed
+       sideways by the physics, from a position the AI never trained on. */
+    function clampDropX(x, tier) {
+        const r = DIAMETERS[tier] / 2;
+        return Math.min(CANVAS_W - r - 1, Math.max(r + 1, x));
+    }
+
     const BALL_TIMEOUT      = 1000;
 
     // AI speed multiplier, matching Tetris's speed buttons. Applies to the AI
@@ -210,6 +219,16 @@
             let loading      = true;
 
             let numOfShakes   = 0;
+            // Bumped by reset(). Timers and awaits started before a restart
+            // compare against it and stand down instead of acting on the new board.
+            let gen = 0;
+            // p.frameCount at the last drop. Physics steps in draw(), which the
+            // browser stops calling in a background tab; the drop cooldown is a
+            // timer, which keeps running. The AI used to keep dropping while
+            // nothing fell, piling fruit on the spawn point until it lost the
+            // moment frames resumed.
+            let dropFrame = -Infinity;
+            let shakeCountdownTimer = null, shakeCooldownTimer = null;
             let canShake      = true;
             let doShake       = false;
 
@@ -282,9 +301,8 @@
                 bounds = new p.Group();
                 loss   = new p.Group();
 
-                // Walls and floor take the theme's board edge. They are 1px
-                // and mostly sit outside the visible area, but "gray" against
-                // a near-white board on the paper themes was invisible.
+                // Walls and floor are physics boundaries only, so they are
+                // never drawn (p5play outlined them with the sprite stroke).
                 wall1 = new bounds.Sprite(0, CANVAS_H / 2, 1, CANVAS_H, "s");
                 wall1.color = BOARD_BG;
                 wall1.visible = false;
@@ -305,7 +323,7 @@
                 lossLine.visible = false;
 
                 nextBall = new p.Sprite(CANVAS_W - 100, 100);
-                nextBall.tier = Math.round(p.random(0, 4));
+                nextBall.tier = Math.floor(p.random(0, 5));
                 nextBall.collider = "n";
                 nextBall.diameter = DIAMETERS[nextBall.tier];
                 nextBall.img = FRUIT_IMG[nextBall.tier];
@@ -327,7 +345,7 @@
 
                 balls.collide(balls, combineFruits);
 
-                createCloudBall(cloud.x, cloud.y, Math.round(p.random(0, 4)));
+                createCloudBall(cloud.x, cloud.y, Math.floor(p.random(0, 5)));
 
                 canDrop = true;
                 highScore = store.read(KEY_HIGH, 0) || 0;
@@ -347,16 +365,16 @@
                 // tracks whatever its policy asks for, and parks centre when
                 // there is no policy yet.
                 let targetX;
+                const heldTier = cloudBall ? cloudBall.tier : 0;
                 if (cfg.interactive) {
-                    targetX =
-                        p.mouseX > 0 && p.mouseX < CANVAS_W
-                            ? p.mouseX
-                            : p.mouseX > CANVAS_W / 2 ? wall2.x - 5 : wall1.x + 5;
+                    targetX = clampDropX(p.mouseX, heldTier);
                 } else {
-                    const want = policy ? policy(buildState()) : null;
+                    // The policy only reports a stored target, so no full state
+                    // snapshot is built for it every frame any more.
+                    const want = policy ? policy() : null;
                     targetX = want === null || want === undefined
                         ? CANVAS_W / 2
-                        : Math.min(CANVAS_W - 5, Math.max(5, want * CANVAS_W));
+                        : clampDropX(want * CANVAS_W, heldTier);
                 }
                 // The AI board's cloud tracks at the selected speed; the human
                 // board is never sped up. Capped below 1 because moveTowards
@@ -382,9 +400,7 @@
                     if (x.overlapping(lossLine) > 60) gameOver();
                 }
 
-                // The drop guide. Was "gray", which sat at 2.3:1 on the paper
-                // themes' near-white board and vanished; --board-edge is the
-                // token the other two games already use for exactly this.
+                // The drop guide, on the cream board.
                 p.stroke("gray");
                 p.strokeWeight(6);
                 p.line(cloud.x, cloud.y, cloud.x, CANVAS_H);
@@ -410,6 +426,13 @@
                 // a click on the other board from dropping here.
                 if (p.mouseX <= -25 || p.mouseX >= CANVAS_W + 25) return;
                 if (p.mouseY <= -25 || p.mouseY >= CANVAS_H + 25) return;
+                // Drop where the pointer IS. On touch the cloud is still easing
+                // toward the tap when the finger lifts, so each fruit used to
+                // land where you had tapped the time before.
+                if (cloudBall && canDrop && !isGameOver) {
+                    cloud.x = clampDropX(p.mouseX, cloudBall.tier);
+                    cloudBall.x = cloud.x;
+                }
                 drop();
             };
 
@@ -420,6 +443,7 @@
                 if (!cloudBall) return;
 
                 canDrop = false;
+                dropFrame = p.frameCount;
                 ballsDropped++;
                 if (cfg.persist) store.write(KEY_DROPPED, ballsDropped);
 
@@ -429,7 +453,9 @@
                 if (ballsDropped % DROPS_PER_SHAKE === 0) {
                     numOfShakes++;
                     if (domShakeCount) domShakeCount.innerText = numOfShakes;
-                    if (domShakeBtn) domShakeBtn.disabled = false;
+                    // Not while the shake is cooling down: the button used to
+                    // light up and then do nothing when pressed.
+                    if (domShakeBtn) domShakeBtn.disabled = !canShake;
                 }
 
                 ball.collider = "d";
@@ -439,8 +465,12 @@
                 ball.bounciness = 0;
                 ball.resetMass();
 
+                const g = gen;
                 setTimeout(() => {
-                    if (isGameOver) return;
+                    // A restart during the cooldown bumps gen. Without this the
+                    // old timer spawned a second held fruit on the fresh board,
+                    // and the one it replaced hung at y~100 as an obstacle.
+                    if (isGameOver || g !== gen) return;
                     createCloudBall(cloud.x, cloud.y, nextBall.tier);
                     queueBall();
                     saveGame();
@@ -451,6 +481,10 @@
             }
 
             async function combineFruits(a, b) {
+                // No scoring once the board is over. Physics keeps running under
+                // the overlay, and merges kept raising the saved high score
+                // while "Game Over" still showed the old one.
+                if (isGameOver) return;
                 if (a.isCloud || b.isCloud) return;
                 if (a.isCombining || b.isCombining) return;
                 if (a.tier !== b.tier) return;
@@ -481,7 +515,11 @@
                     x.moveAway((aX + bX) / 2, (aY + bY) / 2, 0.01);
                 }
 
+                const g = gen;
                 await p.delay(100);
+                // Restarted while the pair was animating together: the fresh
+                // board must not receive the merged fruit.
+                if (g !== gen) return;
 
                 a.remove();
                 b.remove();
@@ -554,12 +592,12 @@
                     domShakeCountdown.innerText = remaining;
                 }
 
-                const countdown = setInterval(() => {
+                const countdown = shakeCountdownTimer = setInterval(() => {
                     if (remaining < 0) return clearInterval(countdown);
                     if (domShakeCountdown) domShakeCountdown.innerText = --remaining;
                 }, 1000);
 
-                setTimeout(() => {
+                shakeCooldownTimer = setTimeout(() => {
                     clearInterval(countdown);
                     if (domShakeCountdown) domShakeCountdown.style.display = "none";
                     canShake = true;
@@ -633,13 +671,28 @@
                 }
 
                 store.clear(KEY_SAVED);
+                // Otherwise closing the tab on this screen left the old drop
+                // count behind, and the next fresh board opened on the late-game
+                // fruit mix from its very first drop.
+                if (cfg.persist) store.write(KEY_DROPPED, 0);
                 if (domGameOverScore) domGameOverScore.innerText = `Score ${score}`;
                 if (domGameOver) domGameOver.hidden = false;
+
+                // The AI board had no way back: no button and nothing to reset
+                // it, so every later human game was recorded against its frozen
+                // score. It now restarts itself, as Snake's and Tetris's do.
+                if (!cfg.interactive) {
+                    const g = gen;
+                    setTimeout(() => { if (isGameOver && g === gen) reset(); }, 1500);
+                }
             }
 
             // Resets this board only. The original reloaded the document,
             // which would take the other board down with it.
             function reset() {
+                gen++;
+                clearInterval(shakeCountdownTimer);
+                clearTimeout(shakeCooldownTimer);
                 for (const b of [...balls]) b.remove();
                 cloudBall = undefined;
 
@@ -653,16 +706,20 @@
                 store.clear(KEY_SAVED);
                 if (cfg.persist) store.write(KEY_DROPPED, 0);
 
-                queueBall(Math.round(p.random(0, 4)));
-                createCloudBall(cloud.x, cloud.y, Math.round(p.random(0, 4)));
+                queueBall(Math.floor(p.random(0, 5)));
+                createCloudBall(cloud.x, cloud.y, Math.floor(p.random(0, 5)));
 
                 if (domGameOver) domGameOver.hidden = true;
                 if (domShakeCount) domShakeCount.innerText = 0;
                 if (domShakeBtn) domShakeBtn.disabled = true;
-                if (domShakeCountdown) domShakeCountdown.innerText = "";
+                if (domShakeCountdown) {
+                    domShakeCountdown.innerText = "";
+                    domShakeCountdown.style.display = "none";
+                }
 
                 renderScore();
                 loading = false;
+                dropFrame = -Infinity;
                 canDrop = true;
             }
 
@@ -695,6 +752,7 @@
                     nextTier: nextBall.tier,
                     cloudX: cloud.x,
                     canDrop,
+                    framesSinceDrop: p.frameCount - dropFrame,
                     isGameOver,
                     score,
                     fruit,
@@ -746,15 +804,17 @@
         get ai()    { return getAI(); },
     };
 
-    /* Read by shared/confirm-exit.js. A run counts as in progress once the
-       human board has any fruit on it or any score — a board you have not
-       dropped into yet has nothing to lose. */
+    /* Read by shared/confirm-exit.js. In progress once the human board has any
+       fruit or score, and not once it is already showing Game Over. */
     window.gameInProgress = function () {
         try {
             var st = getHuman().getState();
-            return (st.fruit && st.fruit.length > 0) || st.score > 0;
+            return !st.isGameOver && ((st.fruit && st.fruit.length > 0) || st.score > 0);
         } catch (e) { return false; }
     };
+    // The human board is saved after every drop and restored on return, so the
+    // default "your run will be lost" would be untrue here.
+    window.gameExitMessage = "Leave the game? Your board is saved and will be here when you come back.";
 
     /* ── AI opponent ──────────────────────────────────────────────────────
 
@@ -912,7 +972,7 @@
         if (criticSession || criticPending) return criticPending;
         criticPending = ort.InferenceSession
             .create("watermelon_critic.onnx", { executionProviders: ["wasm"] })
-            .then((s) => { criticSession = s; })
+            .then((s) => { if (criticMatchesModel) criticSession = s; criticPending = null; })
             .catch((err) => {
                 console.warn("Watermelon critic unavailable — value readout hidden.", err);
             });
@@ -922,6 +982,18 @@
     const aiStatusEl = document.getElementById("status-ai");
     let aiSession = null;
     let aiBusy = false;          // an inference is in flight
+    let aiFailures = 0, aiStopped = false;
+
+    // After repeated inference failures, say so on the board and stop retrying.
+    function stopAi() {
+        aiStopped = true;
+        if (!aiStatusEl) return;
+        const title = aiStatusEl.querySelector(".overlay-title");
+        const sub = aiStatusEl.querySelector(".overlay-sub");
+        if (title) title.textContent = "AI stopped";
+        if (sub) sub.textContent = "It stopped responding. Refresh to try again.";
+        aiStatusEl.hidden = false;
+    }
     let aiTargetFrac = null;     // where this drop is aimed, 0-1 of board width
     const AI_ALIGN_TOLERANCE = 6; // px; the cloud eases in, so wait for it
 
@@ -942,7 +1014,7 @@
        and no model_data.js — see tools/deploy_pages.sh. */
     async function loadAiModel() {
         try {
-            ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+            ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/";
 
             // .onnx over HTTP, base64 only under file:// — see
             // shared/model-source.js.
@@ -978,7 +1050,9 @@
                 if (!rung.shipped) {
                     criticSession = null;
                     criticPending = null;
-                } else if (inspector.isOpen) {
+                } else if (inspector.isRevealed) {
+                    // isRevealed, not isOpen: isOpen has a 400px warm-up margin
+                    // and is true at scroll 0, which fetched the critic on load.
                     loadCritic();
                 }
             },
@@ -1001,13 +1075,14 @@
         // The inspector gets the very tensor that was just fed to the model,
         // not a re-derivation of it — so what it draws cannot drift from what
         // the network actually saw.
+        // Not awaited: the critic run and redraw are for the panel only and
+        // should never hold up the AI's move.
         if (inspector.isOpen) {
-            let value;
-            if (criticSession) {
-                const v = await criticSession.run({ observation: tensor });
-                value = v.value.data[0];
-            }
-            inspector.update({ obs, logits, value });
+            const critic = criticSession;
+            (critic ? critic.run({ observation: tensor }).then(v => v.value.data[0])
+                    : Promise.resolve(undefined))
+                .then(value => inspector.update({ obs, logits, value }))
+                .catch(() => inspector.update({ obs, logits }));
         }
 
         // Difficulty — see settings.js. Full strength is the original argmax.
@@ -1022,24 +1097,36 @@
     // decision to release are driven from the loop below.
     function driveAI() {
         const ai = window.watermelonBoards.ai;
-        if (!aiSession || !ai) return;
+        if (!aiSession || !ai || aiStopped) return;
 
         const state = ai.getState();
         if (state.isGameOver) { aiTargetFrac = null; return; }
 
         // No target yet for this fruit — pick one.
-        if (aiTargetFrac === null && state.canDrop && !aiBusy) {
+        // Wait for ~half a second of SIMULATED physics since the last drop, not
+        // wall-clock time: frames only advance while the page is drawing, so
+        // this also keeps the AI from observing a board that has not moved.
+        const settled = state.framesSinceDrop >= 30;
+        if (aiTargetFrac === null && state.canDrop && settled && !aiBusy) {
             aiBusy = true;
             chooseColumn(state)
-                .then(col => { aiTargetFrac = (col + 0.5) / N_DROP_COLUMNS; })
-                .catch(err => console.error("Watermelon AI inference failed:", err))
+                .then(col => { aiTargetFrac = (col + 0.5) / N_DROP_COLUMNS; aiFailures = 0; })
+                .catch(err => {
+                    // Used to retry every 100 ms forever, logging each time,
+                    // with the board frozen and nothing on screen.
+                    console.error("Watermelon AI inference failed:", err);
+                    if (++aiFailures >= 5) stopAi();
+                })
                 .finally(() => { aiBusy = false; });
             return;
         }
 
         // Aimed and lined up — release, then wait for the next fruit.
-        if (aiTargetFrac !== null && state.canDrop) {
-            const targetX = aiTargetFrac * state.width;
+        if (aiTargetFrac !== null && state.canDrop && settled) {
+            // The same clamp the cloud uses. Near a wall the cloud would
+            // otherwise stop short of an unclamped target and wait forever.
+            const targetX = clampDropX(aiTargetFrac * state.width,
+                                       state.holdingTier === null ? 0 : state.holdingTier);
             if (Math.abs(state.cloudX - targetX) <= AI_ALIGN_TOLERANCE) {
                 ai.drop();
                 aiTargetFrac = null;
@@ -1056,9 +1143,10 @@
             const v = parseFloat(btn.getAttribute("data-speed"));
             if (!isFinite(v) || v <= 0) return;
             AI_SPEED = v;
-            speedBox.querySelectorAll("button[data-speed]").forEach((b) =>
-                b.classList.toggle("active", b === btn)
-            );
+            speedBox.querySelectorAll("button[data-speed]").forEach((b) => {
+                b.classList.toggle("active", b === btn);
+                b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+            });
         });
     }
 
