@@ -215,7 +215,13 @@
             });
             var r = rungs.filter(function (x) { return x.id === id; })[0];
             if (!r) return;
+            var prev = playing[game];
             playing[game] = r;
+            // MatchResults voids a match whose opponent changes part-way.
+            if (prev && prev.id !== r.id) {
+                window.dispatchEvent(new CustomEvent('rungchange',
+                    { detail: { game: game, id: r.id } }));
+            }
             /* The whole sentence is always visible — it wraps rather than
              * truncating, even in the compact variant, because a tooltip is
              * unreachable on touch. */
