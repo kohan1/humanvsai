@@ -175,54 +175,67 @@ main > button:active {
     background-color: rgba(200, 200, 200, 0.35);
 }
 
-/* ── Controls overlay ─────────────────────────────────────────────────────── */
+/* ── Board cards: start hint and AI status ─────────────────────────────────
+   Text on the board sits on its own card, centred below the spawn row (the
+   snakes start on row 8 of 16, the score sits in rows 1-3), so it never
+   prints across the snake or the food. Both used to be a scrim over the whole
+   board with the text centred on the snake's starting row.
+   The #board-* ids are for specificity: shared/themes.css loads after this
+   file and gives `[data-theme] main div.controls` a full-board scrim. */
 
-main div.controls {
+#board-human main div.controls,
+#board-ai .ai-status {
+    position: absolute;
+    left: 50%;
+    top: 71%;
+    transform: translate(-50%, -50%);
+    width: max-content;
+    max-width: calc(100% - 24px);
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    color: #ccc;
-    position: absolute;
-    top: 0;
-    left: 0;
-    font-size: 0.85rem;
-    width: 100%;
-    height: 100%;
+    gap: 0.25em;
+    padding: 0.55em 0.95em;
+    border-radius: 8px;
+    /* Scales with the board, so on a 215px phone board the card stays one
+       line per message and clear of the spawn row instead of wrapping up
+       into it. 15px at the full 480px board, never below 11px. */
+    font-size: clamp(11px, calc(var(--snake-board) / 32), 15px);
+    line-height: 1.25;
+    background: rgba(var(--board-scrim, 0, 0, 0), 0.82);
+    color: var(--board-ink, #fff);
+    text-align: center;
     pointer-events: none;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.7);
 }
 
-main div.controls[hidden] {
+#board-human main div.controls[hidden] {
     display: flex !important;
     opacity: 0;
     /* Transparent was not enough: screen readers still read it. */
     visibility: hidden;
 }
 
-main div.controls p {
-    margin: 0.35em 0;
-    text-align: center;
-    color: #fff;
+#board-human main div.controls p {
+    margin: 0;
+    color: var(--board-ink, #fff);
 }
 
-/* ── AI status overlay (model loading / error state) ─────────────────────── */
+#board-ai .ai-status b { font-size: 1em; font-weight: 700; }
+#board-ai .ai-status span { font-size: 0.82em; opacity: 0.75; }
+#board-ai .ai-status[hidden] { display: none !important; }
 
-.ai-status {
+/* Read by screen readers, not shown. */
+.sr-only {
     position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    pointer-events: none;
-    /* The theme's scrim, not a fixed black slab over the light boards. */
-    background: rgba(var(--board-scrim, 0, 0, 0), 0.7);
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
-.ai-status[hidden] { display: none !important; }
 
 /* ── Narrow and short screens ───────────────────────────────────────────────
    Two 480px boards side by side need ~1180px: 2 x 480, two 48px gaps, the VS
@@ -253,11 +266,18 @@ main div.controls p {
     #arena { flex-direction: column; align-items: center; gap: 18px; }
     #vs { align-self: center; margin-top: 0; font-size: 1.5rem; }
     :root {
-        /* Both boards on one screen where the height allows it, but never
-           smaller than ~300px for the board the player is actually steering:
-           below that a phone gets a usable board and scrolls to the AI. */
-        --snake-board: min(480px, calc(100vw - 2.4rem), max(300px, calc((100svh - 260px) / 2)));
+        /* Both boards on one screen. 252px is everything in the column that
+           is not a board: the top padding below, two 28px label rows, the VS
+           and its two 18px gaps, and ~75px at the bottom for the fixed scroll
+           cue. The floor used to be 300px, which on a 360x740 phone pushed the
+           bottom of the AI board off the screen; 220px still leaves a
+           steerable board on the smallest phones. */
+        --snake-board: min(480px, calc(100vw - 2.4rem), max(220px, calc((100svh - 252px) / 2)));
     }
+    /* The fixed back link sat on top of the YOU label once the boards
+       stacked; give it a row of its own. Same selector as inspector.css, which
+       this file follows, so it wins at equal specificity. */
+    body:has(.insp-section) .screen { padding-top: 3rem; }
 }
 
 @media (max-width: 560px) {
@@ -266,7 +286,6 @@ main div.controls p {
 
 /* Start hints: keyboard wording by default, touch wording on phones and
    tablets. Pure CSS, so the right text is there from first paint. */
-.controls-start { margin-top: 1em; font-size: 0.8em; opacity: 0.75; }
 .hint-touch { display: none; }
 @media (hover: none) and (pointer: coarse) {
     .hint-touch { display: inline; }

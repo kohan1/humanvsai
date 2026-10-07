@@ -67,6 +67,7 @@
         <canvas id="mesh"></canvas>
 
         <a class="back-nav" href="../select.html">← back</a>
+        <h1 class="sr-only">Snake — Human vs AI</h1>
 
         <div class="screen">
         <div id="arena">
@@ -75,17 +76,20 @@
             <div class="board-wrap" id="board-human">
                 <div class="board-label">YOU</div>
                 <main>
-                    <canvas id="canvas-human" width="480" height="480"></canvas>
+                    <canvas id="canvas-human" width="480" height="480" role="img" aria-label="Your Snake board. Steer with the arrow keys or WASD."></canvas>
                     <button id="restart-human" title="Restart">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M23 4v6h-6"></path>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                         </svg>
                     </button>
-                    <div class="controls" hidden>
-                        <p><span class="hint-keys">&uparrow; &leftarrow; &downarrow; &rightarrow; or WASD to move</span><span class="hint-touch">Swipe on the board to steer</span></p>
-                        <p class="controls-start"><span class="hint-keys">Press an arrow key or WASD to start</span><span class="hint-touch">Swipe to start</span></p>
+                    <!-- One line, on a card below the spawn row. There used to be two
+                         lines that said the same thing ("…to move" / "…to start")
+                         on a scrim over the whole board, across the snake. -->
+                    <div class="controls">
+                        <p><span class="hint-keys">Press an arrow key or WASD to start</span><span class="hint-touch">Swipe on the board to start</span></p>
                     </div>
+                    <p class="sr-only" id="sr-human" aria-live="polite"></p>
                 </main>
             </div>
 
@@ -96,14 +100,15 @@
             <div class="board-wrap" id="board-ai">
                 <div class="board-label">AI</div>
                 <main>
-                    <canvas id="canvas-ai" width="480" height="480"></canvas>
+                    <canvas id="canvas-ai" width="480" height="480" role="img" aria-label="The AI's Snake board."></canvas>
                     <button id="restart-ai" title="Restart">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M23 4v6h-6"></path>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                         </svg>
                     </button>
-                    <div class="ai-status" id="ai-status"></div>
+                    <div class="ai-status" id="ai-status" hidden><b></b><span></span></div>
+                    <p class="sr-only" id="sr-ai" aria-live="polite"></p>
                 </main>
             </div>
 
