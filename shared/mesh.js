@@ -163,6 +163,16 @@ function initReveal(cvs, opts) {
     };
 }
 
+/* CSS-PIXEL BACKING STORE, deliberately, even on a 2x screen — where the
+ * lattice's hairlines therefore come out a little soft. Rendering at device
+ * resolution was measured on 2026-10-07 (headless Chromium, DPR 2, 1440x900,
+ * software raster): main-thread time on index.html went from ~0.5 s to ~1.0 s
+ * per second and the frame rate fell from 60 to 38-46; flow was the same
+ * shape. Path building is resolution-independent, so all of that is fill and
+ * raster, which is 4x the pixels. A GPU-composited canvas pays far less, but
+ * the machines that fall back to software raster are the same ones where the
+ * games already struggle, and this canvas sits behind them. Softness is the
+ * cheaper failure. */
 function initLattice(cvs, opts) {
     const ctx = cvs.getContext('2d');
 
@@ -364,7 +374,10 @@ function initLattice(cvs, opts) {
     function draw(now) {
         update();
         if (MIN_DT && now - lastDraw < MIN_DT) {
-            raf = --budget > 0 ? requestAnimationFrame(draw) : 0;
+            /* A skipped frame costs nothing from the reduced-motion budget:
+               that budget counts frames the visitor SEES, and charging the
+               skipped ones too halved it on every page that sets maxFps. */
+            raf = budget > 0 ? requestAnimationFrame(draw) : 0;
             return;
         }
         lastDraw = now;

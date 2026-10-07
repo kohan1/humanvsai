@@ -24,8 +24,10 @@
 .ckpt-head { margin-bottom: 0.5rem; }
 
 .ckpt-title {
-    font-size: 0.53rem;
-    letter-spacing: 0.18em;
+    /* PIXELS, with an 11px floor: the games set different root sizes, and
+       0.53rem came out at 8.5-9.5px — below what a phone reader can use. */
+    font-size: 11px;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--ckpt-dim);
 }
@@ -81,7 +83,7 @@
     min-height: 2.4em;
     margin-top: 0.5rem;
     color: var(--ckpt-dim);
-    font-size: 10.5px;
+    font-size: 11px;
     line-height: 1.2;
 }
 
@@ -102,7 +104,7 @@
     grid-template-columns: auto 1fr;
     grid-template-areas:
         "head rungs"
-        "note rungs";
+        "note note";
     align-items: center;
     column-gap: 10px;
     /* Zero, not the default margin: this column is a flex column with a 9.6px
@@ -117,18 +119,21 @@
 .ckpt--compact .ckpt-row  { grid-area: rungs; }
 .ckpt--compact .ckpt-btn { padding: 0.2rem 0.2rem; }
 
-/* One line, clipped rather than wrapped. Wrapping is what would grow the
- * column again, and the full text is on the control's tooltip either way. */
+/* The note gets its own full-width row under the rungs and WRAPS. It used to
+ * sit under the label, clipped to 15ch with an ellipsis — "full strength ·
+ * av…" — and the rest lived only in a tooltip, which touch cannot reach. Two
+ * lines are reserved so the text changing during a download never moves the
+ * board. */
 .ckpt--compact .ckpt-note {
-    min-height: 0;
-    margin-top: 0.15rem;
-    font-size: 9.5px;
-    max-width: 15ch;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    min-height: 2.4em;
+    margin-top: 0.3rem;
 }
 
+
+/* One rung: no buttons, just the label and the note naming the model and
+ * difficulty. The empty grid row would otherwise leave a gap. */
+.ckpt--single .ckpt-row { display: none; }
+.ckpt--single .ckpt-note { margin-top: 0.3rem; }
 
 @media (max-width: 560px) {
     .ckpt { width: 100%; }
@@ -140,8 +145,10 @@
    the AI column is its final size from first paint and the vertically-centred
    screen does not jump when the model finishes loading. */
 /* Includes the control's own top margin, or the placeholder is 16px short. */
-.ckpt-reserved { min-height: 89px; margin-top: 0.9rem; }
-.ckpt-reserved--compact { min-height: 28px; }
+.ckpt-reserved { min-height: 91px; margin-top: 0.9rem; }
+/* Rung row (~28px) + the note's gap and two reserved 13.2px lines. No top
+   margin, because .ckpt--compact has none either. */
+.ckpt-reserved--compact { min-height: 56px; margin-top: 0; }
 
 /* Below 560px the note reserves 3.6em instead of 2.4em, so the stacked control
    is ~14px taller there and the placeholder has to match. */

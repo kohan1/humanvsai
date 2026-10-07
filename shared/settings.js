@@ -164,7 +164,18 @@
         } catch (e) {
             memory = next;   // storage unavailable: keep it for this page at least
         }
+        announce();
         return next;
+    }
+
+    /* window 'settingschange' (CustomEvent, detail = the full settings) after
+     * any write here or in another tab. Theme has its own 'themechange'; this
+     * one is for everything else — the checkpoint switcher's note names the
+     * difficulty and has to follow it. */
+    function announce() {
+        try {
+            window.dispatchEvent(new CustomEvent('settingschange', { detail: read() }));
+        } catch (e) { /* very old browser: listeners just miss the update */ }
     }
 
     /* The temperature this game should sample at right now. 0 means "take the
@@ -267,7 +278,7 @@
      * (key === null), and applyTheme() ignores anything that is not a change
      * of theme. Fired by the browser only in OTHER tabs, never the writer. */
     window.addEventListener('storage', function (e) {
-        if (e.key === KEY || e.key === null) applyTheme();
+        if (e.key === KEY || e.key === null) { applyTheme(); announce(); }
     });
 
     global.Settings = {

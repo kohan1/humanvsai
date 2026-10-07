@@ -33,6 +33,10 @@ function createInspector(config) {
         scalars,        // optional: (obs) -> [{ label, value }]
         valueLabel = 'position value',
         valueHint = '',
+        /* true for a model with no critic at all (Tetris). The value readout
+           is then never built, so nothing — not even a placeholder dash —
+           promises a number that can never arrive. */
+        noValue = false,
         onReveal,       // called once, the first time the panel comes into view
     } = config;
 
@@ -74,12 +78,12 @@ function createInspector(config) {
             <div class="insp-metric-label">confidence</div>
             <div class="insp-bar"><span class="insp-bar-fill" data-conf></span></div>
             <div class="insp-metric-num" data-conf-num>—</div>
-        </div>
+        </div>` + (noValue ? '' : `
         <div class="insp-metric" data-value-metric hidden>
             <div class="insp-metric-label">${valueLabel}</div>
             <div class="insp-metric-num insp-metric-big" data-value>—</div>
             <div class="insp-metric-hint">${valueHint}</div>
-        </div>`;
+        </div>`);
 
     const actWrap = document.createElement('div');
     actWrap.className = 'insp-actions insp-actions-' + actions.orientation;
@@ -109,7 +113,9 @@ function createInspector(config) {
 
     const seesTitle = document.createElement('div');
     seesTitle.className = 'insp-section-label';
-    seesTitle.textContent = `what it sees — ${grid.w}x${grid.h} grid, ${grid.channels.length} channels`;
+    const nCh = grid.channels.length;
+    seesTitle.textContent =
+        `what it sees — ${grid.w}x${grid.h} grid, ${nCh} channel${nCh === 1 ? '' : 's'}`;
 
     root.append(seesTitle, chanWrap, scalarWrap, actWrap, readouts);
     mount.append(root);
@@ -182,6 +188,7 @@ function createInspector(config) {
 
     function paintValue(value) {
         const metric = readouts.querySelector('[data-value-metric]');
+        if (!metric) return;           // built with noValue
         if (value === undefined || value === null || !isFinite(value)) {
             metric.hidden = true;      // model predates the value head
             return;

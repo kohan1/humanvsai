@@ -73,6 +73,22 @@
 
     function fmtBytes(n) { return (n / 1048576).toFixed(0) + ' MB'; }
 
+    /* The difficulty level in force, as its picker label ("Gentle"). The
+     * switcher is the only place on a game page that names the opponent, so
+     * it is where the second dial has to show — otherwise a visitor on Gentle
+     * reads "full strength" and believes it. */
+    function difficulty() {
+        var S = global.Settings;
+        if (!S || !S.get) return null;
+        var id = S.get().difficulty;
+        var d = (S.DIFFICULTY || []).filter(function (x) { return x.id === id; })[0];
+        return d ? { id: d.id, label: d.label, hint: d.hint } : null;
+    }
+
+    /* game -> the rung currently playing, for MatchResults to record. Only
+     * mounted ladders appear; a game without one is on its shipped model. */
+    var playing = {};
+
     /* Fetch with progress, then hand the bytes to onnxruntime.
      *
      * InferenceSession.create(url) would download it itself, but reports
@@ -114,8 +130,13 @@
      */
     function mount(opts) {
         var game = opts.game;
-        var g = ladder(game);
-        if (!g) return null;
+        /* A game with a single rung (Watermelon, today) still gets the
+         * control, minus the buttons: there is nothing to switch between, but
+         * the note is the only place on the page that says which model is
+         * playing and at what difficulty. */
+        var g = (global.CHECKPOINTS || {})[game];
+        if (!g || !g.rungs || !g.rungs.length) return null;
+        var single = g.rungs.length < 2;
 
         // Drop the placeholder reserve() left holding this space, now that the
         // real control is about to occupy it.
@@ -130,9 +151,9 @@
         if (opts.initial) sessions[top.id] = opts.initial;
 
         var root = document.createElement('div');
-        root.className = 'ckpt';
+        root.className = 'ckpt' + (single ? ' ckpt--single' : '');
         root.innerHTML = '<div class="ckpt-head"><span class="ckpt-title">' +
-            'MODEL VERSION</span></div>';
+            (single ? 'AI OPPONENT' : 'MODEL VERSION') + '</span></div>';
 
         var row = document.createElement('div');
         row.className = 'ckpt-row';
@@ -148,7 +169,7 @@
         var active = null;
         var busy = false;
 
-        rungs.forEach(function (r) {
+        if (!single) rungs.forEach(function (r) {
             var b = document.createElement('button');
             b.type = 'button';
             b.className = 'ckpt-btn';
@@ -158,15 +179,27 @@
                 ? 'The model the site ships — already loaded'
                 : 'Averages ' + fmtScore(r.score) + ' · ' + fmtBytes(r.bytes)
                   + ' to download';
-            b.addEventListener('click', function () { select(r.id); });
+            b.addEventListener('click', function (e) {
+                /* A pointer click leaves focus on the rung, and the game's
+                   Space/Enter would then press it again instead of reaching
+                   the board. Keyboard activation (detail 0) keeps focus. */
+                if (e.detail > 0) b.blur();
+                select(r.id);
+            });
             row.append(b);
             buttons[r.id] = b;
         });
 
         function describe(r, extra) {
-            var bits = [r.shipped ? 'full strength' : 'an earlier network'];
+            var d = difficulty();
+            var bits = [r.shipped ? 'shipped model' : 'earlier network'];
+            if (d) bits.push(d.label);
+            /* The average was measured at argmax. Under any other difficulty
+               that is the network's ceiling, not what this opponent will
+               score, so say which it is. */
             bits.push('averages ' + fmtScore(r.score) + ' over ' + r.episodes +
-                      (r.episodes === 1 ? ' game' : ' games'));
+                      (r.episodes === 1 ? ' game' : ' games') +
+                      (d && d.id !== 'full' ? ' at full strength' : ''));
             /* Steps are shown only for a ladder whose runs form one continuous
              * lineage. For Snake and Watermelon they do not, and a WEAKER
              * checkpoint can honestly carry a larger number — see the note in
@@ -182,13 +215,23 @@
             });
             var r = rungs.filter(function (x) { return x.id === id; })[0];
             if (!r) return;
-            var text = describe(r, extra);
-            note.textContent = text;
-            /* The compact variant clips the note to one line to save vertical
-             * space (see checkpoints.css), so the full sentence has to be
-             * reachable some other way. */
-            note.title = text;
+            playing[game] = r;
+            /* The whole sentence is always visible — it wraps rather than
+             * truncating, even in the compact variant, because a tooltip is
+             * unreachable on touch. */
+            note.textContent = describe(r, extra);
+            var d = difficulty();
+            note.title = d ? 'Difficulty: ' + d.label + ' — ' + d.hint +
+                             '. Change it on the game-select screen.' : '';
         }
+
+        /* Difficulty is set on select.html, so on a game page it changes
+         * only from another tab (settings.js relays the storage event as
+         * 'settingschange') or when the page is restored from the
+         * back/forward cache after a visit to the picker. */
+        function repaint() { if (!busy && active) paint(active); }
+        global.addEventListener('settingschange', repaint);
+        global.addEventListener('pageshow', function (e) { if (e.persisted) repaint(); });
 
         /* Free a rung's session once it is no longer playing. Deferred, because
          * the game may still be awaiting a run() on it when the swap happens;
@@ -263,6 +306,7 @@
         return {
             select: select,
             current: function () { return active; },
+            rung: function () { return playing[game] || null; },
             isShipped: function () {
                 var r = rungs.filter(function (x) { return x.id === active; })[0];
                 return !r || r.shipped;
@@ -292,5 +336,16 @@
         container.appendChild(slot);
     }
 
-    global.CheckpointSwitcher = { mount: mount, ladder: ladder, reserve: reserve };
+    /* What MatchResults records: the rung playing in `game` right now, or
+     * null when no switcher is mounted (no ladder, or the model never
+     * loaded) — which means the shipped model, if anything. */
+    function playingRung(game) {
+        var r = playing[game];
+        return r ? { id: r.id, shipped: !!r.shipped } : null;
+    }
+
+    global.CheckpointSwitcher = {
+        mount: mount, ladder: ladder, reserve: reserve,
+        playing: playingRung, difficulty: difficulty,
+    };
 })(window);
