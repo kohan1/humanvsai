@@ -21,6 +21,18 @@
     function boardScrim(a) {
         return themeVar("--board-scrim", "0, 0, 0").replace(/^/, "rgba(") + ", " + a + ")";
     }
+    /* Piece colours, cell shading and the danger line (--tetris-* in
+       style.css). The light boards swap in deeper hues and a cell edge; every
+       other theme keeps CONFIG.COLORS. Parsed once per theme, not per cell. */
+    function pieceColors() {
+        if (!_themeCache.__colors) {
+            var list = themeVar("--tetris-colors", "").split(",")
+                .map(function (c) { return c.trim(); })
+                .filter(Boolean);
+            _themeCache.__colors = list.length >= CONFIG.COLORS.length ? list : CONFIG.COLORS;
+        }
+        return _themeCache.__colors;
+    }
 
 
     function shuffle(arr) {
@@ -51,6 +63,9 @@
         DROP_KEY_INTERVAL: 44,
         LOCK_DELAY: 500,
         HORIZONTAL_MOVEMENT_INTERVAL: 76,
+        // A fresh Left/Right press moves at once; holding it starts repeating
+        // at HORIZONTAL_MOVEMENT_INTERVAL after this long. See createGame().
+        HORIZONTAL_REPEAT_DELAY: 150,
         FONT_FAMILY: "Arial, Helvetica, sans-serif",
         COLORS: ["#FF0D72","#0DC2FF","#0DFF72","#F538FF","#FF8E0D","#FFE138","#3877FF","#FF0000"],
         controls: {
@@ -157,6 +172,11 @@
     // Set if the model cannot be fetched or parsed, so the AI board says so
     // instead of reading "Loading AI..." forever.
     var aiLoadFailed = false;
+
+    // Download progress for the "Loading AI" overlay: {got, total} in bytes,
+    // total 0 when the server sends no usable Content-Length. Null until the
+    // first chunk arrives (and always under file://, which has no download).
+    var aiLoadProgress = null;
 
     // Phones and tablets: no hover, coarse pointer. Only changes the start
     // prompt; the touch controls are wired up regardless.
@@ -267,28 +287,42 @@
 
     // ─── Drawing ─────────────────────────────────────────────────────────────
     function drawMatrix(ctx, matrix, ox, oy, scale, colors) {
+        var shine = themeVar("--tetris-cell-shine", "rgba(255,255,255,0.12)");
+        var edge  = themeVar("--tetris-cell-edge", "transparent");
+        var hasEdge = edge !== "transparent";
+        if (hasEdge) { ctx.strokeStyle = edge; ctx.lineWidth = 1; }
         for (var r = 0; r < matrix.length; r++) {
             for (var c = 0; c < matrix[r].length; c++) {
                 var v = matrix[r][c];
                 if (v === 0) continue;
+                var x = (ox + c) * scale, y = (oy + r) * scale;
                 ctx.fillStyle = colors[v - 1];
-                ctx.fillRect((ox + c) * scale, (oy + r) * scale, scale, scale);
-                ctx.fillStyle = "rgba(255,255,255,0.12)";
-                ctx.fillRect((ox + c) * scale + 2, (oy + r) * scale + 2, scale - 4, scale - 4);
+                ctx.fillRect(x, y, scale, scale);
+                ctx.fillStyle = shine;
+                ctx.fillRect(x + 2, y + 2, scale - 4, scale - 4);
+                if (hasEdge) ctx.strokeRect(x + 0.5, y + 0.5, scale - 1, scale - 1);
             }
         }
     }
 
     function drawScore(ctx, score, scale) {
-        var size = 2 * scale;
         ctx.textBaseline = "middle";
         ctx.textAlign = "center";
         var text = "" + score;
-        ctx.font = size + "px " + CONFIG.FONT_FAMILY;
-        while (ctx.measureText(text).width > 5.5 * scale && size > 10) {
-            size -= 1;
+        // The shrink-to-fit loop measures text up to ~50 times, and the score
+        // only changes a few times a second — so remember the answer per
+        // canvas instead of re-measuring on every frame.
+        if (ctx._scoreText !== text) {
+            var size = 2 * scale;
             ctx.font = size + "px " + CONFIG.FONT_FAMILY;
+            while (ctx.measureText(text).width > 5.5 * scale && size > 10) {
+                size -= 1;
+                ctx.font = size + "px " + CONFIG.FONT_FAMILY;
+            }
+            ctx._scoreText = text;
+            ctx._scoreFont = size + "px " + CONFIG.FONT_FAMILY;
         }
+        ctx.font = ctx._scoreFont;
         ctx.fillStyle = boardInk();
         ctx.fillText(text, scale * (CONFIG.ARENA_WIDTH / 2), 1.75 * scale);
     }
@@ -722,6 +756,24 @@
         }
 
         if (!isAI) {
+            /* Left/Right move on the keydown itself, then auto-repeat after
+               HORIZONTAL_REPEAT_DELAY. Movement used to come only from the
+               loop polling held keys every 76ms, so a press could wait up to
+               76ms to register and a quick tap that went up between two polls
+               was dropped entirely. These run before the ANY handler that
+               starts the match, so the starting key still does nothing. */
+            var tapShift = function (dir) {
+                return function () {
+                    if (!matchStarted || state.lost || state.paused) return;
+                    state.player.x += dir;
+                    if (hasCollision(state)) state.player.x -= dir;
+                    timers.horizCounter = CONFIG.HORIZONTAL_MOVEMENT_INTERVAL
+                                        - CONFIG.HORIZONTAL_REPEAT_DELAY;
+                };
+            };
+            CONFIG.controls.LEFT.forEach(function (k) { KB.onPress(k, tapShift(-1)); });
+            CONFIG.controls.RIGHT.forEach(function (k) { KB.onPress(k, tapShift(1)); });
+
             // A deliberate keypress after GAME OVER has been up briefly. The
             // grace period stops the key you died holding, or a hard drop still
             // in flight, from dismissing the screen before it is seen.
@@ -733,6 +785,16 @@
         }
 
         function loop(ts) {
+            // Browser zoom and dragging the window to another monitor both
+            // change devicePixelRatio. The backing store was sized once, so the
+            // board went soft after a zoom until the page was reloaded.
+            if ((window.devicePixelRatio || 1) !== dpr) {
+                dpr = window.devicePixelRatio || 1;
+                canvasEl.width  = CSS_W * dpr;
+                canvasEl.height = CSS_H * dpr;
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx._scoreText = null;   // resizing resets the context's font
+            }
             var dt = ts - timers.lastTime;
             timers.lastTime = ts;
             if (dt > 200) dt = 200;
@@ -879,10 +941,10 @@
             ctx.fillStyle = boardBg();
             ctx.fillRect(0, 0, 300, 540);
 
-            drawMatrix(ctx, state.arena, 0, 0, CONFIG.SCALE, CONFIG.COLORS);
+            drawMatrix(ctx, state.arena, 0, 0, CONFIG.SCALE, pieceColors());
 
             // Danger line
-            ctx.strokeStyle = "rgba(255,40,40,0.5)";
+            ctx.strokeStyle = themeVar("--tetris-danger", "rgba(255,40,40,0.5)");
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(0, 3 * CONFIG.SCALE);
@@ -901,7 +963,7 @@
                     renderY = state.player.anim.curY;
                 }
                 ctx.globalAlpha = lockAlpha;
-                drawMatrix(ctx, state.player.shape, renderX, renderY, CONFIG.SCALE, CONFIG.COLORS);
+                drawMatrix(ctx, state.player.shape, renderX, renderY, CONFIG.SCALE, pieceColors());
                 ctx.globalAlpha = 1;
             }
 
@@ -916,6 +978,11 @@
             if (state.lost) {
                 ctx.fillStyle = boardScrim(0.65);
                 ctx.fillRect(0, 0, 300, 540);
+                // The final score is the point of this screen; under the scrim
+                // it was faded to grey (about 2:1 on the light boards). Paint
+                // it again on top at full ink.
+                drawScore(ctx, state.score, CONFIG.SCALE);
+                drawHighScore(ctx, state.highScore, CONFIG.SCALE);
                 ctx.fillStyle = boardInk();
                 ctx.font = "bold " + (1.2 * CONFIG.SCALE) + "px " + CONFIG.FONT_FAMILY;
                 ctx.textAlign = "center";
@@ -924,7 +991,7 @@
                 ctx.font = (0.55 * CONFIG.SCALE) + "px " + CONFIG.FONT_FAMILY;
                 ctx.globalAlpha = 0.75; ctx.fillStyle = boardInk();
                 ctx.fillText(
-                    isAI ? "Restarting..." : "Press any key to restart",
+                    isAI ? "Restarting..." : (TOUCH ? "Tap to restart" : "Press any key to restart"),
                     150, 270 + CONFIG.SCALE * 0.2
                 );
                 ctx.globalAlpha = 1;   // persists across frames if left set
@@ -949,7 +1016,7 @@
                 // shown to every visitor during every normal load.
                 ctx.fillText(
                     loading ? (aiLoadFailed ? "Check your connection and refresh"
-                                            : "Downloading the model")
+                                            : loadingDetail())
                             : (TOUCH ? "Tap to start" : "Press any key to start"),
                     150, 285
                 );
@@ -978,6 +1045,17 @@
             reset: resetBoard,
             setAIPlayer: function(p) { aiPlayer = p; }
         };
+    }
+
+    /* A static "Downloading the model" gave no sign of life for the whole
+       download, which on a slow connection reads as stuck. */
+    function loadingDetail() {
+        var p = aiLoadProgress;
+        if (!p) return "Downloading the model";
+        var mb = function (n) { return (n / 1048576).toFixed(1); };
+        if (p.total > 0 && p.got >= p.total) return "Starting the model";
+        if (p.total > 0) return "Downloading the model \u00b7 " + Math.min(99, Math.floor(100 * p.got / p.total)) + "%";
+        return "Downloading the model \u00b7 " + mb(p.got) + " MB";
     }
 
     // ─── Controls overlay ─────────────────────────────────────────────────────
@@ -1078,7 +1156,9 @@
             }
         }
 
-        KB.onMany(CONFIG.controls.ROTATE, humanRotate);
+        // onPress, not on: holding Up used to spin the piece at the OS key
+        // repeat rate, so a slightly long press over-rotated it.
+        CONFIG.controls.ROTATE.forEach(function (k) { KB.onPress(k, humanRotate); });
         KB.onPress(" ", humanHardDrop);
 
         /* Touch. The game was keyboard-only and the match waits for a first
@@ -1131,7 +1211,11 @@
 
             // .onnx over HTTP, base64 only under file:// — see
             // shared/model-source.js.
-            var src = await modelSource("tetris_ai.onnx", "TETRIS_MODEL_B64");
+            // The progress callback goes fourth, with dataUrl left undefined,
+            // so an older model-source.js that takes three arguments just
+            // ignores it.
+            var src = await modelSource("tetris_ai.onnx", "TETRIS_MODEL_B64", undefined,
+                function (got, total) { aiLoadProgress = { got: got, total: total }; });
             var session = await ort.InferenceSession.create(src, {
                 executionProviders: ["wasm"]
             });
@@ -1202,6 +1286,18 @@
         document.getElementById("restart-ai").addEventListener("click", function(e) {
             aiGame.reset();
             e.currentTarget.blur();
+        });
+
+        /* A mouse click leaves the button focused, and Space on a focused
+           button belongs to the button (see KB.init) — so after picking a
+           speed or a model version, Space re-pressed that button instead of
+           hard-dropping, until you clicked somewhere else. Drop focus after a
+           pointer click; keyboard activation (detail 0) keeps it, so tabbing
+           through the controls still works. */
+        document.getElementById("arena").addEventListener("click", function(e) {
+            if (e.detail === 0) return;
+            var b = e.target.closest && e.target.closest("button");
+            if (b) b.blur();
         });
     });
 })();

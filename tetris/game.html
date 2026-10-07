@@ -10,7 +10,16 @@
         <link rel="stylesheet" href="../shared/inspector.css" />
         <link rel="stylesheet" href="../shared/checkpoints.css" />
         <link rel="stylesheet" href="style.css" />
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <!-- ort.wasm.min.js, not ort.min.js: every session here is created
+             with executionProviders ["wasm"], and the full build fetches the
+             WebGPU/JSEP runtime anyway — a 27.8 MB .wasm against 14.0 MB for
+             the plain one, plus a 368 KB loader against 50 KB. The preload
+             starts that .wasm alongside the model download; onnxruntime only
+             asks for it once InferenceSession.create() has the model bytes,
+             so the two used to download one after the other. Keep the
+             version in step with ort.env.wasm.wasmPaths in game.js. -->
+        <link rel="preload" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" as="fetch" crossorigin />
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>
         <script src="../shared/results.js" defer></script>
