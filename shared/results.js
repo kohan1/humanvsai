@@ -4,10 +4,8 @@
  * there is no account, and clearing site data clears it — which is worth
  * saying plainly on a page that otherwise talks about training runs.
  *
- * A match is recorded when the HUMAN's game ends, capturing both scores at
- * that instant. The AI usually plays on afterwards (Snake and Tetris restart
- * theirs automatically), so waiting for both to finish would either never fire
- * or compare a finished human against an AI on its third life.
+ * Results are recorded by a match object (begin(), below): it settles when
+ * both sides' first lives are decided, not at the instant the human dies.
  */
 (function (global) {
     'use strict';
@@ -176,7 +174,30 @@
             else { m.state = 'waiting'; changed(); }
         };
         m.cancel = cancel;
-        m.speed = function (s) { if (s !== 1) cancel('the AI speed changed'); };
+        // Once the AI's first life is over its match score is fixed, so a
+        // speed change or an AI restart after that cannot affect the result.
+        // Every game calls these rather than cancel(), so the rule is one
+        // rule; it had already drifted between games twice.
+        m.speed = function (s) {
+            if (s !== 1 && !m.aiDone) cancel('the AI speed changed');
+        };
+        m.aiRestarted = function () {
+            if (!m.aiDone) cancel('the AI was restarted');
+        };
+        /* The human pressed restart or "play again". Returns true while the
+         * match is still WAITING on the AI: the game must keep the AI board
+         * running until it settles (a waiting match only exists when the
+         * human is ahead, so cancelling it would throw away exactly their
+         * wins). A match still being played is void. */
+        m.humanRestarted = function () {
+            if (m.state === 'playing') cancel('you restarted');
+            return m.state === 'waiting';
+        };
+        /* The score the human has to beat once the AI's first life is over,
+         * for the AI board to show while its later lives play for show. */
+        m.target = function () {
+            return m.aiDone && m.state === 'playing' ? m.ai : null;
+        };
         m.onChange = function (fn) { m.listeners.push(fn); };
         m.line = function () {
             if (m.state === 'void') return 'Not scored: ' + m.reason;
@@ -193,5 +214,25 @@
         return m;
     }
 
-    global.MatchResults = { record: record, read: read, begin: begin };
+    /* A match that was never scored, with the same face as begin()'s, so a
+     * game can hold one in `match` and show its line(): a game resumed after
+     * a reload, or one the model arrived for after the human had started. */
+    var REASONS = {
+        resumed: 'resumed game',
+        late: 'the AI loaded after you started',
+    };
+    function unscored(reason) {
+        var noop = function () {};
+        var why = REASONS[reason] || reason;
+        return {
+            state: 'void', reason: why, human: null, ai: 0, aiDone: true,
+            aiScore: noop, aiDied: noop, humanDied: noop, cancel: noop,
+            speed: noop, aiRestarted: noop, onChange: noop,
+            humanRestarted: function () { return false; },
+            target: function () { return null; },
+            line: function () { return 'Not scored: ' + why; },
+        };
+    }
+
+    global.MatchResults = { record: record, read: read, begin: begin, unscored: unscored };
 })(window);
