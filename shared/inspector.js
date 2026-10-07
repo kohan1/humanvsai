@@ -236,6 +236,30 @@ function createInspector(config) {
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
 
+    /* Hide the cue wherever it would sit on top of the game. Height
+       breakpoints in inspector.css only approximate this: each game's column
+       is a different height and wraps at different widths, so Watermelon still
+       collided at 801-950px tall. Testing the actual boxes is exact and cheap
+       (a few dozen leaf elements, only on resize). */
+    const arena = document.getElementById('arena');
+    const checkOverlap = () => {
+        if (!arena) return;
+        cue.classList.remove('is-blocked');
+        const c = cue.getBoundingClientRect();
+        if (!c.height) return;                 // hidden by a media query
+        let hit = false;
+        for (const el of arena.querySelectorAll('*')) {
+            if (el.firstElementChild && el.tagName !== 'BUTTON') continue;
+            const r = el.getBoundingClientRect();
+            if (r.width && r.height && r.bottom > c.top && r.top < c.bottom &&
+                r.right > c.left && r.left < c.right) { hit = true; break; }
+        }
+        cue.classList.toggle('is-blocked', hit);
+    };
+    window.addEventListener('resize', checkOverlap);
+    window.addEventListener('load', checkOverlap);
+    requestAnimationFrame(checkOverlap);
+
     /* Only paint while the panel is actually on screen. rootMargin gives it a
        screen of warning so it is already populated by the time it scrolls in,
        rather than appearing blank for one AI decision. */

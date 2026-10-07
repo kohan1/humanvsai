@@ -222,6 +222,9 @@ body:has(.insp-section) .screen {
 }
 .insp-cue:hover { color: var(--insp-cue-hover, #fff); opacity: 1; }
 
+/* inspector.js sets this when the cue would land on the game itself. */
+.insp-cue.is-blocked { display: none; }
+
 /* Once the reader has started scrolling it has served its purpose. */
 .insp-cue.is-gone {
     opacity: 0;
