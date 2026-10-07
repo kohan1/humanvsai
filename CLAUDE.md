@@ -735,6 +735,30 @@ go through `evaluate.py`/`build_checkpoints.py` before shipping.
 it: Tetris's speed buttons swallowed hard-drop. Pointer clicks on board
 controls now blur the button (keyboard activation keeps focus).
 
+**p5play cancels every touch on its canvas.** `watermelon/lib/physics.min.js`
+(~4122) calls `preventDefault()` on each canvas `touchstart`, so a page could
+never scroll from a board and `touch-action` alone cannot undo it. `game.js`
+stops `touchstart` in the CAPTURE phase on each board container (skipping
+buttons) and drops via pointer events: tap or sideways drag drops, a vertical
+swipe scrolls. p5play also gives both canvases `tabIndex=0`.
+
+**Head-to-head is a match, not a snapshot.** All three games: a match starts
+on the human's first input, the AI board resets with it, the AI's match score
+is its FIRST life (frozen if it dies first), and the result is recorded only
+if the model was loaded at match start. Restored-after-reload Watermelon games
+and AI restarts mid-match are not scored. The game-over card shows
+"You N · AI M — ...". Before this, results compared against whatever life the
+AI happened to be on, and Watermelon recorded "wins" against an AI that never
+loaded.
+
+**Inside's `RESTARTS` map must be updated whenever a game's rules change.**
+The fruit-size change made Watermelon a different game; plotting 4506 on the
+old ~1000 axis read as a 4x training gain. Runs after a restart get their own
+era (zone, scale, curve panel) and no trunk link across it. Do not re-run
+`build_training_data.py` on a fresh clone: logs are not in git and `endedAt`
+comes from log mtimes. `inside/distributions.json`'s Watermelon entry was
+measured on the pre-change model; the page says so until it is re-measured.
+
 **Testing in a cloud sandbox:** jsdelivr is blocked, so route
 `cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/*` to an npm copy in
 Playwright; route only `https=` through `--proxy-server` or localhost goes
