@@ -6,7 +6,7 @@
 
 .insp {
     --insp-fg:       #ddd;
-    --insp-dim:      #666;
+    --insp-dim:      #7d7d7d;   /* #666 was 3.4:1 on the dark pages */
     --insp-line:     #242424;
     --insp-panel:    rgba(255, 255, 255, 0.02);
     --insp-accent:   #9ec7ff;
@@ -154,7 +154,7 @@
 .insp-metric-num { font-variant-numeric: tabular-nums; font-size: 0.8rem; }
 .insp-metric-big { font-size: 1.3rem; }
 .insp-metric-hint {
-    margin-top: 0.3rem; font-size: 0.55rem; color: var(--insp-dim); opacity: 0.8;
+    margin-top: 0.3rem; font-size: 0.55rem; color: var(--insp-dim);
 }
 .insp-bar {
     height: 4px; background: var(--insp-track); margin-bottom: 0.4rem;
@@ -213,8 +213,11 @@ body:has(.insp-section) .screen {
     font-size: 0.55rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--insp-cue-fg, #6a6a6a);
-    opacity: 0.85;
+    /* Full opacity at rest: the cue is small uppercase text in --dim, which
+       only just clears 4.5:1 on its own, and 0.85 took it to ~3:1. Hover is
+       marked by colour instead. */
+    color: var(--insp-cue-fg, #7d7d7d);
+    opacity: 1;
     transition: opacity 0.35s, transform 0.35s, color 0.15s;
 }
 .insp-cue:hover { color: var(--insp-cue-hover, #fff); opacity: 1; }
@@ -244,5 +247,12 @@ body:has(.insp-section) .screen {
    divider and the AI board — and a page that tall is obviously scrollable
    without it. */
 @media (max-width: 760px) {
+    .insp-cue { display: none; }
+}
+/* Same on a SHORT window. The boards are vertically centred and Watermelon's
+   column alone is ~930px tall, so below about 800px the cue landed on the
+   boards: measured over Snake's and Tetris's switcher notes at 1280x720 and
+   over Watermelon's canvas at 1024x768. */
+@media (max-height: 800px) {
     .insp-cue { display: none; }
 }

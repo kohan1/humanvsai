@@ -4,7 +4,7 @@
 
 .ckpt {
     --ckpt-fg:     #ddd;
-    --ckpt-dim:    #666;
+    --ckpt-dim:    #7d7d7d;   /* #666 was 3.4:1 on the dark pages */
     --ckpt-line:   #242424;
     --ckpt-panel:  rgba(255, 255, 255, 0.02);
     --ckpt-accent: #9ec7ff;
