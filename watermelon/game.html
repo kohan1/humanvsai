@@ -17,18 +17,42 @@
         <script src="lib/planck.min.js" defer></script>
         <script src="lib/physics.min.js" defer></script>
 
-        <!-- Assets as base64 data URIs. Must not be deferred: game.js reads
-             WATERMELON_IMAGES at load. Without this, images fail to load
-             under file:// — see embed_assets.py for why. -->
+        <!-- Assets as base64 data URIs. game.js reads WATERMELON_IMAGES when it
+             runs, so this must come BEFORE it; deferred scripts execute in
+             document order, so both being deferred is fine. Without this,
+             images fail to load under file:// — see embed_assets.py. -->
         <script src="image_data.js" defer></script>
 
-        <!-- AI opponent. model_data.js embeds the model as base64 and must not
-             be deferred, because game.js reads WATERMELON_MODEL_B64 at load.
-             It is only needed under file://, where fetch() of a local file is
-             blocked — and it is a ~30 MB render-blocking script, so the
-             deployed site strips this tag and ships watermelon_ai.onnx for
-             loadAiModel() to fetch instead. See tools/deploy_pages.sh. -->
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <!-- AI opponent. The model is not in the markup: shared/model-source.js
+             fetches watermelon_ai.onnx over HTTP and injects the base64
+             model_data.js only under file://.
+
+             ort.wasm.min.js, not ort.min.js: the game only ever asks for the
+             "wasm" execution provider, and ort.min.js also carries WebGL and
+             WebGPU — 368 KB of script instead of 50 KB, and it pulls the
+             27.8 MB jsep .wasm where this one pulls the 14.0 MB plain one.
+             Same version, same API.
+
+             The runtime's two files and the model are preloaded so all three
+             download in parallel. Otherwise the .wasm is only requested once
+             InferenceSession.create() runs, i.e. after the model has arrived:
+             measured locally, the model finished at 0.63 s and the runtime
+             was then fetched serially until 1.69 s. -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
+        <link rel="modulepreload" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.mjs" />
+        <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" />
+        <script>
+        // The model itself, over HTTP only. Under file:// fetch() cannot read
+        // it (model-source.js uses the embedded base64 there), so a static
+        // <link> would just log an error. crossorigin matches fetch()'s default
+        // credentials mode, or the preload is not reused and downloads twice.
+        if (location.protocol !== "file:") {
+            var _p = document.createElement("link");
+            _p.rel = "preload"; _p.as = "fetch"; _p.crossOrigin = "anonymous";
+            _p.href = "watermelon_ai.onnx";
+            document.head.appendChild(_p);
+        }
+        </script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>
         <script src="../shared/results.js" defer></script>
@@ -77,11 +101,11 @@
                                 <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
                                 <path
                                     d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
-                                    fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                    class="crown-disc" fill="#675424" stroke="#675424" stroke-width="4.66704"
                                     stroke-linecap="round" stroke-linejoin="round" />
                                 <path
                                     d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
-                                    fill="#675424" stroke="white" stroke-width="2"
+                                    class="crown-glyph" fill="#675424" stroke="white" stroke-width="2"
                                     stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                             <span class="highScoreValue" id="highscore-human">0</span>
@@ -181,11 +205,11 @@
                             <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
                             <path
                                 d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
-                                fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                class="crown-disc" fill="#675424" stroke="#675424" stroke-width="4.66704"
                                 stroke-linecap="round" stroke-linejoin="round" />
                             <path
                                 d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
-                                fill="#675424" stroke="white" stroke-width="2"
+                                class="crown-glyph" fill="#675424" stroke="white" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                         <span class="highScoreValue" id="highscore-ai">0</span>
@@ -205,7 +229,7 @@
         <script src="../shared/mesh.js" defer></script>
         <script>
         document.addEventListener('DOMContentLoaded', function () {
-            initMesh('mesh', { intensity: 0.55 });
+            initMesh('mesh', { intensity: 0.55, maxFps: 30 });
         });
         </script>
     </body>

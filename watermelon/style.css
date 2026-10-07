@@ -139,13 +139,18 @@ body {
 /* The original gave the next-ball bubble a smaller type scale. */
 .bubble.next {
     font-size: 16px;
-    gap: 0;
+    /* A little air: at 0 the larger fruit's leaf touched the title. */
+    gap: 0.25rem;
 }
 
 .bubble.next img {
-    max-width: 90px;
-    max-height: 70px;
-    object-fit: contain;
+    /* A fixed box, so the "Next" title stays put. Sized to the image, the
+       title jumped ~16px up and down as the queued fruit changed size, and
+       the human and AI bubbles never lined up with each other. scale-down
+       keeps a small fruit at its own size instead of blowing it up blurry. */
+    width: 90px;
+    height: 70px;
+    object-fit: scale-down;
 }
 
 .bubble .bubble-title {
@@ -171,6 +176,19 @@ body {
 }
 
 .highScoreTitle { grid-column: span 2; }
+
+/* The crown beside the high score. Its brown disc is the original game's ink
+   and reads well on the light themes, but on the dark ones it was a muddy
+   brown blot on near-black, next to a number already drawn in --accent. On
+   those it takes the accent too, with the glyph cut out in the page colour. */
+:root { --wm-crown: var(--wm-ink); --wm-crown-ink: #fff; }
+[data-theme="mesh"], [data-theme="flow"],
+[data-theme="sand"], [data-theme="constellation"] {
+    --wm-crown: var(--accent);
+    --wm-crown-ink: var(--bg);
+}
+.highScore .crown-disc  { fill: var(--wm-crown); stroke: var(--wm-crown); }
+.highScore .crown-glyph { fill: var(--wm-crown); stroke: var(--wm-crown-ink); }
 
 /* ── Board ───────────────────────────────────────────────────────────────── */
 
@@ -274,6 +292,17 @@ main canvas {
    floating in the middle of the column. */
 #board-ai .board-controls { justify-content: flex-start; }
 
+/* Both side columns sit level with each other, centred on the canvas. They
+   used to be centred by .board-main's align-items on their own board COLUMN,
+   and the AI's column is taller (it carries the speed row and the checkpoint
+   switcher), so the AI's high score hung 80px lower than the human's. Same
+   offset as #vs: label + gaps + bubble row puts the canvas top at the first
+   three terms, then half the canvas, less half the human column's ~170px. */
+.board-main > .board-controls {
+    align-self: flex-start;
+    margin-top: calc(0.85rem + 1.2rem + 150px + 11px + 299.5px - 85px);
+}
+
 button {
     font-family: inherit;
     font-size: 14px;
@@ -314,8 +343,12 @@ label { cursor: pointer; }
    boards one above the other, each ~850px tall, never both in view. */
 @media (max-width: 1340px) {
     .board-main { flex-direction: column; gap: 0.75rem; }
+    .board-main > .board-controls { align-self: auto; margin-top: 0; }
     .board-controls {
         order: 2; width: auto; padding-top: 0;
+        /* Items of different heights (two-line high score, a single button,
+           the two-line shakes block) sat on a ragged top edge in a row. */
+        align-items: center;
         flex-direction: row; flex-wrap: wrap; justify-content: center;
     }
 }
@@ -332,7 +365,7 @@ label { cursor: pointer; }
     main { width: min(var(--canvas-w), calc(100vw - 1.5rem)); height: auto; aspect-ratio: 448 / 599; }
     main canvas { width: 100% !important; height: 100% !important; }
     .bubble { height: 108px; font-size: 24px; }
-    .bubble.next img { max-width: 62px; max-height: 48px; }
+    .bubble.next img { width: 62px; height: 48px; }
     .info-row { gap: 1rem; }
 }
 
@@ -401,4 +434,15 @@ label { cursor: pointer; }
     background-color: #fff;
     border-color: var(--wm-ink);
     font-weight: 700;
+}
+
+/* shared/themes.css restyles this row for every theme EXCEPT the default
+   Mesh, which left seven whitesmoke chips with brown text under the AI board
+   on a #080808 page - the only light-on-dark control on it. Same treatment
+   as the other dark themes. */
+[data-theme="mesh"] .speed-controls button {
+    background: var(--panel); border-color: var(--line); color: var(--dim);
+}
+[data-theme="mesh"] .speed-controls button.active {
+    background: var(--panel-hi); border-color: var(--accent); color: var(--fg);
 }

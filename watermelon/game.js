@@ -217,6 +217,10 @@
             let canDrop      = false;
             let isGameOver   = false;
             let loading      = true;
+            // True once setup() has built the board. The model now loads in
+            // parallel with the page, and a cached one can be ready before p5
+            // has even started — buildState() would then throw on every poll.
+            let ready        = false;
 
             let numOfShakes   = 0;
             // Bumped by reset(). Timers and awaits started before a restart
@@ -231,6 +235,16 @@
             let shakeCountdownTimer = null, shakeCooldownTimer = null;
             let canShake      = true;
             let doShake       = false;
+            // Frames of shaking left. Counted in frames because the physics
+            // steps per frame; it also replaced an `await p.delay(2000)` that
+            // doEarthquake() started on EVERY frame of the shake, ~120 pending
+            // timers per press, and that a restart could not cancel.
+            let shakeFrames   = 0;
+            const SHAKE_FRAMES = 120;   // 2 s at p5's 60 fps cap
+            // The human cloud follows the pointer, but p5 reports mouseX as 0
+            // until the pointer has actually moved, so on load the cloud slid
+            // straight into the left wall. Hold it centred until then.
+            let pointerSeen   = false;
 
             // Decoded p5.Image objects, one set per instance.
             let FRUIT_IMG   = [];
@@ -354,6 +368,7 @@
 
                 if (cfg.persist && store.read(KEY_SAVED)) loadSavedGame();
                 else loading = false;
+                ready = true;
             };
 
             /* ── Draw ─────────────────────────────────────────────────────── */
@@ -367,14 +382,18 @@
                 let targetX;
                 const heldTier = cloudBall ? cloudBall.tier : 0;
                 if (cfg.interactive) {
-                    targetX = clampDropX(p.mouseX, heldTier);
+                    targetX = clampDropX(pointerSeen ? p.mouseX : CANVAS_W / 2, heldTier);
                 } else {
                     // The policy only reports a stored target, so no full state
                     // snapshot is built for it every frame any more.
                     const want = policy ? policy() : null;
-                    targetX = want === null || want === undefined
-                        ? CANVAS_W / 2
-                        : clampDropX(want * CANVAS_W, heldTier);
+                    // No target between drops: hold where the last fruit went.
+                    // Parking at the centre instead swung the cloud back to the
+                    // middle after every single drop and then out again to the
+                    // next column, a constant pendulum on the AI board.
+                    targetX = !policy ? CANVAS_W / 2
+                            : want === null || want === undefined ? clampDropX(cloud.x, heldTier)
+                            : clampDropX(want * CANVAS_W, heldTier);
                 }
                 // The AI board's cloud tracks at the selected speed; the human
                 // board is never sped up. Capped below 1 because moveTowards
@@ -419,8 +438,16 @@
 
             /* ── Input ────────────────────────────────────────────────────── */
 
-            p.mouseReleased = () => {
+            p.mouseMoved = p.mouseDragged = () => { pointerSeen = true; };
+
+            p.mouseReleased = (e) => {
                 if (!cfg.interactive) return;
+                // p5 listens on the whole window, so a release on a control
+                // near the board (Play Again sits ON it; on narrow layouts the
+                // Restart/Shake row sits just under it) also arrived here.
+                if (e && e.target && e.target.closest &&
+                    e.target.closest("button, a, input, select, label")) return;
+                pointerSeen = true;
                 // Bounds-check both axes: each instance reports pointer
                 // position relative to its own canvas, so this is what stops
                 // a click on the other board from dropping here.
@@ -564,8 +591,9 @@
 
             /* ── Shake ────────────────────────────────────────────────────── */
 
-            async function doEarthquake() {
+            function doEarthquake() {
                 if (!doShake) return;
+                if (--shakeFrames < 0) { doShake = false; return; }
                 for (const ball of balls) {
                     if (ball.isCloud) continue;
                     ball.moveTowards(
@@ -573,8 +601,6 @@
                         ball.y + p.random(-SHAKE_STRENGTH, SHAKE_STRENGTH)
                     );
                 }
-                await p.delay(2000);
-                doShake = false;
             }
 
             function shakeClicked() {
@@ -584,6 +610,7 @@
                 numOfShakes--;
                 if (domShakeCount) domShakeCount.innerText = numOfShakes;
                 doShake = true;
+                shakeFrames = SHAKE_FRAMES;
                 canShake = false;
 
                 if (domShakeBtn) domShakeBtn.disabled = true;
@@ -608,7 +635,10 @@
             /* ── Persistence ──────────────────────────────────────────────── */
 
             function saveGame() {
-                if (!cfg.persist) return;
+                // Not before the saved board has been restored (that would
+                // overwrite it with an empty one), and not after game over,
+                // which has already cleared it on purpose.
+                if (!cfg.persist || loading || isGameOver) return;
                 const state = { balls: [], cloudTier: null, nextTier: null,
                                 score: 0, dropped: 0, shakes: 0 };
                 for (const a of balls) {
@@ -618,8 +648,13 @@
                         diameter: a.diameter, vel: { x: a.vel.x, y: a.vel.y },
                     });
                 }
-                state.cloudTier = cloudBall ? cloudBall.tier : null;
-                state.nextTier  = nextBall.tier;
+                // Saved during the post-drop cooldown (now possible, since the
+                // board is also saved when the page is hidden) there is no held
+                // fruit yet: the pending timer would have promoted the queued
+                // one. Record that, rather than restoring a random fruit in
+                // hand and the same queued one again.
+                state.cloudTier = cloudBall ? cloudBall.tier : nextBall.tier;
+                state.nextTier  = cloudBall ? nextBall.tier : null;
                 state.score     = score;
                 state.dropped   = ballsDropped;
                 state.shakes    = numOfShakes;
@@ -640,7 +675,14 @@
                     createCloudBall(cloud.x, cloud.y, state.cloudTier);
                 }
                 if (typeof state.nextTier === "number") queueBall(state.nextTier);
-                if (typeof state.score === "number") { score = state.score; renderScore(); }
+                else queueBall();
+                if (typeof state.score === "number") {
+                    score = state.score;
+                    // The high score is stored separately; never show a lower
+                    // best than the score already on the board.
+                    if (score > highScore) { highScore = score; saveHighScore(score); }
+                    renderScore();
+                }
                 if (typeof state.dropped === "number") ballsDropped = state.dropped;
                 if (typeof state.shakes === "number") {
                     numOfShakes = state.shakes;
@@ -701,6 +743,7 @@
                 numOfShakes = 0;
                 canShake = true;
                 doShake = false;
+                shakeFrames = 0;
                 isGameOver = false;
 
                 store.clear(KEY_SAVED);
@@ -762,6 +805,17 @@
             /* ── Wire up controls ─────────────────────────────────────────── */
 
             if (domShakeBtn)   domShakeBtn.addEventListener("click", shakeClicked);
+            // The board used to be saved only one second after each drop, so
+            // closing the tab kept a snapshot of fruit still in mid-air and
+            // lost any chain merge (and its score) that came after it. Save
+            // again whenever the page is hidden — visibilitychange is the
+            // event that reliably fires when a tab is actually closed.
+            if (cfg.persist) {
+                document.addEventListener("visibilitychange", () => {
+                    if (document.hidden && ready) saveGame();
+                });
+                window.addEventListener("pagehide", () => { if (ready) saveGame(); });
+            }
             // Restart immediately, no confirm dialog. reset() clears the saved
             // game but leaves the high score alone, so nothing is lost that a
             // prompt would need to protect.
@@ -775,6 +829,10 @@
                 drop,
                 getState: buildState,
                 getScore: () => score,
+                // Bumped by every reset, so async callers can tell whether the
+                // board they started on is still the one in play.
+                getGen: () => gen,
+                isReady: () => ready,
                 setPolicy(fn) { policy = fn; },
             };
         };
@@ -1018,7 +1076,20 @@
 
             // .onnx over HTTP, base64 only under file:// — see
             // shared/model-source.js.
-            const src = await modelSource("watermelon_ai.onnx", "WATERMELON_MODEL_B64");
+            // Progress, so a 22 MB download does not read as "stuck" on
+            // "Awaiting model". Passed fourth with dataUrl undefined, as Snake
+            // does. The total is 0 without a usable Content-Length (e.g. a
+            // compressed response), hence the MB form.
+            const sub = aiStatusEl && aiStatusEl.querySelector(".overlay-sub");
+            const onProgress = (got, total) => {
+                if (!sub) return;
+                sub.textContent = total > 0
+                    ? "loading model… " + Math.min(99, Math.floor(100 * got / total)) + "%"
+                    : "loading model… " + (got / 1048576).toFixed(0) + " MB";
+            };
+            const src = await modelSource("watermelon_ai.onnx", "WATERMELON_MODEL_B64",
+                                          undefined, onProgress);
+            if (sub) sub.textContent = "starting model…";
 
             aiSession = await ort.InferenceSession.create(src, {
                 executionProviders: ["wasm"],
@@ -1097,7 +1168,7 @@
     // decision to release are driven from the loop below.
     function driveAI() {
         const ai = window.watermelonBoards.ai;
-        if (!aiSession || !ai || aiStopped) return;
+        if (!aiSession || !ai || aiStopped || !ai.isReady()) return;
 
         const state = ai.getState();
         if (state.isGameOver) { aiTargetFrac = null; return; }
@@ -1109,8 +1180,16 @@
         const settled = state.framesSinceDrop >= 30;
         if (aiTargetFrac === null && state.canDrop && settled && !aiBusy) {
             aiBusy = true;
+            const g = ai.getGen();
             chooseColumn(state)
-                .then(col => { aiTargetFrac = (col + 0.5) / N_DROP_COLUMNS; aiFailures = 0; })
+                .then(col => {
+                    aiFailures = 0;
+                    // The board ended (or restarted) while this was in flight:
+                    // the answer is for a position that no longer exists, and
+                    // would have aimed the next board's first fruit.
+                    if (g !== ai.getGen() || ai.getState().isGameOver) return;
+                    aiTargetFrac = (col + 0.5) / N_DROP_COLUMNS;
+                })
                 .catch(err => {
                     // Used to retry every 100 ms forever, logging each time,
                     // with the board frozen and nothing on screen.
@@ -1150,8 +1229,10 @@
         });
     }
 
-    window.addEventListener("load", async () => {
-        await loadAiModel();
+    /* Started as soon as this script runs, not on window "load". This file is
+       deferred, so the DOM is already parsed; waiting for "load" only added
+       every remaining subresource to the front of the model's critical path. */
+    loadAiModel().then(() => {
         const ai = window.watermelonBoards.ai;
         if (ai && aiSession) {
             ai.setPolicy(() => aiTargetFrac);   // steer the cloud
