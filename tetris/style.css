@@ -28,6 +28,20 @@
     --tetris-danger:     rgba(255, 40, 40, 0.5);
     --tetris-cell-shine: rgba(255, 255, 255, 0.12);
     --tetris-cell-edge:  transparent;
+
+    /* One board size, used by the board, its canvas, both columns and the VS
+       offset, so they cannot disagree. Height-driven and set per breakpoint
+       below; the width follows at the well's 10:18. game.js draws in fixed
+       300x540 units and sizes its backing store to whatever this comes to.
+
+       275px: what the AI column needs besides its board — the label row, the
+       speed buttons, the stacked model-version control (~190px together) and
+       .screen's 2rem top padding — plus most of its 4.5rem bottom padding,
+       which is room for the scroll cue; the cue hides itself wherever it
+       would overlap the boards. 200px: the two gaps, the VS text and the side
+       padding when the boards sit side by side. */
+    --tetris-h: clamp(300px, min(calc(100svh - 275px), calc((100vw - 200px) * 0.9)), 900px);
+    --tetris-w: calc(var(--tetris-h) / 1.8);
 }
 
 /* Light boards (Filings, Dispersion). The neon pieces were tuned for black:
@@ -87,7 +101,7 @@ body {
     /* The divider still centres against the canvases rather than the top of
        the column, which is where it reads correctly: the 28px label row, plus
        half the 540px canvas, less half this element's own line box. */
-    margin-top: calc(28px + 270px - 0.5 * 2rem * 1.15);
+    margin-top: calc(28px + var(--tetris-h) / 2 - 0.5 * 2rem * 1.15);
     font-size: 2rem;
     font-weight: 700;
     color: #444;
@@ -96,6 +110,9 @@ body {
 }
 
 .board-wrap {
+    /* Exactly as wide as the board, so the controls under the AI board follow
+       it instead of holding that column wider than the human one. */
+    width: var(--tetris-w);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -114,50 +131,44 @@ body {
 
 main {
     position: relative;
-    width: 300px;
-    height: 540px;
+    width: var(--tetris-w);
+    height: var(--tetris-h);
     flex-shrink: 0;
     outline: 1px solid #2a2a2a;
 }
 
 main canvas {
-    width: 300px;
-    height: 540px;
+    width: 100%;
+    height: 100%;
     display: block;
 }
 
+/* Centred in the canvas's 72-unit score band (x 30, y 36 of 300x540), in
+   percentages so it stays there as the board scales. */
 main > button {
     position: absolute;
-    top: 30px;
+    left: 10%;
+    top: 6.667%;
+    transform: translate(-50%, -50%);
     margin: 0;
-    padding: 6px;
+    padding: 0;
     border: none;
     cursor: pointer;
     background-color: transparent;
     border-radius: 4px;
     transition: background-color 0.08s ease;
-    width: 42px;
-    height: 42px;
+    width: clamp(28px, calc(var(--tetris-w) * 0.14), 48px);
+    height: clamp(28px, calc(var(--tetris-w) * 0.14), 48px);
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
 main > button img {
-    width: 26px;
-    height: 26px;
+    width: 62%;
+    height: 62%;
     display: block;
     object-fit: contain;
-}
-
-main > button#restart-human {
-    left: 30px;
-    transform: translateX(-50%);
-}
-
-main > button#restart-ai {
-    left: 30px;
-    transform: translateX(-50%);
 }
 
 main > button:hover {
@@ -177,16 +188,16 @@ main div.controls {
     justify-content: center;
     color: #ccc;
     position: absolute;
-    /* Starts below the score header, not over it. At 4rem the scrim covered
-       the "High score" line, which then read as faint grey text on every
-       theme — 2:1 on the light ones. 26% of the board is the 140px mark on a
-       540px canvas (the high score sits at 120px), and a percentage keeps that
-       true when the board scales down on phones. */
-    top: 26%;
+    /* Starts just under the danger line (152 of 540 canvas units), where the
+       canvas overlays start too, so it never covers the score band or fades
+       the red line and both boards match. A percentage keeps that true as the
+       board scales. */
+    top: 28.148%;
     left: 0;
-    font-size: 0.85rem;
+    /* 0.85rem at the 300px desktop board, following the board's size. */
+    font-size: clamp(11px, calc(var(--tetris-w) * 0.051), 18px);
     width: 100%;
-    height: 74%;
+    height: 71.852%;
     pointer-events: none;
     padding: 10px;
     background: rgba(0, 0, 0, 0.7);
@@ -254,7 +265,7 @@ kbd.space {
     justify-content: center;
     gap: 4px;
     margin-top: 10px;
-    max-width: 300px;
+    max-width: 100%;
 }
 
 /* Seven buttons at 7px side padding measured 306px inside a 300px row, so the
@@ -262,6 +273,8 @@ kbd.space {
    ragged two-row block. Tightening the padding and the letter-spacing brings
    the row to about 288px so all seven sit on one line. */
 .speed-controls button {
+    /* 24px: the WCAG 2.2 minimum target size. It measured 21. */
+    min-height: 24px;
     font-family: inherit;
     font-size: 0.7rem;
     letter-spacing: 0.02em;
@@ -285,27 +298,33 @@ kbd.space {
     background-color: rgba(255, 255, 255, 0.08);
 }
 
-/* ── Narrow screens ─────────────────────────────────────────────────────────
-   Same problem Snake had: #arena is a non-wrapping flex row holding two 300px
-   boards plus a 48px gap, so below ~700px it overflows both edges while
-   staying centred. Measured at 561px the human board ran from x=-186 to 114 —
-   half of it off-screen, with no horizontal scroll to reach it.
+/* ── Small screens ──────────────────────────────────────────────────────────
+   The boards stay SIDE BY SIDE at every size. They used to stack below 760px,
+   which on a phone in portrait put the AI board entirely below the fold
+   (canvas top at y=699 on a 390x844 screen): you never saw your opponent
+   while playing. They also had a fixed height, so a phone in landscape cut
+   each board off by 214px.
 
-   #vs also carries margin-top: 290px to centre it against the tall canvases;
-   once the boards stack, that margin would leave a huge gap, so it is reset. */
-@media (max-width: 760px) {
-    #arena { flex-direction: column; align-items: center; gap: 18px; }
-    #vs { margin-top: 0; font-size: 1.5rem; }
+   Short viewports (phone landscape, small laptop windows): only the boards
+   have to fit; the speed and model controls under the AI board scroll. */
+@media (max-height: 560px) {
+    :root {
+        --tetris-h: max(220px, min(calc(100svh - 64px), calc((100vw - 140px) * 0.9)));
+    }
+    body:has(.insp-section) .screen { padding-top: 0.75rem; padding-bottom: 0.75rem; }
 }
 
-@media (max-width: 420px) {
-    body { padding-left: 0.6rem; padding-right: 0.6rem; }
-    /* As on Snake: the 300x540 size is on `main` and `main canvas`, so both
-       must scale. 10/18 keeps the well's aspect ratio exactly. */
-    main { width: min(78vw, 300px); height: auto; aspect-ratio: 10 / 18; }
-    main canvas { width: 100%; height: 100%; }
-    .board-wrap { width: 100%; }
-    .speed-controls { max-width: 100%; }
+/* Narrow viewports (phones in portrait): two boards at about half the width
+   each, with a slim VS between them. */
+@media (max-width: 600px) {
+    :root {
+        --tetris-h: max(220px, min(calc((100vw - 1rem - 36px) * 0.9), calc(100svh - 150px)));
+    }
+    body:has(.insp-section) .screen { padding-left: 0.5rem; padding-right: 0.5rem; }
+    #arena { gap: 6px; }
+    #vs { font-size: 0.85rem; margin-top: calc(28px + var(--tetris-h) / 2 - 0.5 * 0.85rem * 1.15); }
+    .board-wrap { gap: 8px; }
+    .speed-controls { margin-top: 2px; }
 }
 
 /* Start hints: keyboard wording by default, touch wording on phones and
@@ -325,13 +344,32 @@ main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline
 [data-theme="filings"] main > button img,
 [data-theme="dispersion"] main > button img { filter: invert(1); }
 
-/* The switcher defaults to min(420px, 100%), which widened the AI column to
-   420px and overflowed the side-by-side layout between 761 and ~915px. */
-#board-ai .ckpt { width: min(300px, 100%); }
+/* The switcher defaults to min(420px, 100%), which widened the AI column
+   past its board and overflowed the side-by-side layout. */
+#board-ai .ckpt { width: 100%; }
 
 /* On touch screens the keyboard legend is noise: keep only the touch line. */
 @media (hover: none) and (pointer: coarse) {
     main div.controls div.row,
     main div.controls kbd,
     main div.controls p:not(.controls-start) { display: none; }
+}
+
+/* Bigger targets for fingers. */
+@media (hover: none) and (pointer: coarse) {
+    .speed-controls button { min-height: 32px; }
+}
+
+/* Read by screen readers, not drawn: the page's heading and each board's
+   aria-live line (score and game over; the canvases themselves are images). */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }

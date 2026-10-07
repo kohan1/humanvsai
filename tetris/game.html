@@ -53,6 +53,8 @@
 
         <a class="back-nav" href="../select.html">← back</a>
 
+        <h1 class="sr-only">Tetris: you against a neural network</h1>
+
         <div class="screen">
         <div id="arena">
 
@@ -60,9 +62,9 @@
             <div class="board-wrap" id="board-human">
                 <div class="board-label">YOU</div>
                 <main>
-                    <canvas id="canvas-human" width="300" height="540"></canvas>
-                    <button id="restart-human" title="Restart">
-                        <img src="assets/restart.png" alt="Restart" />
+                    <canvas id="canvas-human" width="300" height="540" role="img" aria-label="Your board, score 0"></canvas>
+                    <button id="restart-human" title="Restart your game">
+                        <img src="assets/restart.png" alt="Restart your game" />
                     </button>
                     <div class="controls" hidden>
                         <div class="row">
@@ -90,20 +92,22 @@
                         <p class="controls-start"><span class="hint-keys">Press any key to start</span><span class="hint-touch">Tap to start &middot; tap rotates, swipe moves, swipe down drops</span></p>
                     </div>
                 </main>
+                <p class="sr-only" id="live-human" aria-live="polite"></p>
             </div>
 
             <!-- ── VS divider ── -->
-            <div id="vs">VS</div>
+            <div id="vs" aria-hidden="true">VS</div>
 
             <!-- ── AI board ── -->
             <div class="board-wrap" id="board-ai">
                 <div class="board-label">AI</div>
                 <main>
-                    <canvas id="canvas-ai" width="300" height="540"></canvas>
-                    <button id="restart-ai" title="Restart">
-                        <img src="assets/restart.png" alt="Restart" />
+                    <canvas id="canvas-ai" width="300" height="540" role="img" aria-label="AI board, score 0"></canvas>
+                    <button id="restart-ai" title="Restart the AI">
+                        <img src="assets/restart.png" alt="Restart the AI" />
                     </button>
                 </main>
+                <p class="sr-only" id="live-ai" aria-live="polite"></p>
 
                 <!-- Speed multiplier for the AI. Scales both its think
                      interval and its drop animation. -->

@@ -169,6 +169,26 @@
     // keyboard handler live in different closures.
     var matchStarted = false;
 
+    /* The head-to-head for the current match, or null before the first one.
+       A match begins on the human's first input (after load or after a
+       restart), and at that moment the AI board resets so both start level.
+       `ai` is the AI's state object for its FIRST life in this match;
+       `aiScore` freezes when that life ends (it tops out, or is restarted by
+       hand), so an AI that dies early and auto-restarts is scored on the life
+       it lost, not on its next one. `ai` is null when the model had not
+       loaded yet — the human just plays and no result is recorded.
+
+       The result used to compare the human's final score with whatever life
+       the AI happened to be on, and the AI was never reset when the human
+       restarted, so it was always several pieces (or games) ahead. */
+    var match = null;
+
+    // Visually hidden aria-live line under each board (see game.html).
+    function announce(isAI, text) {
+        var el = document.getElementById(isAI ? "live-ai" : "live-human");
+        if (el) el.textContent = text;
+    }
+
     // Set if the model cannot be fetched or parsed, so the AI board says so
     // instead of reading "Loading AI..." forever.
     var aiLoadFailed = false;
@@ -177,6 +197,9 @@
     // total 0 when the server sends no usable Content-Length. Null until the
     // first chunk arrives (and always under file://, which has no download).
     var aiLoadProgress = null;
+
+    // How long GAME OVER stays up before a key or tap may restart the board.
+    var RESTART_GRACE = 700;
 
     // Phones and tablets: no hover, coarse pointer. Only changes the start
     // prompt; the touch controls are wired up regardless.
@@ -286,7 +309,29 @@
     };
 
     // ─── Drawing ─────────────────────────────────────────────────────────────
-    function drawMatrix(ctx, matrix, ox, oy, scale, colors) {
+    /* Board layout, in the canvas's own 300x540 units (the page scales the
+       canvas; see createGame's fit()).
+
+       The score used to be painted INSIDE the well, over rows 0-2, so every
+       new piece spawned across the big digits and a tall stack ran under
+       "High score". The header is now a band of its own above the well and is
+       painted last, opaque, so a piece entering from above slides out from
+       under it instead of across it. The well keeps its 10x18 cells — they
+       are 26 units instead of 30 to make room — and the board keeps its
+       300x540 size and 10:18 aspect, so nothing outside the canvas moved. */
+    var VIEW_W = 300, VIEW_H = 540;
+    var HEADER_H = 72;
+    var CELL = (VIEW_H - HEADER_H) / CONFIG.ARENA_HEIGHT;          // 26
+    var WELL_W = CELL * CONFIG.ARENA_WIDTH;                         // 260
+    var WELL_X = (VIEW_W - WELL_W) / 2;                             // 20
+    var WELL_Y = HEADER_H;
+    // Overlays (scrims, cards) cover the well from just under the danger
+    // line down, as the human board's HTML start overlay does — so the score
+    // band and the red line read identically on both boards in every state.
+    var SCRIM_Y = WELL_Y + 3 * CELL + 2;                            // 152
+    var WELL_MID = SCRIM_Y + (VIEW_H - SCRIM_Y) / 2;                // overlay centre
+
+    function drawMatrix(ctx, matrix, ox, oy, colors) {
         var shine = themeVar("--tetris-cell-shine", "rgba(255,255,255,0.12)");
         var edge  = themeVar("--tetris-cell-edge", "transparent");
         var hasEdge = edge !== "transparent";
@@ -295,44 +340,112 @@
             for (var c = 0; c < matrix[r].length; c++) {
                 var v = matrix[r][c];
                 if (v === 0) continue;
-                var x = (ox + c) * scale, y = (oy + r) * scale;
+                var x = WELL_X + (ox + c) * CELL, y = WELL_Y + (oy + r) * CELL;
                 ctx.fillStyle = colors[v - 1];
-                ctx.fillRect(x, y, scale, scale);
+                ctx.fillRect(x, y, CELL, CELL);
                 ctx.fillStyle = shine;
-                ctx.fillRect(x + 2, y + 2, scale - 4, scale - 4);
-                if (hasEdge) ctx.strokeRect(x + 0.5, y + 0.5, scale - 1, scale - 1);
+                ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+                if (hasEdge) ctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
             }
         }
     }
 
-    function drawScore(ctx, score, scale) {
-        ctx.textBaseline = "middle";
-        ctx.textAlign = "center";
-        var text = "" + score;
-        // The shrink-to-fit loop measures text up to ~50 times, and the score
-        // only changes a few times a second — so remember the answer per
-        // canvas instead of re-measuring on every frame.
-        if (ctx._scoreText !== text) {
-            var size = 2 * scale;
-            ctx.font = size + "px " + CONFIG.FONT_FAMILY;
-            while (ctx.measureText(text).width > 5.5 * scale && size > 10) {
-                size -= 1;
-                ctx.font = size + "px " + CONFIG.FONT_FAMILY;
+    /* Largest font no bigger than `size` that fits `text` in `maxW`. Measured
+       once per text/size and remembered on the canvas: the score changes a few
+       times a second and the loop runs at 60. fit() clears the memo, because
+       resizing a canvas resets its context. */
+    function fitFont(ctx, text, size, maxW, weight) {
+        var memo = ctx._fontMemo || (ctx._fontMemo = {});
+        var key = text + "|" + size + "|" + maxW + "|" + weight;
+        if (!memo[key]) {
+            var px = size;
+            ctx.font = weight + px + "px " + CONFIG.FONT_FAMILY;
+            while (ctx.measureText(text).width > maxW && px > 6) {
+                px -= 1;
+                ctx.font = weight + px + "px " + CONFIG.FONT_FAMILY;
             }
-            ctx._scoreText = text;
-            ctx._scoreFont = size + "px " + CONFIG.FONT_FAMILY;
+            memo[key] = weight + px + "px " + CONFIG.FONT_FAMILY;
         }
-        ctx.font = ctx._scoreFont;
-        ctx.fillStyle = boardInk();
-        ctx.fillText(text, scale * (CONFIG.ARENA_WIDTH / 2), 1.75 * scale);
+        return memo[key];
     }
 
-    function drawHighScore(ctx, highScore, scale) {
-        ctx.font = (0.6 * scale) + "px " + CONFIG.FONT_FAMILY;
-        ctx.fillStyle = boardInk();
-        ctx.textBaseline = "middle";
+    /* A size in canvas units that never renders smaller than minCss CSS
+       pixels. On a phone the board is ~170px wide, a 0.57x scale, and the
+       desktop sizes came out at 7px. */
+    function textSize(base, minCss, s) { return Math.max(base, minCss / (s || 1)); }
+
+    // Score, high score and the separator. Opaque, and drawn after the pieces.
+    function drawHeader(ctx, state, s) {
+        ctx.fillStyle = boardBg();
+        ctx.fillRect(0, 0, VIEW_W, HEADER_H);
+        ctx.strokeStyle = themeVar("--board-edge", "#2a2a2a");
+        ctx.lineWidth = Math.max(1, 1 / s);
+        ctx.beginPath();
+        ctx.moveTo(0, HEADER_H - ctx.lineWidth / 2);
+        ctx.lineTo(VIEW_W, HEADER_H - ctx.lineWidth / 2);
+        ctx.stroke();
+
         ctx.textAlign = "center";
-        ctx.fillText("High score: " + highScore, scale * (CONFIG.ARENA_WIDTH / 2), 4 * scale);
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = boardInk();
+        // Kept clear of the restart button on the left, symmetrically.
+        ctx.font = fitFont(ctx, "" + state.score, textSize(40, 20, s), 160, "");
+        ctx.fillText("" + state.score, VIEW_W / 2, 29);
+        var hs = "High score: " + state.highScore;
+        ctx.font = fitFont(ctx, hs, textSize(13, 10, s), 190, "");
+        ctx.globalAlpha = 0.75;
+        ctx.fillText(hs, VIEW_W / 2, 60);
+        ctx.globalAlpha = 1;
+    }
+
+    function drawDangerLine(ctx) {
+        ctx.strokeStyle = themeVar("--tetris-danger", "rgba(255,40,40,0.5)");
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(WELL_X, WELL_Y + 3 * CELL);
+        ctx.lineTo(WELL_X + WELL_W, WELL_Y + 3 * CELL);
+        ctx.stroke();
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }
+
+    /* Overlay text (start prompt, loading, game over) on a backing pill, so it
+       never prints straight over pieces. lines: [{text, size, min, bold,
+       alpha}], centred on the well at cy. */
+    function drawCard(ctx, lines, cy, s) {
+        var maxW = WELL_W - 28, w = 0, h = 0, laid = [];
+        lines.forEach(function (l) {
+            var font = fitFont(ctx, l.text, textSize(l.size, l.min, s), maxW, l.bold ? "bold " : "");
+            ctx.font = font;
+            var px = parseFloat(font.replace(/^bold /, ""));
+            w = Math.max(w, ctx.measureText(l.text).width);
+            laid.push({ l: l, font: font, h: px * 1.45 });
+            h += px * 1.45;
+        });
+        var padX = 14, padY = 10;
+        ctx.fillStyle = boardScrim(0.82);
+        roundRect(ctx, VIEW_W / 2 - w / 2 - padX, cy - h / 2 - padY, w + 2 * padX, h + 2 * padY, 10);
+        ctx.fill();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = boardInk();
+        var y = cy - h / 2;
+        laid.forEach(function (it) {
+            ctx.font = it.font;
+            ctx.globalAlpha = it.l.alpha || 1;
+            ctx.fillText(it.l.text, VIEW_W / 2, y + it.h / 2);
+            y += it.h;
+        });
+        ctx.globalAlpha = 1;
     }
 
     // ─── AI helpers (mirrors tetris_env.py exactly) ───────────────────────────
@@ -547,60 +660,48 @@
                 { label: "combo", value: Math.round(obs[p + 4] * 20) }
             ];
         },
-        valueLabel: "expected score from here",
-        valueHint: "the critic's estimate, in reward units",
-        onReveal: loadCritic
+        /* Tetris ships no critic: the 1B-step checkpoint that produced its
+           .onnx is gone, and deploy_pages.sh publishes critics for Snake and
+           Watermelon only. This used to request tetris_critic.onnx on reveal
+           anyway — a 404, a console warning and an empty "expected score from
+           here —" row. noValue leaves the row out entirely. */
+        noValue: true
     });
-
-    /* Fetched only when the panel is first opened. Blocked under file://,
-       where the value readout stays hidden and everything else still works. */
-    var criticSession = null;
-    var criticPending = null;
-
-    function loadCritic() {
-        if (criticSession || criticPending) return criticPending;
-        criticPending = ort.InferenceSession
-            .create("tetris_critic.onnx", { executionProviders: ["wasm"] })
-            .then(function (s) { criticSession = s; })
-            .catch(function (err) {
-                console.warn("Tetris critic unavailable — value readout hidden.", err);
-            });
-        return criticPending;
-    }
 
     // ─── AI player ───────────────────────────────────────────────────────────
 
+    /* `busy` is the claim of the board that asked for the current move — an
+       object token, or null. A restart used to clear a plain flag while the
+       old board's inference was still in flight; that stale promise then
+       cleared it again under the NEW board, so two decisions could overlap.
+       Now only the token's owner can release it (see the loop). `inflight`
+       tracks the session itself, so a new board's first run never overlaps
+       an abandoned one on the same session. */
     function AIPlayer(session) {
-        this.session = session;
-        this.combo   = 0;
-        this.busy    = false;
+        this.session  = session;
+        this.combo    = 0;
+        this.busy     = null;
+        this.inflight = false;
     }
 
     AIPlayer.prototype.chooseMove = async function(state, nextPieces) {
-        if (this.busy) return null;
-        this.busy = true;
-
         var placements = getValidPlacements(state.arena, state.player.shape);
-        if (placements.length === 0) { this.busy = false; return null; }
+        if (placements.length === 0) return null;
 
         var obs = buildObs(state.arena, state.player.shape, nextPieces, this.combo);
 
+        this.inflight = true;
         try {
             var tensor = new ort.Tensor("float32", obs, [1, 238]);
             var results = await this.session.run({ observation: tensor });
             var logits  = results.action_logits.data;
 
             // The inspector sees the exact tensor the model just consumed.
+            // Only the first placements.length logits are legal moves. The
+            // softmax used to include the rest, so confidence and the
+            // highlighted "best" could show a move the AI can never make.
             if (inspector.isOpen) {
-                var value;
-                if (criticSession) {
-                    var v = await criticSession.run({ observation: tensor });
-                    value = v.value.data[0];
-                }
-                // Only the first placements.length logits are legal moves. The
-                // softmax used to include the rest, so confidence and the
-                // highlighted "best" could show a move the AI can never make.
-                inspector.update({ obs: obs, logits: logits.subarray(0, placements.length), value: value });
+                inspector.update({ obs: obs, logits: logits.subarray(0, placements.length) });
             }
 
             // Pick a valid placement. Only the first placements.length logits
@@ -617,14 +718,15 @@
                 }
             }
 
-            // NOTE: busy stays true here on purpose — applyMove() now kicks off
-            // a drop animation instead of locking instantly, and the game loop
-            // clears busy once that animation finishes (see createGame()).
+            // NOTE: busy stays claimed on purpose — applyMove() kicks off a
+            // drop animation instead of locking instantly, and the game loop
+            // releases busy once that animation finishes (see createGame()).
             return placements[bestIdx];
         } catch(e) {
             console.error("AI inference error:", e);
-            this.busy = false;
             return null;
+        } finally {
+            this.inflight = false;
         }
     };
 
@@ -686,16 +788,34 @@
 
     // ─── Game loop factory ────────────────────────────────────────────────────
 
-    function createGame(canvasEl, isAI, aiPlayer, getNextPiece) {
-        var dpr   = window.devicePixelRatio || 1;
-        var CSS_W = 300, CSS_H = 540;
-        canvasEl.width  = CSS_W * dpr;
-        canvasEl.height = CSS_H * dpr;
-        // No inline width/height: style.css sizes the canvas, and inline sizes
-        // overrode its narrow-screen rule, so at 375px the canvas stayed 300px
-        // inside a 292px board and spilled out.
+    function createGame(canvasEl, isAI, aiPlayer, hooks) {
+        hooks = hooks || {};
+        // No inline width/height: style.css sizes the canvas (it scales with
+        // the viewport), and inline sizes overrode its narrow-screen rule.
         var ctx = canvasEl.getContext("2d");
-        ctx.scale(dpr, dpr);
+
+        /* The backing store follows the canvas's DISPLAYED size times
+           devicePixelRatio, and everything is drawn in fixed 300x540 units
+           scaled onto it. It used to be fixed at 300x540 x dpr, which was only
+           sharp at exactly that size; the board now grows on large screens
+           and shrinks on phones. `textScale` is CSS px per unit, for the
+           minimum text sizes. Browser zoom and moving to another monitor
+           change dpr, so that is checked every frame too. */
+        var dpr = 0, cssW = 0, textScale = 1, needFit = true;
+        function fit() {
+            needFit = false;
+            dpr = window.devicePixelRatio || 1;
+            cssW = canvasEl.getBoundingClientRect().width || VIEW_W;  // 0 while hidden
+            textScale = cssW / VIEW_W;
+            canvasEl.width  = Math.round(cssW * dpr);
+            canvasEl.height = Math.round(cssW * VIEW_H / VIEW_W * dpr);
+            var k = canvasEl.width / VIEW_W;
+            ctx.setTransform(k, 0, 0, k, 0, 0);
+            ctx._fontMemo = null;    // resizing resets the context's font
+        }
+        if (window.ResizeObserver) {
+            new ResizeObserver(function () { needFit = true; }).observe(canvasEl);
+        }
 
         var SAVE_KEY = "tetris." + (isAI ? "ai" : "human") + ".savedGame";
         var HIGH_KEY = "tetris." + (isAI ? "ai" : "human") + ".highScore";
@@ -740,19 +860,25 @@
         var timers = { lastTime: 0, dropCounter: 0, lockCounter: 0, horizCounter: 0 };
         var aiThinkTimer = 0;
         var AI_THINK_INTERVAL = 300; // ms between AI moves
-        var restartRequested = false;
+        var lastLabelScore = null;
 
         /* A fresh board in place, keeping the high score. Used by the restart
            buttons, restart-after-loss and the AI's auto-restart, none of which
            reload the page any more. The buttons used to reload, so restarting
            the AI also threw away the human's game. */
         function resetBoard() {
+            // Restarting the AI by hand ends its match life there and then.
+            if (isAI && match && match.ai === state && match.aiScore === null) {
+                match.aiScore = state.score;
+            }
             state = createState(Math.max(state.highScore || 0, state.score || 0, loadHighScore()));
             timers = { lastTime: performance.now(), dropCounter: 0, lockCounter: 0, horizCounter: 0 };
             aiThinkTimer = 0;
-            restartRequested = false;
-            if (aiPlayer) { aiPlayer.combo = 0; aiPlayer.busy = false; }
+            // Releases the old board's claim; its in-flight decision, if any,
+            // finds the token changed and stands down.
+            if (aiPlayer) { aiPlayer.combo = 0; aiPlayer.busy = null; }
             Store.clear(SAVE_KEY);
+            if (hooks.onReset) hooks.onReset();
         }
 
         if (!isAI) {
@@ -774,27 +900,24 @@
             CONFIG.controls.LEFT.forEach(function (k) { KB.onPress(k, tapShift(-1)); });
             CONFIG.controls.RIGHT.forEach(function (k) { KB.onPress(k, tapShift(1)); });
 
-            // A deliberate keypress after GAME OVER has been up briefly. The
-            // grace period stops the key you died holding, or a hard drop still
-            // in flight, from dismissing the screen before it is seen.
+            /* Restart after GAME OVER on a deliberate, FRESH keypress once the
+               screen has been up RESTART_GRACE ms. OS auto-repeat (e.repeat)
+               never counts: holding soft drop through the loss, or mashing
+               Space, used to dismiss the screen within half a second — two
+               losses were recorded 0.9 s apart. The board then waits for a
+               first input again (hooks.onReset), so the restarting key does
+               not also start the next game; it is marked on the event so the
+               start handler, which runs next, leaves it alone. */
             KB.on(KB.ANY, function (e) {
-                if (!state.lost || KB.isIgnoredKey(e)) return;
-                if (performance.now() - (state.lostAt || 0) < 450) return;
-                restartRequested = true;
+                if (!state.lost || e.repeat || KB.isIgnoredKey(e)) return;
+                if (performance.now() - (state.lostAt || 0) < RESTART_GRACE) return;
+                resetBoard();
+                e.tetrisRestarted = true;
             });
         }
 
         function loop(ts) {
-            // Browser zoom and dragging the window to another monitor both
-            // change devicePixelRatio. The backing store was sized once, so the
-            // board went soft after a zoom until the page was reloaded.
-            if ((window.devicePixelRatio || 1) !== dpr) {
-                dpr = window.devicePixelRatio || 1;
-                canvasEl.width  = CSS_W * dpr;
-                canvasEl.height = CSS_H * dpr;
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                ctx._scoreText = null;   // resizing resets the context's font
-            }
+            if (needFit || (window.devicePixelRatio || 1) !== dpr) fit();
             var dt = ts - timers.lastTime;
             timers.lastTime = ts;
             if (dt > 200) dt = 200;
@@ -830,25 +953,29 @@
                             state.player.anim = null;
                             lockPiece(state, true);
                             lockedThisFrame = true;
-                            aiPlayer.busy = false;
+                            aiPlayer.busy = null;
                         }
                     } else {
                         // AI: think and place every AI_THINK_INTERVAL ms,
                         // shortened by the speed multiplier.
                         aiThinkTimer += dt;
-                        if (aiThinkTimer >= AI_THINK_INTERVAL / AI_SPEED && !aiPlayer.busy) {
+                        if (aiThinkTimer >= AI_THINK_INTERVAL / AI_SPEED &&
+                                !aiPlayer.busy && !aiPlayer.inflight) {
                             aiThinkTimer = 0;
                             var nextPieces = peekNextPieces(state.bag, 5);
                             var thinkState = state;
+                            var token = aiPlayer.busy = {};
                             aiPlayer.chooseMove(state, nextPieces).then(function(placement) {
-                                // `state` may have been replaced while the model
-                                // was thinking (restart, auto-restart). A move
+                                // The board was reset while the model was
+                                // thinking, and the new board owns `busy` now.
+                                if (aiPlayer.busy !== token) return;
+                                // `state` may also have been replaced. A move
                                 // worked out for the old board must not land on
                                 // the new one.
                                 if (placement && !state.lost && state === thinkState) {
                                     aiPlayer.applyMove(state, placement);
                                 } else {
-                                    aiPlayer.busy = false;
+                                    aiPlayer.busy = null;
                                 }
                             });
                         }
@@ -901,31 +1028,42 @@
                 if (isAI && lockedThisFrame && aiPlayer) {
                     aiPlayer.combo = cleared > 0 ? aiPlayer.combo + 1 : 0;
                 }
+                if (!isAI && cleared > 0) {
+                    announce(false, (cleared === 1 ? "Line cleared" : cleared + " lines cleared") +
+                                    ". Score " + state.score + ".");
+                }
 
                 // Loss. Runs once, on the transition: this block is skipped
                 // while state.lost is set.
                 if (toppedOut(state)) {
                     state.lost = true;
                     state.lostAt = performance.now();
-                    restartRequested = false;
                     if (state.score > state.highScore) state.highScore = state.score;
                     Store.write(HIGH_KEY, state.highScore);
 
-                    // Only a real match is a result: not a board that topped out
-                    // before the AI had loaded, or with no AI at all.
-                    if (!isAI && matchStarted && window.__aiGame &&
-                            typeof MatchResults !== "undefined") {
-                        MatchResults.record("tetris", state.score,
-                                            window.__aiGame.getState().score, Date.now());
+                    if (isAI) {
+                        if (match && match.ai === state && match.aiScore === null) {
+                            match.aiScore = state.score;
+                        }
+                        announce(true, "The AI topped out with " + state.score + ".");
+                    } else {
+                        state.matchLine = null;
+                        // Only a real match is a result: not a game started
+                        // before the AI had loaded, or with no AI at all.
+                        if (matchStarted && match && match.ai) {
+                            var you = state.score;
+                            var them = match.aiScore !== null ? match.aiScore : match.ai.score;
+                            state.matchLine = "You " + you + " · AI " + them + " — " +
+                                (you > them ? "You win" : you < them ? "AI wins" : "Draw");
+                            if (typeof MatchResults !== "undefined") {
+                                MatchResults.record("tetris", you, them, match);
+                            }
+                        }
+                        announce(false, "Game over. Score " + state.score + "." +
+                                        (state.matchLine ? " " + state.matchLine + "." : ""));
                     }
                 }
             }
-
-            // Restart the human board after a loss, on a FRESH keypress. This
-            // used to test KB.isDown(ANY) in the very frame the loss was
-            // detected, and people usually top out holding soft drop or right
-            // after Space, so the board reset at once and GAME OVER never showed.
-            if (!isAI && state.lost && restartRequested) resetBoard();
 
             // AI auto-restart after loss
             if (isAI && state.lost && !state.restarting) {
@@ -938,18 +1076,24 @@
             }
 
             // ── Render ───────────────────────────────────────────────────────
+            var s = textScale;
             ctx.fillStyle = boardBg();
-            ctx.fillRect(0, 0, 300, 540);
+            ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-            drawMatrix(ctx, state.arena, 0, 0, CONFIG.SCALE, pieceColors());
+            // The well's side walls: the board is wider than the 10 columns.
+            ctx.strokeStyle = themeVar("--board-edge", "#2a2a2a");
+            ctx.lineWidth = Math.max(1, 1 / s);
+            ctx.strokeRect(WELL_X - ctx.lineWidth / 2, WELL_Y - 1,
+                           WELL_W + ctx.lineWidth, VIEW_H - WELL_Y + 2);
 
-            // Danger line
-            ctx.strokeStyle = themeVar("--tetris-danger", "rgba(255,40,40,0.5)");
-            ctx.lineWidth = 2;
+            // Clipped to the well, so a piece still above it (spawning, or the
+            // AI's drop animation) cannot bleed a cell edge under the header.
+            ctx.save();
             ctx.beginPath();
-            ctx.moveTo(0, 3 * CONFIG.SCALE);
-            ctx.lineTo(CONFIG.ARENA_WIDTH * CONFIG.SCALE, 3 * CONFIG.SCALE);
-            ctx.stroke();
+            ctx.rect(WELL_X, WELL_Y, WELL_W, VIEW_H - WELL_Y);
+            ctx.clip();
+            drawMatrix(ctx, state.arena, 0, 0, pieceColors());
+            drawDangerLine(ctx);
 
             // Active piece
             if (!state.lost) {
@@ -963,68 +1107,63 @@
                     renderY = state.player.anim.curY;
                 }
                 ctx.globalAlpha = lockAlpha;
-                drawMatrix(ctx, state.player.shape, renderX, renderY, CONFIG.SCALE, pieceColors());
+                drawMatrix(ctx, state.player.shape, renderX, renderY, pieceColors());
                 ctx.globalAlpha = 1;
             }
+            ctx.restore();
 
             // Tracked live; persisted on loss and in saveGame(), which runs on
             // beforeunload and visibilitychange. Writing on every increase was
             // ~23 synchronous localStorage writes a second during soft drop.
             if (state.score > state.highScore) state.highScore = state.score;
-            drawScore(ctx, state.score, CONFIG.SCALE);
-            drawHighScore(ctx, state.highScore, CONFIG.SCALE);
 
-            // Game over overlay
-            if (state.lost) {
-                ctx.fillStyle = boardScrim(0.65);
-                ctx.fillRect(0, 0, 300, 540);
-                // The final score is the point of this screen; under the scrim
-                // it was faded to grey (about 2:1 on the light boards). Paint
-                // it again on top at full ink.
-                drawScore(ctx, state.score, CONFIG.SCALE);
-                drawHighScore(ctx, state.highScore, CONFIG.SCALE);
-                ctx.fillStyle = boardInk();
-                ctx.font = "bold " + (1.2 * CONFIG.SCALE) + "px " + CONFIG.FONT_FAMILY;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(isAI ? "AI DIED" : "GAME OVER", 150, 270 - CONFIG.SCALE);
-                ctx.font = (0.55 * CONFIG.SCALE) + "px " + CONFIG.FONT_FAMILY;
-                ctx.globalAlpha = 0.75; ctx.fillStyle = boardInk();
-                ctx.fillText(
-                    isAI ? "Restarting..." : (TOUCH ? "Tap to restart" : "Press any key to restart"),
-                    150, 270 + CONFIG.SCALE * 0.2
-                );
-                ctx.globalAlpha = 1;   // persists across frames if left set
+            // Overlays stop short of the danger line. The scrim used to cover
+            // it, so it was strong red on the human board and pale pink on the
+            // AI board while that one waited to start.
+            var waiting = isAI && (!aiPlayer || !aiPlayer.session || !matchStarted);
+            if (state.lost || waiting) {
+                ctx.fillStyle = boardScrim(state.lost ? 0.65 : 0.75);
+                ctx.fillRect(0, SCRIM_Y, VIEW_W, VIEW_H - SCRIM_Y);
+            }
+
+            // Game over
+            if (state.lost && !waiting) {
+                var over = [{ text: isAI ? "AI DIED" : "GAME OVER", size: 36, min: 18, bold: true }];
+                // The head-to-head, at full ink like the score.
+                if (!isAI && state.matchLine) over.push({ text: state.matchLine, size: 16, min: 12 });
+                over.push({
+                    text: isAI ? "Restarting\u2026" : (TOUCH ? "Tap to restart" : "Press any key to restart"),
+                    size: 15, min: 11, alpha: 0.75
+                });
+                drawCard(ctx, over, WELL_MID, s);
             }
 
             // AI waiting overlay — either the model is still loading, or it is
             // ready and holding for the player to start. Without the second
             // case the board just sits there looking broken.
-            if (isAI && (!aiPlayer || !aiPlayer.session || !matchStarted)) {
+            if (waiting) {
                 var loading = !aiPlayer || !aiPlayer.session;
-                ctx.fillStyle = boardScrim(0.75);
-                ctx.fillRect(0, 0, 300, 540);
-                // Same as the game-over screen: under the scrim the score and
-                // high score read at about 2:1 and looked broken.
-                drawScore(ctx, state.score, CONFIG.SCALE);
-                drawHighScore(ctx, state.highScore, CONFIG.SCALE);
-                ctx.fillStyle = boardInk();
-                ctx.font = "bold 18px " + CONFIG.FONT_FAMILY;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(loading ? (aiLoadFailed ? "Couldn't load the AI" : "Loading AI…")
-                                     : "Ready", 150, 260);
-                ctx.font = "13px " + CONFIG.FONT_FAMILY;
-                ctx.globalAlpha = 0.6; ctx.fillStyle = boardInk();
                 // Was "Run embed_model.py, then refresh": developer instructions
                 // shown to every visitor during every normal load.
-                ctx.fillText(
-                    loading ? (aiLoadFailed ? "Check your connection and refresh"
-                                            : loadingDetail())
-                            : (TOUCH ? "Tap to start" : "Press any key to start"),
-                    150, 285
-                );
-                ctx.globalAlpha = 1;
+                drawCard(ctx, [
+                    { text: loading ? (aiLoadFailed ? "Couldn't load the AI" : "Loading AI\u2026") : "Ready",
+                      size: 20, min: 14, bold: true },
+                    { text: loading ? (aiLoadFailed ? "Check your connection and refresh" : loadingDetail())
+                                    : (TOUCH ? "Tap to start" : "Press any key to start"),
+                      size: 14, min: 11, alpha: 0.75 }
+                ], WELL_MID, s);
+            }
+
+            // Last, and opaque: a piece entering the well slides out from
+            // under the header rather than across the score.
+            drawHeader(ctx, state, s);
+
+            // The canvas's accessible name carries the live score; the aria-live
+            // line below the board announces game over and line clears.
+            if (state.score !== lastLabelScore) {
+                lastLabelScore = state.score;
+                canvasEl.setAttribute("aria-label", (isAI ? "AI board" : "Your board") +
+                                      ", score " + state.score);
             }
 
             requestAnimationFrame(loop);
@@ -1057,7 +1196,7 @@
         var p = aiLoadProgress;
         if (!p) return "Downloading the model";
         var mb = function (n) { return (n / 1048576).toFixed(1); };
-        if (p.total > 0 && p.got >= p.total) return "Starting the model";
+        if (p.total > 0 && p.got >= p.total) return "Starting the model\u2026";
         if (p.total > 0) return "Downloading the model \u00b7 " + Math.min(99, Math.floor(100 * p.got / p.total)) + "%";
         return "Downloading the model \u00b7 " + mb(p.got) + " MB";
     }
@@ -1076,13 +1215,21 @@
         var humanCanvas   = document.getElementById("canvas-human");
         var controlsEl    = document.querySelector("#board-human div.controls");
 
-        var humanGame = createGame(humanCanvas, false, null, null);
+        // After any restart the board waits for a first input again, exactly
+        // like the first game — and the AI board pauses with it.
+        var humanGame = createGame(humanCanvas, false, null, {
+            onReset: function () {
+                matchStarted = false;
+                showControls(controlsEl, true, false);
+                announce(false, "New game. " + (TOUCH ? "Tap" : "Press any key") + " to start.");
+            }
+        });
 
         // Hold the switcher's space from first paint — it mounts only after the
         // model loads, and the page is vertically centred, so a late insert
         // shifts everything. See CheckpointSwitcher.reserve.
         if (typeof CheckpointSwitcher !== "undefined") {
-            CheckpointSwitcher.reserve("tetris", document.getElementById("board-ai"), true);
+            CheckpointSwitcher.reserve("tetris", document.getElementById("board-ai"), false);
         }
 
         /* Read by shared/confirm-exit.js: in progress once the first key has
@@ -1096,15 +1243,27 @@
         window.gameExitMessage = "Leave the game? Your board is saved and will be here when you come back.";
 
         showControls(controlsEl, true, false);
+        /* A match starts here, on the human's first input after load or
+           after a restart. The AI board restarts with it so both begin level;
+           see `match`. If the model is not loaded yet, the human just plays
+           and nothing is recorded. */
         function startMatch() {
             if (matchStarted) return;
             showControls(controlsEl, false, true);
+            if (aiPlayer) {
+                aiGame.reset();
+                match = { ai: aiGame.getState(), aiScore: null };
+            } else {
+                match = { ai: null, aiScore: null };
+            }
             matchStarted = true;   // releases the AI board — see the flag above
+            announce(false, "Game started.");
         }
+        // Not once: every restart needs a fresh start. A held key's OS repeat
+        // and the key that just restarted the board do not count.
         KB.on(KB.ANY, function(e){
-            if (KB.isIgnoredKey(e)) return;
+            if (KB.isIgnoredKey(e) || e.repeat || e.tetrisRestarted) return;
             startMatch();
-            return true;           // unsubscribe: start exactly once
         });
 
         // Game actions do nothing until the match has started: key handlers run
@@ -1184,10 +1343,10 @@
             if (!matchStarted) { startMatch(); return; }
             var st = humanGame.getState();
             if (st.lost) {
-                if (performance.now() - (st.lostAt || 0) > 450) humanGame.reset();
+                if (performance.now() - (st.lostAt || 0) >= RESTART_GRACE) humanGame.reset();
                 return;
             }
-            var cell = humanCanvas.getBoundingClientRect().width / CONFIG.ARENA_WIDTH;
+            var cell = humanCanvas.getBoundingClientRect().width * CELL / VIEW_W;
             if (Math.abs(dx) < 12 && Math.abs(dy) < 12) humanRotate();
             else if (Math.abs(dx) > Math.abs(dy)) humanShift(Math.round(dx / cell) || (dx > 0 ? 1 : -1));
             else if (dy > 0) humanHardDrop();
@@ -1201,7 +1360,7 @@
         // again on the same canvas after the model loaded, leaving the first
         // loop repainting underneath the second forever, with a second set of
         // save handlers attached.
-        var aiGame    = createGame(aiCanvas, true, null, null);
+        var aiGame    = createGame(aiCanvas, true, null);
         // Tapping the AI board ("Tap to start") starts the match too.
         aiCanvas.addEventListener("pointerup", function (e) {
             if (e.pointerType !== "mouse") startMatch();
@@ -1241,19 +1400,16 @@
                critic at all (the 1B-step checkpoint that produced its .onnx is
                gone), so the value readout is already hidden on every rung. */
             if (typeof CheckpointSwitcher !== "undefined") {
-                var sw = CheckpointSwitcher.mount({
+                CheckpointSwitcher.mount({
                     game: "tetris",
                     container: document.getElementById("board-ai"),
                     initial: session,
                     onSession: function (s) { aiPlayer.session = s; },
                 });
-                // Compact, as on Watermelon. The stacked variant is 89px tall
-                // and sits under the speed controls, which left the AI column
-                // hanging 187px below the human one; compact is 31px.
-                if (sw) {
-                    var el = document.querySelector("#board-ai .ckpt");
-                    if (el) el.classList.add("ckpt--compact");
-                }
+                /* The stacked variant, not the compact one. Compact clipped
+                   the note to "full strength · av…" at every width, and the
+                   board's height now budgets for the stacked control (see
+                   --tetris-h in style.css), so there is no column to save. */
             }
         } catch(e) {
             aiLoadFailed = true;
