@@ -10,6 +10,10 @@
  * opts.intensity scales every alpha. select.html is a landing page and runs at
  * 1; inside.html sits behind dense charts and runs lower, so the data stays
  * legible.
+ *
+ * opts.maxFps caps how often the background PAINTS (motion keeps its speed).
+ * The game pages should pass 30: there the background shares the main thread
+ * with physics, rendering and WASM inference, and is behind the boards.
  */
 /* Which background a theme draws. Each one reacts to the cursor, because that
  * is the whole point — the page should feel like a surface being disturbed,
@@ -30,10 +34,16 @@ function initMesh(canvasId, opts) {
 
     const themeOf = () => document.documentElement.getAttribute('data-theme') || 'mesh';
     let stop = null;
+    let mounted = null;
 
     function mount() {
-        if (stop) { stop(); stop = null; }
         const t = themeOf();
+        // setAttribute with an unchanged value still produces a mutation
+        // record, and every one used to tear the background down and reseed
+        // it — a visible restart for a call that changed nothing.
+        if (stop && t === mounted) return;
+        if (stop) { stop(); stop = null; }
+        mounted = t;
         // Renderers live in backgrounds.js; the lattice stays here as the
         // default and as the fallback if that file fails to load.
         const R = {
@@ -146,7 +156,9 @@ function initReveal(cvs, opts) {
         cancelAnimationFrame(raf);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('touchmove', onTouch);
-        window.removeEventListener('resize', onResize);
+        // Was `onResize`, which this renderer never defines: teardown threw a
+        // ReferenceError and left the resize listener attached.
+        window.removeEventListener('resize', resize);
         ctx.clearRect(0, 0, cvs.width, cvs.height);
     };
 }
@@ -262,58 +274,118 @@ function initLattice(cvs, opts) {
         }
     }
 
-    function drawTri(i1, i2, i3) {
-        const mx = (pts[i1].cx + pts[i2].cx + pts[i3].cx) / 3;
-        const my = (pts[i1].cy + pts[i2].cy + pts[i3].cy) / 3;
-        const md = Math.sqrt((mx - mouseX)**2 + (my - mouseY)**2);
-        const cg = Math.max(0, 1 - md / CURSOR_RADIUS);
-
-        const avgWob = (pts[i1].wob + pts[i2].wob + pts[i3].wob) / 3;
-        const depth = (avgWob / WAVE_AMP + 1) / 2;
-
-        const r = Math.round(200 + depth * 55);
-        const g = Math.round(210 + depth * 45);
-        const b = 255;
-
-        const alpha = (0.08 + cg * 0.28 + depth * 0.11) * INTENSITY;
-        const lw    = 0.3 + cg * 0.55 + depth * 0.32;
-
-        ctx.strokeStyle = `rgba(${r},${g},${b},${Math.min(alpha, 0.68 * INTENSITY)})`;
-        ctx.lineWidth   = lw;
-        ctx.beginPath();
-        ctx.moveTo(pts[i1].cx, pts[i1].cy);
-        ctx.lineTo(pts[i2].cx, pts[i2].cy);
-        ctx.lineTo(pts[i3].cx, pts[i3].cy);
-        ctx.closePath();
-        ctx.stroke();
+    /* BATCHED DRAWING.
+     *
+     * This used to stroke every triangle separately — 936 beginPath/stroke
+     * calls a frame, each with its own lineWidth and a freshly formatted
+     * rgba() string, plus one arc/fill per node. Profiled on the game pages it
+     * was the single largest per-frame cost, ~15x the Tetris game loop, and it
+     * churned ~20 MB of short-lived strings through the heap.
+     *
+     * Now it draws EDGES, not triangles, and groups them into a few dozen
+     * buckets by quantised depth and cursor glow, so a frame is one stroke
+     * per bucket instead of one per triangle. Two details keep it looking the
+     * same:
+     *   - Every visible edge is shared by two triangles, so it used to be
+     *     painted twice. One pass at 1-(1-a)^2 composites to exactly what two
+     *     passes at alpha a did.
+     *   - An edge's depth and glow are taken from its own endpoints and
+     *     midpoint, which sit between the two triangles it used to inherit
+     *     from — so the shading is the average of what was drawn before.
+     * Quantisation steps are ~0.014 alpha in depth and ~0.05 near the cursor,
+     * below what a hairline on a dark page can show. */
+    const DQ = 8, CQ = 6;                       // depth / glow levels
+    const NB = (DQ + 1) * (CQ + 1);
+    const styles = new Array(NB);               // bucket -> [strokeStyle, lineWidth]
+    for (let qd = 0; qd <= DQ; qd++) {
+        for (let qc = 0; qc <= CQ; qc++) {
+            const depth = qd / DQ, cg = qc / CQ;
+            const r = Math.round(200 + depth * 55);
+            const g = Math.round(210 + depth * 45);
+            const a1 = Math.min((0.08 + cg * 0.28 + depth * 0.11) * INTENSITY, 0.68 * INTENSITY);
+            const a2 = 1 - (1 - a1) * (1 - a1);
+            styles[qd * (CQ + 1) + qc] = [
+                'rgba(' + r + ',' + g + ',255,' + a2.toFixed(3) + ')',
+                0.3 + cg * 0.55 + depth * 0.32,
+            ];
+        }
     }
+    let paths = new Array(NB);
+
+    function edge(i, j) {
+        const p = pts[i], q = pts[j];
+        const mx = (p.cx + q.cx) * 0.5, my = (p.cy + q.cy) * 0.5;
+        const dx = mx - mouseX, dy = my - mouseY;
+        const cg = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / CURSOR_RADIUS);
+        const depth = ((p.wob + q.wob) * 0.5 / WAVE_AMP + 1) * 0.5;
+        const qd = Math.max(0, Math.min(DQ, Math.round(depth * DQ)));
+        const k = qd * (CQ + 1) + Math.round(cg * CQ);
+        const path = paths[k] || (paths[k] = new Path2D());
+        path.moveTo(p.cx, p.cy);
+        path.lineTo(q.cx, q.cy);
+    }
+
+    /* Nodes, batched the same way: one fill per alpha level. */
+    const NQ = 12;
+    let nodePaths = new Array(NQ + 1);
+    const NODE_MAX = 0.75 * INTENSITY;
 
     function drawNodes() {
         for (let i = 0; i < pts.length; i++) {
             const p = pts[i];
             const depth = (p.wob / WAVE_AMP + 1) / 2;
             if (depth < 0.72) continue;
-            const md = Math.sqrt((p.cx - mouseX)**2 + (p.cy - mouseY)**2);
-            const cg = Math.max(0, 1 - md / CURSOR_RADIUS);
+            const dx = p.cx - mouseX, dy = p.cy - mouseY;
+            const cg = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / CURSOR_RADIUS);
             const size = 1 + depth * 1.3 + cg * 1.1;
-            const alpha = ((depth - 0.72) * 2.4 + cg * 0.28) * INTENSITY;
-            ctx.beginPath();
-            ctx.arc(p.cx, p.cy, size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(220,232,255,${Math.min(alpha, 0.75 * INTENSITY)})`;
-            ctx.fill();
+            const alpha = Math.min(((depth - 0.72) * 2.4 + cg * 0.28) * INTENSITY, NODE_MAX);
+            const k = Math.round(alpha / NODE_MAX * NQ);
+            if (k <= 0) continue;
+            const path = nodePaths[k] || (nodePaths[k] = new Path2D());
+            path.moveTo(p.cx + size, p.cy);
+            path.arc(p.cx, p.cy, size, 0, Math.PI * 2);
         }
+        for (let k = 1; k <= NQ; k++) {
+            if (!nodePaths[k]) continue;
+            ctx.fillStyle = 'rgba(220,232,255,' + (k / NQ * NODE_MAX).toFixed(3) + ')';
+            ctx.fill(nodePaths[k]);
+        }
+        nodePaths = new Array(NQ + 1);
     }
 
-    function draw() {
-        ctx.clearRect(0, 0, W, H);
+    /* opts.maxFps caps the PAINT rate. The motion is slow drift, so 30 fps
+     * is indistinguishable from 60 behind a game, and halves the cost on the
+     * thread the game's physics and inference share. Unset means every frame.
+     * update() still runs every frame: it advances a fixed amount per call,
+     * so skipping it would slow the wave down instead of thinning frames. */
+    const MIN_DT = o.maxFps ? 1000 / o.maxFps - 2 : 0;
+    let lastDraw = -Infinity;
+
+    function draw(now) {
         update();
+        if (MIN_DT && now - lastDraw < MIN_DT) {
+            raf = --budget > 0 ? requestAnimationFrame(draw) : 0;
+            return;
+        }
+        lastDraw = now;
+        ctx.clearRect(0, 0, W, H);
         for (let r = 0; r < gridRows; r++) {
             for (let c = 0; c < gridCols; c++) {
                 const a = r * stride + c;
-                drawTri(a, a+1, a+stride);
-                drawTri(a+1, a+stride+1, a+stride);
+                edge(a, a + 1);                          // top
+                edge(a, a + stride);                     // left
+                edge(a + 1, a + stride);                 // diagonal
+                if (c === gridCols - 1) edge(a + 1, a + stride + 1);          // right
+                if (r === gridRows - 1) edge(a + stride, a + stride + 1);     // bottom
             }
         }
+        for (let k = 0; k < NB; k++) {
+            if (!paths[k]) continue;
+            ctx.strokeStyle = styles[k][0];
+            ctx.lineWidth = styles[k][1];
+            ctx.stroke(paths[k]);
+        }
+        paths = new Array(NB);
 
         drawNodes();
 

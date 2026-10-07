@@ -117,8 +117,13 @@ function createInspector(config) {
     /* ── Drawing ────────────────────────────────────────────────────────── */
 
     function paintChannels(obs) {
+        // Read once per paint, not once per channel: the values are the same
+        // for every canvas, and each read is a full style resolution.
+        const style = getComputedStyle(root);
+        const cellBg = style.getPropertyValue('--insp-cell-bg').trim() || '#111';
+        const rgb = (style.getPropertyValue('--insp-cell-rgb').trim() || '150,190,255');
+        const dpr = window.devicePixelRatio || 1;
         canvases.forEach((cvs, ch) => {
-            const dpr = window.devicePixelRatio || 1;
             const w = grid.w * CELL, h = grid.h * CELL;
             // Rounded: at fractional zoom w * dpr is never equal to the integer
             // width the canvas stores, so this reallocated on every paint.
@@ -129,10 +134,8 @@ function createInspector(config) {
             const ctx = cvs.getContext('2d');
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-            const style = getComputedStyle(root);
-            ctx.fillStyle = style.getPropertyValue('--insp-cell-bg').trim() || '#111';
+            ctx.fillStyle = cellBg;
             ctx.fillRect(0, 0, w, h);
-            const rgb = (style.getPropertyValue('--insp-cell-rgb').trim() || '150,190,255');
 
             for (let r = 0; r < grid.h; r++) {
                 for (let c = 0; c < grid.w; c++) {
@@ -263,6 +266,10 @@ function createInspector(config) {
         open = true;                       // no observer: just keep it live
         if (onReveal) onReveal();
     }
+
+    // A theme change recolours the panel at once rather than at the next AI
+    // decision, which never comes while the AI is paused or game-over.
+    window.addEventListener('themechange', () => render());
 
     return {
         /* Called on every AI decision. Returns immediately while off screen. */

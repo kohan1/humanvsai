@@ -211,16 +211,63 @@
 
     /* Applied to <html> so CSS and mesh.js both see it. Called on every page
      * as early as possible — see the inline snippet in each <head>, which runs
-     * before first paint so a non-default theme never flashes the dark one. */
+     * before first paint so a non-default theme never flashes the dark one.
+     *
+     * HOW CANVASES HEAR ABOUT IT. Canvas drawing cannot read CSS variables
+     * live, so anything that paints with theme colours must re-read them when
+     * the theme changes. Two equivalent signals:
+     *   - a MutationObserver on <html> filtered to data-theme (what mesh.js,
+     *     the games and inside.html use; it also catches the inline snippet), or
+     *   - window 'themechange' (CustomEvent, detail.theme), fired from here.
+     *
+     * Only an ACTUAL change touches the attribute. setAttribute with the same
+     * value still queues a mutation record, so every no-op call used to tear
+     * down and reseed the background and redraw every chart on the page. The
+     * storage listener below made that routine: changing DIFFICULTY in one tab
+     * restarted the background in every other open tab. */
     function applyTheme(id) {
         var t = id || read().theme;
-        document.documentElement.setAttribute('data-theme', t);
+        if (!valid('theme', t)) t = DEFAULTS.theme;
+        var root = document.documentElement;
+        if (root.getAttribute('data-theme') !== t) {
+            root.setAttribute('data-theme', t);
+            try {
+                window.dispatchEvent(new CustomEvent('themechange', { detail: { theme: t } }));
+            } catch (e) { /* very old browser: the attribute alone still works */ }
+        }
         return t;
     }
 
-    // Another tab changed the theme: follow it here as well.
+    /* <meta name="theme-color"> tints the browser chrome (mobile address bar,
+     * installed-app title bar). Every page hard-codes #080808, which left a
+     * black bar over the light themes. Follow the palette's --bg instead,
+     * from whatever changed data-theme — this file, the inline snippet, or
+     * another tab. */
+    function syncThemeColor() {
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) return;
+        try {
+            var bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+            if (bg && meta.getAttribute('content') !== bg) meta.setAttribute('content', bg);
+        } catch (e) { /* cosmetic only */ }
+    }
+    if (typeof MutationObserver !== 'undefined') {
+        new MutationObserver(syncThemeColor).observe(document.documentElement,
+            { attributes: true, attributeFilter: ['data-theme'] });
+    }
+
+    /* The inline <head> snippets set whatever string is stored, unvalidated —
+     * a renamed or hand-edited theme left data-theme pointing at no palette.
+     * Correct it once this file runs. A no-op whenever the snippet was right. */
+    applyTheme();
+    syncThemeColor();
+
+    /* Another tab changed the settings: follow its theme here as well. The
+     * event also fires for difficulty changes and for localStorage.clear()
+     * (key === null), and applyTheme() ignores anything that is not a change
+     * of theme. Fired by the browser only in OTHER tabs, never the writer. */
     window.addEventListener('storage', function (e) {
-        if (e.key === KEY) applyTheme();
+        if (e.key === KEY || e.key === null) applyTheme();
     });
 
     global.Settings = {

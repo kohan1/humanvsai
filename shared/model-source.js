@@ -44,16 +44,34 @@
         }
     }
 
-    function decode(b64) {
+    function decodeSync(b64) {
         var bin = atob(b64);
         var out = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
         return out;
     }
 
+    /* Uint8Array.fromBase64 is native and measured 87 ms for Snake's 46 MB
+       string, against ~320 ms for atob() plus the byte loop above — one
+       main-thread task either way, during which the human board freezes.
+       (fetch() on a data: URL looks like it should decode off the main thread
+       and does the opposite: building and parsing the URL blocked for 1.5-1.8 s.)
+       The loop stays for browsers without fromBase64. Returns a promise so the
+       call sites need not care which ran. */
+    function decode(b64) {
+        try {
+            if (typeof Uint8Array.fromBase64 === "function") {
+                return Promise.resolve(Uint8Array.fromBase64(b64));
+            }
+            return Promise.resolve(decodeSync(b64));
+        } catch (e) {
+            return Promise.reject(e);
+        }
+    }
+
     function injectEmbedded(globalName, dataUrl) {
         var already = readGlobal(globalName);
-        if (already !== undefined) return Promise.resolve(decode(already));
+        if (already !== undefined) return decode(already);
         return new Promise(function (resolve, reject) {
             var s = document.createElement("script");
             s.src = dataUrl || "model_data.js";
@@ -63,11 +81,69 @@
                     reject(new Error(s.src + " loaded but " + globalName + " is undefined"));
                     return;
                 }
-                resolve(decode(b64));
+                resolve(decode(b64));   // a promise: resolve() adopts it
             };
             s.onerror = function () { reject(new Error("could not load " + s.src)); };
             document.head.appendChild(s);
         });
+    }
+
+    /* Start onnxruntime's own WebAssembly runtime while the model downloads.
+
+       ort only fetches, compiles and instantiates its ~14 MB .wasm on the
+       first InferenceSession.create(), and the games could only call that
+       once the model had fully arrived, so the two ran back to back. Measured
+       on Snake: the first create() took ~640 ms after the model landed and a
+       second create() of the same model ~125 ms — the difference is runtime
+       start-up sitting on the critical path.
+
+       Creating a session for a 67-byte model (one Identity node) triggers
+       exactly that start-up and nothing else. ort shares one init promise per
+       backend, so the game's real create() simply joins it if it is still
+       running. Every game sets ort.env.wasm.wasmPaths BEFORE calling
+       modelSource(), which is what makes this safe to do from here: the
+       runtime is fetched from the same place it would have been anyway.
+       Failure is ignored — the real create() will report the real error. */
+    var WARMUP_MODEL = "CAgSADo3ChAKAXgSAXkiCElkZW50aXR5EgF3Wg8KAXgSCgoICAESBAoCCAFiDwoBeRIKCggIARIECgIIAUIECgAQEQ==";
+    var warming = null;
+    function warmRuntime() {
+        if (warming || typeof ort === "undefined" || !ort.InferenceSession) return;
+        try {
+            warming = ort.InferenceSession
+                .create(decodeSync(WARMUP_MODEL), { executionProviders: ["wasm"] })
+                .then(function (s) { return s.release && s.release(); })
+                .catch(function () { /* the real create() reports it */ });
+        } catch (e) { /* likewise */ }
+    }
+
+    /* Read a response body while reporting progress. A bare arrayBuffer()
+       says nothing for the whole 22-34 MB download, which reads as "stuck on
+       loading". Content-Length can be the COMPRESSED size (or absent), so
+       callers get the raw byte count and a total that may be 0. */
+    function readBody(r, onProgress) {
+        if (!onProgress || !r.body || !r.body.getReader) {
+            return r.arrayBuffer().then(function (b) { return new Uint8Array(b); });
+        }
+        var total = parseInt(r.headers.get("Content-Length") || "0", 10) || 0;
+        var reader = r.body.getReader();
+        var chunks = [], got = 0;
+        function pump() {
+            return reader.read().then(function (step) {
+                if (step.done) {
+                    var out = new Uint8Array(got), at = 0;
+                    for (var i = 0; i < chunks.length; i++) {
+                        out.set(chunks[i], at);
+                        at += chunks[i].length;
+                    }
+                    return out;
+                }
+                chunks.push(step.value);
+                got += step.value.length;
+                try { onProgress(got, total); } catch (e) { /* UI only */ }
+                return pump();
+            });
+        }
+        return pump();
     }
 
     /* Returns the model bytes. Fetches the .onnx unless we are on file://,
@@ -78,20 +154,28 @@
        script copies it up beside the page, so tetris/tetris_ai.onnx is a 404
        on a local server and a 200 in production. Without the fallback this
        would work live and break in dev — the worst way round, since dev is
-       where it would go unnoticed. */
-    window.modelSource = function (onnxUrl, globalName, dataUrl) {
+       where it would go unnoticed.
+
+       onProgress(receivedBytes, totalBytesOr0) is optional and may be passed
+       in place of dataUrl. It is called only for the .onnx download. */
+    window.modelSource = function (onnxUrl, globalName, dataUrl, onProgress) {
+        if (typeof dataUrl === "function") { onProgress = dataUrl; dataUrl = undefined; }
+        warmRuntime();
         if (location.protocol === "file:") {
             return injectEmbedded(globalName, dataUrl);
         }
         return fetch(onnxUrl)
             .then(function (r) {
                 if (!r.ok) throw new Error("HTTP " + r.status + " for " + onnxUrl);
-                return r.arrayBuffer();
+                return readBody(r, onProgress);
             })
-            .then(function (buf) { return new Uint8Array(buf); })
             .catch(function (err) {
                 console.warn("model-source: " + err.message + " - falling back to embedded base64");
-                return injectEmbedded(globalName, dataUrl);
+                return injectEmbedded(globalName, dataUrl).catch(function (err2) {
+                    // Report both: on the live site model_data.js is not
+                    // deployed, so the second error alone hides the cause.
+                    throw new Error(err.message + "; " + err2.message);
+                });
             });
     };
 }());

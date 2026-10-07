@@ -133,7 +133,11 @@ fi
 # generated separately from the deploy, so the two can drift — and the failure
 # mode is a button that downloads a 404 and leaves the player on the previous
 # model with an error in the console nobody reads.
-python - "$STAGE" <<'PYEOF' || exit 1
+# python3 where it exists (macOS and most Linux ship no bare `python`),
+# python on Windows, where python3 is often the Store stub.
+PY="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python)"
+case "$PY" in *WindowsApps*) PY="$(command -v python 2>/dev/null || echo python)" ;; esac
+"$PY" - "$STAGE" <<'PYEOF' || exit 1
 import json, pathlib, sys
 stage = pathlib.Path(sys.argv[1])
 txt = (stage / "shared" / "checkpoints.js").read_text(encoding="utf-8")
@@ -220,7 +224,13 @@ echo "deployed to https://kohan1.github.io/humanvsai/"
 #
 # Blocking here makes the failure mode impossible: the next deploy cannot start
 # until this one is terminal.
-GH="/c/Program Files/GitHub CLI/gh.exe"
+# gh on PATH first (the Mac, Linux, or Windows with gh installed normally),
+# then the Windows installer's default location, which Git Bash does not put
+# on PATH. It used to look ONLY at the Windows path, so a deploy from the Mac
+# printed "gh not found", skipped this wait, and left the exact cancel-by-
+# redeploy trap described above wide open on the primary dev machine.
+GH="$(command -v gh 2>/dev/null || true)"
+[ -n "$GH" ] || GH="/c/Program Files/GitHub CLI/gh.exe"
 if [ -x "$GH" ]; then
     printf "waiting for the Pages deployment"
     confirmed=

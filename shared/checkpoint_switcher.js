@@ -19,7 +19,12 @@
  * first frame — the exact mistake that made these games "stuck on loading" when
  * model_data.js was a render-blocking script. So the page ships only the
  * strongest rung (the model it downloads anyway) and fetches another when it is
- * chosen. Sessions are cached, so switching back is free.
+ * chosen.
+ *
+ * Only the shipped session and the active one are kept. Caching every rung
+ * meant a visitor who clicked along a ladder held all of them at once — four
+ * Snake rungs is ~140 MB of weights in the WebAssembly heap, which never
+ * shrinks. Switching back to a released rung re-reads it from the HTTP cache.
  */
 (function (global) {
     'use strict';
@@ -185,8 +190,21 @@
             note.title = text;
         }
 
+        /* Free a rung's session once it is no longer playing. Deferred, because
+         * the game may still be awaiting a run() on it when the swap happens;
+         * a few seconds is many decisions' worth of slack. */
+        function retire(id) {
+            if (!id || id === top.id || id === active || !sessions[id]) return;
+            var s = sessions[id];
+            delete sessions[id];
+            setTimeout(function () {
+                try { if (s.release) s.release(); } catch (e) { /* already gone */ }
+            }, 3000);
+        }
+
         async function select(id) {
             if (busy || id === active) return;
+            var previous = active;
             var r = rungs.filter(function (x) { return x.id === id; })[0];
             if (!r) return;
 
@@ -195,6 +213,7 @@
                 writeChoice(game, id);
                 paint(id);
                 await opts.onSession(sessions[id], r);
+                retire(previous);
                 return;
             }
 
@@ -216,6 +235,7 @@
                 writeChoice(game, id);
                 paint(id);
                 await opts.onSession(sessions[id], r);
+                retire(previous);
             } catch (err) {
                 console.error('Checkpoint ' + id + ' failed to load:', err);
                 /* Leave the previous model playing. A switcher that breaks the

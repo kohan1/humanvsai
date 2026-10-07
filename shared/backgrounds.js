@@ -65,8 +65,38 @@ function bgColours() {
 function particleRgb() { return bgColours().particle; }
 function themeBgRgb() { return bgColours().bg; }
 
-/* Boilerplate every renderer needs: sizing, pointer tracking, teardown. */
-function bgHarness(cvs, setup) {
+/* Batching. Every renderer below used to set a fresh rgba() fillStyle or
+ * strokeStyle and issue a separate fill/stroke PER PARTICLE — up to 5000 a
+ * frame, each one a colour-string parse and a draw call, on the same thread
+ * as the games' physics and inference. Alpha is instead quantised into a
+ * handful of levels and every particle of a level goes into one Path2D, so a
+ * frame is ~16 draw calls. 16 levels is a step of ~0.05 alpha at most, which
+ * a 1-3px mark cannot show. */
+const BG_LEVELS = 16;
+function bgBuckets() { return new Array(BG_LEVELS + 1); }
+function bgLevel(a, max) {
+    return Math.max(0, Math.min(BG_LEVELS, Math.round(a / max * BG_LEVELS)));
+}
+function bgPath(buckets, k) { return buckets[k] || (buckets[k] = new Path2D()); }
+function bgFlush(ctx, buckets, rgb, max, stroke) {
+    for (let k = 1; k <= BG_LEVELS; k++) {
+        if (!buckets[k]) continue;
+        const style = 'rgba(' + rgb + ',' + (k / BG_LEVELS * max).toFixed(3) + ')';
+        if (stroke) { ctx.strokeStyle = style; ctx.stroke(buckets[k]); }
+        else { ctx.fillStyle = style; ctx.fill(buckets[k]); }
+    }
+}
+
+/* Boilerplate every renderer needs: sizing, pointer tracking, teardown.
+ *
+ * opts.maxFps caps the PAINT rate (unset: every frame). Behind a game board
+ * the backgrounds are ambient, and 30 fps halves their share of the main
+ * thread at no visible cost. The simulation still steps on every animation
+ * frame — each renderer's draw(now, paint) integrates its motion always and
+ * touches the canvas only when `paint` is true — because all of them advance
+ * a fixed amount per call, and skipping calls would slow the motion down
+ * rather than just make it coarser. */
+function bgHarness(cvs, setup, opts) {
     const ctx = cvs.getContext('2d');
     const state = { W: 0, H: 0, mx: -9999, my: -9999, raf: 0, down: false };
 
@@ -105,8 +135,12 @@ function bgHarness(cvs, setup) {
     window.addEventListener('resize', resize);
     resize();
 
+    const MIN_DT = opts && opts.maxFps ? 1000 / opts.maxFps - 2 : 0;
+    let last = -Infinity;
     function frame(now) {
-        api.draw(now);
+        const paint = !MIN_DT || now - last >= MIN_DT;
+        if (paint) last = now;
+        api.draw(now, paint);
         state.raf = --budget > 0 ? requestAnimationFrame(frame) : 0;
     }
     if (!state.raf) state.raf = requestAnimationFrame(frame);
@@ -146,6 +180,8 @@ function initFlow(cvs, opts) {
         let parts = [];
         let t = 0;
         let sweep = 0;
+        let pending = new Path2D();   // segments since the last paint
+        let skipped = 0;              // frames since the last paint
 
         function seed(n) {
             parts = Array.from({ length: n }, () => ({
@@ -162,8 +198,35 @@ function initFlow(cvs, opts) {
                 seed(n);
                 ctx.clearRect(0, 0, st.W, st.H);
             },
-            draw() {
+            draw(now, paint) {
                 t += 0.0016;
+                skipped++;
+
+                for (const p of parts) {
+                    let a = noise(p.x * SCALE, p.y * SCALE + t) * Math.PI * 3;
+
+                    const dx = p.x - st.mx, dy = p.y - st.my;
+                    const d = Math.sqrt(dx * dx + dy * dy);
+                    if (d < SWIRL) {
+                        // Rotate the field toward tangential near the pointer.
+                        const w = (1 - d / SWIRL) * (1 - d / SWIRL);
+                        a += Math.atan2(dy, dx) * w * 1.6 + w * 1.9;
+                    }
+
+                    const nx = p.x + Math.cos(a) * SPEED * 0.06;
+                    const ny = p.y + Math.sin(a) * SPEED * 0.06;
+                    pending.moveTo(p.x, p.y);
+                    pending.lineTo(nx, ny);
+                    p.x = nx; p.y = ny;
+
+                    if (++p.life > 260 || p.x < -10 || p.x > st.W + 10 ||
+                        p.y < -10 || p.y > st.H + 10) {
+                        p.x = Math.random() * st.W;
+                        p.y = Math.random() * st.H;
+                        p.life = 0;
+                    }
+                }
+                if (!paint) return;
 
                 /* ERASE the old frame instead of painting the background over
                    it at low alpha.
@@ -179,7 +242,10 @@ function initFlow(cvs, opts) {
                    disappear. The canvas is transparent, so the page's own
                    background shows through rather than a painted copy of it. */
                 ctx.globalCompositeOperation = 'destination-out';
-                ctx.fillStyle = 'rgba(0, 0, 0, ' + FADE + ')';
+                // One erase standing in for every frame since the last paint,
+                // so trails last as long in time at any paint rate.
+                const fade = 1 - Math.pow(1 - FADE, skipped);
+                ctx.fillStyle = 'rgba(0, 0, 0, ' + fade.toFixed(4) + ')';
                 ctx.fillRect(0, 0, st.W, st.H);
 
                 /* A multiply still stalls at the bottom of the 8-bit range:
@@ -189,7 +255,8 @@ function initFlow(cvs, opts) {
                    A harder erase every 8th frame drags that floor down to ~2
                    (under 1% — invisible) while costing live trails only a few
                    percent of their length. */
-                if ((sweep = (sweep + 1) % 8) === 0) {
+                if ((sweep += skipped) >= 8) {
+                    sweep %= 8;
                     ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
                     ctx.fillRect(0, 0, st.W, st.H);
                 }
@@ -198,36 +265,12 @@ function initFlow(cvs, opts) {
                 const rgb = particleRgb();
                 ctx.strokeStyle = 'rgba(' + rgb + ',' + (0.5 * INTENSITY).toFixed(3) + ')';
                 ctx.lineWidth = 1;
-                ctx.beginPath();
-
-                for (const p of parts) {
-                    let a = noise(p.x * SCALE, p.y * SCALE + t) * Math.PI * 3;
-
-                    const dx = p.x - st.mx, dy = p.y - st.my;
-                    const d = Math.sqrt(dx * dx + dy * dy);
-                    if (d < SWIRL) {
-                        // Rotate the field toward tangential near the pointer.
-                        const w = (1 - d / SWIRL) * (1 - d / SWIRL);
-                        a += Math.atan2(dy, dx) * w * 1.6 + w * 1.9;
-                    }
-
-                    const nx = p.x + Math.cos(a) * SPEED * 0.06;
-                    const ny = p.y + Math.sin(a) * SPEED * 0.06;
-                    ctx.moveTo(p.x, p.y);
-                    ctx.lineTo(nx, ny);
-                    p.x = nx; p.y = ny;
-
-                    if (++p.life > 260 || p.x < -10 || p.x > st.W + 10 ||
-                        p.y < -10 || p.y > st.H + 10) {
-                        p.x = Math.random() * st.W;
-                        p.y = Math.random() * st.H;
-                        p.life = 0;
-                    }
-                }
-                ctx.stroke();
+                ctx.stroke(pending);
+                pending = new Path2D();
+                skipped = 0;
             },
         };
-    });
+    }, o);
 }
 
 /* ── Filings ────────────────────────────────────────────────────────────────
@@ -260,10 +303,11 @@ function initFilings(cvs, opts) {
                     }
                 }
             },
-            draw() {
+            draw(now, paint) {
                 t += 0.0009;
-                ctx.clearRect(0, 0, st.W, st.H);
                 const rgb = particleRgb();
+                const maxA = 0.97 * INTENSITY;
+                const buckets = bgBuckets();
 
                 for (const c of cells) {
                     // Resting orientation: the noise field, turning slowly.
@@ -287,20 +331,24 @@ function initFilings(cvs, opts) {
                     while (diff > Math.PI) diff -= Math.PI * 2;
                     while (diff < -Math.PI) diff += Math.PI * 2;
                     c.cur += diff * EASE;
+                    if (!paint) continue;
 
                     const half = LEN * (0.55 + strength * 0.8) / 2;
                     const cos = Math.cos(c.cur) * half, sin = Math.sin(c.cur) * half;
 
-                    ctx.strokeStyle = 'rgba(' + rgb + ',' + (strength * INTENSITY).toFixed(3) + ')';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.moveTo(c.x - cos, c.y - sin);
-                    ctx.lineTo(c.x + cos, c.y + sin);
-                    ctx.stroke();
+                    const k = bgLevel(strength * INTENSITY, maxA);
+                    if (!k) continue;
+                    const path = bgPath(buckets, k);
+                    path.moveTo(c.x - cos, c.y - sin);
+                    path.lineTo(c.x + cos, c.y + sin);
                 }
+                if (!paint) return;
+                ctx.clearRect(0, 0, st.W, st.H);
+                ctx.lineWidth = 1;
+                bgFlush(ctx, buckets, rgb, maxA, true);
             },
         };
-    });
+    }, o);
 }
 
 /* ── Sand ───────────────────────────────────────────────────────────────────
@@ -332,9 +380,10 @@ function initSand(cvs, opts) {
                     }
                 }
             },
-            draw() {
-                ctx.clearRect(0, 0, st.W, st.H);
+            draw(now, paint) {
                 const rgb = particleRgb();
+                const maxA = 0.85 * INTENSITY;
+                const buckets = bgBuckets();
 
                 for (const p of parts) {
                     const dx = p.x - st.mx, dy = p.y - st.my;
@@ -348,20 +397,24 @@ function initSand(cvs, opts) {
                     p.vy += (p.hy - p.y) * SPRING;
                     p.vx *= DAMP; p.vy *= DAMP;
                     p.x += p.vx; p.y += p.vy;
+                    if (!paint) continue;
 
                     // Displaced dots brighten, so the disturbance is visible
                     // as light as well as position.
                     const off = Math.min(1, Math.hypot(p.x - p.hx, p.y - p.hy) / 26);
                     const a = (0.2 + off * 0.65) * INTENSITY;
-                    ctx.fillStyle = 'rgba(' + rgb + ',' + a.toFixed(3) + ')';
                     // A 2-5px square is indistinguishable from a circle at this
-                    // size, and skips building a path per grain per frame.
+                    // size, and is far cheaper to add to a path than an arc.
                     const rr = p.r + off * 1.1;
-                    ctx.fillRect(p.x - rr, p.y - rr, rr * 2, rr * 2);
+                    const k = bgLevel(a, maxA);
+                    if (k) bgPath(buckets, k).rect(p.x - rr, p.y - rr, rr * 2, rr * 2);
                 }
+                if (!paint) return;
+                ctx.clearRect(0, 0, st.W, st.H);
+                bgFlush(ctx, buckets, rgb, maxA, false);
             },
         };
-    });
+    }, o);
 }
 
 /* ── Constellation ──────────────────────────────────────────────────────────
@@ -391,8 +444,7 @@ function initConstellation(cvs, opts) {
                     vy: (Math.random() - 0.5) * 0.32,
                 }));
             },
-            draw() {
-                ctx.clearRect(0, 0, st.W, st.H);
+            draw(now, paint) {
                 const rgb = particleRgb();
 
                 for (const p of parts) {
@@ -408,8 +460,12 @@ function initConstellation(cvs, opts) {
                     if (p.x < 0) p.x += st.W; else if (p.x > st.W) p.x -= st.W;
                     if (p.y < 0) p.y += st.H; else if (p.y > st.H) p.y -= st.H;
                 }
+                if (!paint) return;
+                ctx.clearRect(0, 0, st.W, st.H);
 
-                ctx.lineWidth = 1;
+                const maxL = 0.16 * INTENSITY;
+                const links = bgBuckets();
+                const dots = new Path2D();
                 for (let i = 0; i < parts.length; i++) {
                     const a = parts[i];
                     for (let j = i + 1; j < parts.length; j++) {
@@ -418,20 +474,21 @@ function initConstellation(cvs, opts) {
                         if (Math.abs(dx) > LINK || Math.abs(dy) > LINK) continue;
                         const d = Math.sqrt(dx * dx + dy * dy);
                         if (d > LINK) continue;
-                        const al = (1 - d / LINK) * 0.16 * INTENSITY;
-                        ctx.strokeStyle = 'rgba(' + rgb + ',' + al.toFixed(3) + ')';
-                        ctx.beginPath();
-                        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
-                        ctx.stroke();
+                        const k = bgLevel((1 - d / LINK) * maxL, maxL);
+                        if (!k) continue;
+                        const path = bgPath(links, k);
+                        path.moveTo(a.x, a.y); path.lineTo(b.x, b.y);
                     }
-                    ctx.fillStyle = 'rgba(' + rgb + ',' + (0.45 * INTENSITY).toFixed(3) + ')';
-                    ctx.beginPath();
-                    ctx.arc(a.x, a.y, 1.2, 0, Math.PI * 2);
-                    ctx.fill();
+                    dots.moveTo(a.x + 1.2, a.y);
+                    dots.arc(a.x, a.y, 1.2, 0, Math.PI * 2);
                 }
+                ctx.lineWidth = 1;
+                bgFlush(ctx, links, rgb, maxL, true);
+                ctx.fillStyle = 'rgba(' + rgb + ',' + (0.45 * INTENSITY).toFixed(3) + ')';
+                ctx.fill(dots);
             },
         };
-    });
+    }, o);
 }
 
 /* ── Dispersion ─────────────────────────────────────────────────────────────
@@ -488,7 +545,19 @@ function initDispersion(cvs, opts) {
                both visible and what the effect is tracing in the first place.
                Falls back to the viewport centre when there is no heading. */
             const el = document.querySelector('.title, .header h1, h1');
-            const box = el && el.getBoundingClientRect();
+            /* The TEXT's box, not the element's. On inside.html the h1 is a
+               full-width block with left-aligned text, so centring on the
+               element floated the ghost far to the right of the visible
+               word. A Range over the contents measures the glyphs. */
+            let box = null;
+            if (el) {
+                try {
+                    const range = document.createRange();
+                    range.selectNodeContents(el);
+                    box = range.getBoundingClientRect();
+                } catch (e) { /* fall through to the element box */ }
+                if (!box || !box.width) box = el.getBoundingClientRect();
+            }
 
             /* Only trace the heading when the traced copy is much BIGGER than
                the real one. index.html sets its title at ~115px, so a 150px
@@ -532,9 +601,10 @@ function initDispersion(cvs, opts) {
                     vx: 0, vy: 0,
                 }));
             },
-            draw() {
-                ctx.clearRect(0, 0, st.W, st.H);
+            draw(now, paint) {
                 const rgb = particleRgb();
+                const maxA = 0.5 * INTENSITY;
+                const buckets = bgBuckets();
 
                 for (const p of parts) {
                     const dx = p.x - st.mx, dy = p.y - st.my;
@@ -548,14 +618,18 @@ function initDispersion(cvs, opts) {
                     p.vy += (p.hy - p.y) * SPRING;
                     p.vx *= DAMP; p.vy *= DAMP;
                     p.x += p.vx; p.y += p.vy;
+                    if (!paint) continue;
 
                     const off = Math.min(1, Math.hypot(p.x - p.hx, p.y - p.hy) / 40);
                     const a = (0.5 - off * 0.3) * INTENSITY;
                     if (a < 0.02) continue;
-                    ctx.fillStyle = 'rgba(' + rgb + ',' + a.toFixed(3) + ')';
-                    ctx.fillRect(p.x, p.y, 1.6, 1.6);
+                    const k = bgLevel(a, maxA);
+                    if (k) bgPath(buckets, k).rect(p.x, p.y, 1.6, 1.6);
                 }
+                if (!paint) return;
+                ctx.clearRect(0, 0, st.W, st.H);
+                bgFlush(ctx, buckets, rgb, maxA, false);
             },
         };
-    });
+    }, o);
 }
