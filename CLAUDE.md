@@ -954,7 +954,12 @@ folder — `deploy_pages.sh` would ship it.
     identical observation, because `Segment.xx` rounds. Phase 6 is chosen to
     leave the async WASM inference ~67 ms instead of ~17 ms.
     **General lesson: when the browser and the env disagree, port the browser's
-    mechanics into Python and bisect there.** Verifying the encoder is not
+    mechanics into Python and bisect there.**
+    **Late decisions now PAUSE the AI board at the cell boundary** (up to
+    1 s, `AI_HOLD_MAX_MS`) instead of being dropped or applied a cell late:
+    on a slow CPU the AI gets slower, never wrong. The browser also ends the
+    AI's game at `MAX_STEPS_WITHOUT_FOOD` like the env's truncation; without
+    it a looping AI left a head-to-head match waiting forever. Verifying the encoder is not
     enough — it was provably correct while the game was still unplayable.
 
 20. **The browser killed the snake on its own tail.** `checkDeath()` iterated

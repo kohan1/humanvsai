@@ -1004,6 +1004,15 @@
             if (aiAteThisCell) aiAteThisCell = false;
             else aiStepsSinceFood++;
 
+            // snake_env truncates the episode at MAX_STEPS_WITHOUT_FOOD. The
+            // browser used to let a looping AI circle forever, which left a
+            // head-to-head match waiting on a first life that never ended.
+            if (aiStepsSinceFood >= MAX_STEPS_WITHOUT_FOOD) {
+                aiInferencePending = false;
+                aiSnake.die();
+                return;
+            }
+
             // A decision belongs to THIS cell. update() commits a turn at the
             // boundary frame, (cell + 1) * STEPS_PER_CELL, and aiHolding()
             // keeps the snake at that frame until the decision is in. Only one
