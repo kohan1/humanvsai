@@ -6,7 +6,7 @@
         <meta name="description" content="Inside the AI: every training run, what worked, what did not, and how each agent sees its game." />
         <meta name="theme-color" content="#080808" />
         <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080808'/%3E%3Ctext x='16' y='21' font-family='Arial' font-size='13' font-weight='700' fill='%23cfe4ff' text-anchor='middle'%3Evs%3C/text%3E%3C/svg%3E" />
-    <title>inside — human vs ai</title>
+    <title>Inside — Human vs AI</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -24,7 +24,7 @@
         .back {
             position: fixed; top: 1.6rem; left: 1.8rem;
             display: inline-flex; align-items: center; gap: 0.4em;
-            font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase;
+            font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
             color: #555; text-decoration: none; transition: color 0.15s; z-index: 100;
         }
         .back:hover { color: #bbb; }
@@ -36,7 +36,7 @@
         }
 
         .eyebrow {
-            font-size: 0.58rem; letter-spacing: 0.24em; text-transform: uppercase;
+            font-size: 0.72rem; letter-spacing: 0.2em; text-transform: uppercase;
             color: #555; margin-bottom: 0.9rem;
         }
         h1 {
@@ -72,7 +72,7 @@
             font-size: 1.9rem; font-weight: 300; letter-spacing: -0.02em;
         }
         .stat-label {
-            margin-top: 0.5rem; font-size: 0.55rem; letter-spacing: 0.18em;
+            margin-top: 0.5rem; font-size: 0.72rem; letter-spacing: 0.14em;
             text-transform: uppercase; color: #555;
         }
 
@@ -94,11 +94,18 @@
         .ctl-group { display: flex; gap: 1px; background: #1e1e1e; border: 1px solid #1e1e1e; }
         .ctl {
             background: #080808; border: 0; cursor: pointer;
-            font-family: inherit; font-size: 0.55rem; letter-spacing: 0.16em;
+            font-family: inherit; font-size: 0.72rem; letter-spacing: 0.1em;
             text-transform: uppercase; color: #555;
-            padding: 0.55rem 0.95rem; transition: color 0.15s, background 0.15s;
+            padding: 0.6rem 0.9rem; min-height: 2.25rem; transition: color 0.15s, background 0.15s;
         }
         .ctl:hover { color: #bbb; background: #111; }
+        /* Phones: 16px gutters instead of 32, and tighter tabs, so the
+           four-game strip fits a 360px screen without running off its edge. */
+        @media (max-width: 600px) {
+            .page { padding: 5rem 1rem 4rem; }
+            .ctl-group { flex-wrap: wrap; }
+            .ctl { padding: 0.6rem 0.62rem; letter-spacing: 0.05em; }
+        }
         .ctl.on { color: #fff; background: #151515; }
 
         /* ── Chart ──────────────────────────────────────────────────────── */
@@ -106,6 +113,18 @@
         canvas.chart { display: block; width: 100%; height: 380px; }
         canvas.chart.short { height: 240px; }
         canvas.chart.tall { height: 520px; }
+        /* Charts whose x-axis is dense (run positions, calendar days) keep a
+           readable width on a phone and scroll sideways inside their frame,
+           rather than squeezing a dozen runs into 100px. */
+        @media (max-width: 600px) {
+            .chart-wrap.scroll-x { overflow-x: auto; overscroll-behavior-x: contain; }
+            .chart-wrap.scroll-x canvas.chart { width: 620px; }
+            .chart-wrap.scroll-x::after {
+                content: 'scroll sideways →'; position: sticky; left: 0;
+                display: block; padding: 0.35rem 0.6rem;
+                font-size: 0.68rem; color: var(--dim, #7d7d7d);
+            }
+        }
 
         /* ── Weight heat maps ───────────────────────────────────────────── */
         .heat-row {
@@ -126,8 +145,10 @@
             image-rendering: pixelated; border: 1px solid #1a1a1a;
         }
         .heat-label {
-            font-size: 0.5rem; letter-spacing: 0.14em; text-transform: uppercase;
+            font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
             color: #4a4a4a; text-align: center; line-height: 1.7;
+            /* Balanced, or a caption wraps with one orphan word on its own line. */
+            text-wrap: balance;
         }
         .heat-label b { display: block; color: #9a9a9a; font-weight: 400; }
 
@@ -151,7 +172,7 @@
         }
         .arch-step:last-child { border-right: 0; }
         .arch-kind {
-            font-size: 0.5rem; letter-spacing: 0.16em; text-transform: uppercase;
+            font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
             color: #4a4a4a;
         }
         .arch-shape {
@@ -214,6 +235,12 @@
             background: repeating-linear-gradient(90deg, #5a5a5a 0 3px, transparent 3px 6px);
         }
         .chart-key i.bar { width: 11px; height: 11px; }
+        .chart-key i.hollow { background: none; border: 2px solid; }
+        /* The vertical break a chart draws where the game's rules changed. */
+        .chart-key i.vdash {
+            width: 2px; height: 13px;
+            background: repeating-linear-gradient(180deg, var(--chart-axis, #4a4a4a) 0 3px, transparent 3px 6px);
+        }
 
         /* A short read-this-first line above a chart's key. */
         .how-to-read {
@@ -233,13 +260,22 @@
         }
         .leg:hover { color: #eee; }
         .leg.off { opacity: 0.32; }
-        .leg-swatch { width: 14px; height: 2px; flex-shrink: 0; }
+        .leg-swatch { width: 18px; height: 2px; flex-shrink: 0; }
+        /* One group per chart panel, so 26 runs read as three short lists. */
+        .leg-group { display: flex; flex-wrap: wrap; align-items: baseline;
+                     gap: 0.3rem 1.2rem; width: 100%; }
+        .leg-head {
+            flex: 0 0 100%; margin-top: 0.4rem;
+            font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+            color: var(--dim, #7d7d7d);
+        }
+        canvas.chart.tree { height: 470px; }
         .leg-score { color: #555; font-variant-numeric: tabular-nums; }
 
         /* ── Ledger ─────────────────────────────────────────────────────── */
         .ledger { border: 1px solid #1e1e1e; }
         .row {
-            display: grid; grid-template-columns: 12px 1.6fr 0.7fr 0.6fr 0.7fr 0.5fr;
+            display: grid; grid-template-columns: 12px 1.6fr 0.55fr 0.55fr 0.6fr minmax(8.5rem, 0.7fr);
             gap: 1rem; align-items: center;
             padding: 0.85rem 1.1rem; border-top: 1px solid #141414;
             font-size: 0.72rem; color: #888; cursor: pointer;
@@ -248,14 +284,34 @@
         .row:first-child { border-top: 0; }
         .row:hover { background: #111; color: #ddd; }
         .row.head {
-            color: #4a4a4a; font-size: 0.53rem; letter-spacing: 0.16em;
+            color: #4a4a4a; font-size: 0.68rem; letter-spacing: 0.12em;
             text-transform: uppercase; cursor: default; background: #0b0b0b;
         }
         .row.head:hover { background: #0b0b0b; color: #4a4a4a; }
+        /* Phones: six columns at 390px squeezed the run name to a word per
+           line and pushed REJECTED against the row's edge. Time goes (the
+           timeline chart has it), steps tuck under the name and the outcome
+           under the score. */
+        @media (max-width: 600px) {
+            .row {
+                grid-template-columns: 8px minmax(0, 1fr) auto;
+                grid-template-areas: "dot name score" "dot steps outcome";
+                gap: 0.25rem 0.8rem; padding: 0.8rem 0.9rem;
+            }
+            .row > :nth-child(1) { grid-area: dot; align-self: start; margin-top: 0.35rem; }
+            .row > :nth-child(2) { grid-area: name; }
+            .row > .num:nth-child(3) { grid-area: steps; text-align: left; }
+            .row:not(.head) > :nth-child(3)::after { content: ' steps'; }
+            .row > :nth-child(4) { display: none; }
+            .row > :nth-child(5) { grid-area: score; }
+            .row > :nth-child(6) { grid-area: outcome; text-align: right; }
+            .row-note { padding: 0.9rem; }
+        }
         .row-dot { width: 7px; height: 7px; border-radius: 50%; }
         .row-name { color: #ccc; }
+        .row-tag { display: block; margin-top: 0.2rem; font-size: 0.66rem; color: var(--dim, #7d7d7d); }
         .row .num { font-variant-numeric: tabular-nums; text-align: right; }
-        .row-outcome { font-size: 0.53rem; letter-spacing: 0.14em; text-transform: uppercase; }
+        .row-outcome { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; }
         /* NOT a .row. It used to carry that class, which made it a six-column
            grid, so its text became an anonymous grid item in the 12px dot
            column and wrapped one word wide. It is a plain block. */
@@ -276,7 +332,7 @@
         .o-unknown  { color: #4a4a4a; }
 
         .foot {
-            margin-top: 5rem; font-size: 0.52rem; letter-spacing: 0.16em;
+            margin-top: 5rem; font-size: 0.68rem; letter-spacing: 0.12em;
             color: rgba(255,255,255,0.14); text-transform: uppercase;
         }
     </style>
@@ -301,9 +357,14 @@
             <h1>inside</h1>
             <p class="lede">
                 Every run that produced the three opponents on this site — including
-                the ones that failed. Nothing here is hand-written behaviour: each
-                model learned by playing its own game several million times and
-                being scored on the result.
+                the ones that failed. Each opponent is a neural network, not
+                hand-written rules. Snake and Tetris got there by reinforcement
+                learning: playing their own game millions of times and being scored
+                on the result (Snake after first copying a hand-written player).
+                Watermelon's is a copy — a network trained to imitate a hand-written
+                heuristic — because once the game's fruit sizes were fixed, thirty
+                million steps of reinforcement learning on top of that copy added
+                nothing measurable.
             </p>
         </div>
 
@@ -314,8 +375,9 @@
                 <div>
                     <h2>Learning curves</h2>
                     <p class="block-note">
-                        Score against training steps, straight out of the logs. Click a
-                        run to hide it; hover for the numbers.
+                        Every run against training steps, straight out of the logs — one
+                        panel per game, each on its own scale. Click a run to hide it;
+                        hover for the numbers.
                     </p>
                 </div>
                 <div class="controls">
@@ -325,7 +387,8 @@
                 </div>
             </div>
             <div class="chart-wrap">
-                <canvas class="chart" id="curve"></canvas>
+                <canvas class="chart" id="curve" role="img"
+                        aria-label="Learning curves: game score against training steps for every run, one panel per game. Each run's final numbers are in the table at the bottom of the page."></canvas>
                 <div class="tip" id="curve-tip"></div>
             </div>
             <div class="legend" id="legend"></div>
@@ -345,7 +408,8 @@
                 </div>
             </div>
             <div class="chart-wrap">
-                <canvas class="chart" id="evals"></canvas>
+                <canvas class="chart" id="evals" role="img"
+                        aria-label="Fixed-seed checks during one training run: individual scores swing by hundreds of points, while the best-so-far line only steps up."></canvas>
                 <div class="tip" id="evals-tip"></div>
             </div>
             <p class="how-to-read">
@@ -378,25 +442,38 @@
                     <div class="ctl-group" id="prog-tabs"></div>
                 </div>
             </div>
-            <div class="chart-wrap">
-                <canvas class="chart" id="progression"></canvas>
+            <div class="chart-wrap scroll-x">
+                <canvas class="chart" id="progression" role="img"
+                        aria-label="Evaluated score of every finished run against its total training. Watermelon's newest model is shown separately because its fruit sizes changed, so its score is not comparable."></canvas>
                 <div class="tip" id="prog-tip"></div>
             </div>
             <p class="how-to-read">
                 Sideways is <b>total</b> training, not the length of one run: a run that
                 continues from an earlier model inherits everything that model already
                 learned, so 4M steps on top of a 10M-step model sits at 14M. Up is the
-                score it achieved. The line only joins versions that were kept — a run
-                that scored worse was discarded, so nothing was ever built on top of it,
-                and joining it to the line would suggest otherwise. Hover any point for
-                what changed in that run and what it bought per million steps.
+                score it achieved. The line only joins versions that were kept and built
+                on — a run that scored worse was discarded, so nothing was ever built on
+                top of it, and joining it to the line would suggest otherwise. Hover any
+                point for what changed in that run and what it bought per million steps.
+            </p>
+            <p class="how-to-read">
+                <b>Watermelon has a break in it.</b> Its fruit sizes were changed after
+                the earlier runs: two of the largest fruit could never fit in the well
+                together, so they could never merge and clear, and every game was bound
+                to fill up however well it was played. That made it a different game. The
+                model after the break scores about four times higher because the game
+                changed, not because training paid off — the unchanged hand-written
+                heuristic improved by a similar factor — and it was trained afresh by
+                imitation rather than continued from the runs before it. So it gets its
+                own panel and its own scale.
             </p>
             <div class="chart-key">
-                <span><i style="background:var(--chart-ink)"></i> the surviving chain</span>
+                <span><i style="background:var(--chart-ink)"></i> the line that was kept</span>
                 <span><i class="dot" style="background:var(--fg)"></i> shipped to the site</span>
                 <span><i class="dot" style="background:var(--chart-ink)"></i> kept, an improvement</span>
-                <span><i class="dot" style="background:var(--warn)"></i> discarded, scored worse</span>
+                <span><i class="dot hollow" style="border-color:var(--warn)"></i> discarded, scored worse</span>
                 <span><i class="ring"></i> weights still exist — playable</span>
+                <span><i class="vdash"></i> rules changed — not comparable</span>
             </div>
         </div>
 
@@ -411,28 +488,31 @@
                     </p>
                 </div>
             </div>
-            <div class="chart-wrap">
-                <canvas class="chart" id="tree"></canvas>
+            <div class="chart-wrap scroll-x">
+                <canvas class="chart tree" id="tree" role="img"
+                        aria-label="Family tree of training runs: the line that was kept, with rejected runs branching off below it as dead ends."></canvas>
                 <div class="tip" id="tree-tip"></div>
             </div>
             <p class="how-to-read">
                 Each dot is one training run, placed left to right by how much total
-                training it represents, with its evaluated score printed above it. A
-                curve joins a run to <b>the model it started from</b>. The straight row
-                across the middle is the surviving line — the ancestry of what the site
-                serves today. Everything hanging below it is a branch that stopped:
-                a run that finished below the model already shipped, so it was kept as a
-                record and never built on. Two of Watermelon's branches leave from the
-                same parent, which is what trying twice from a known-good model looks
-                like.
+                training it represents, with its evaluated score beside it. A curve joins
+                a run to <b>the model it started from</b>. The straight row along the top
+                is the line that was kept and built on. Everything hanging below it is a
+                branch that stopped: usually a run that finished below the model it
+                started from, so it was kept as a record and never built on. Runs with no
+                score were stopped before they were worth measuring. Watermelon's line
+                <b>restarts</b> after a break: the fruit sizes changed, which made it a
+                different game, and the model the site serves was trained afresh on it
+                rather than continued from anything to the left.
             </p>
             <div class="chart-key">
                 <span><i class="dot" style="background:var(--fg)"></i> shipped</span>
                 <span><i class="dot" style="background:var(--accent-2)"></i> an improvement</span>
-                <span><i class="dot" style="background:var(--warn)"></i> rejected — dead end</span>
+                <span><i class="dot hollow" style="border-color:var(--warn)"></i> rejected — dead end</span>
                 <span><i class="dot" style="background:var(--chart-running)"></i> still running</span>
                 <span><i style="background:var(--chart-ink);height:2px"></i> continued from</span>
                 <span><i class="dash" style="background:repeating-linear-gradient(90deg,var(--warn) 0 3px,transparent 3px 6px)"></i> abandoned branch</span>
+                <span><i class="vdash"></i> restart — the game changed</span>
             </div>
         </div>
 
@@ -451,22 +531,20 @@
                 </div>
             </div>
             <div class="chart-wrap">
-                <canvas class="chart" id="dist"></canvas>
+                <canvas class="chart" id="dist" role="img"
+                        aria-label="Histogram of sixty games played by the same model, with its mean and median marked."></canvas>
                 <div class="tip" id="dist-tip"></div>
             </div>
             <p class="how-to-read">
                 Sideways is the score; each bar counts how many of the sixty games
-                finished in that band. Snake's ran from <b>58 to 180</b> — the best game
-                was three times the worst, from an identical opponent. Note how far apart
-                the mean and median sit: a handful of games that ended almost
-                immediately drag the average well below the typical result. That gap is
-                why one evaluation proves very little, and why a model is only replaced
-                when it wins over dozens of games rather than one.
+                finished in that band. <span id="dist-copy"></span> That spread is why one
+                evaluation proves very little, and why a model is only replaced when it
+                wins over dozens of games rather than one.
             </p>
             <div class="chart-key">
                 <span><i class="bar" style="background:var(--chart-ink);opacity:0.42"></i> games in that band</span>
-                <span><i class="dash" style="background:repeating-linear-gradient(90deg,var(--chart-ink) 0 3px,transparent 3px 6px)"></i> mean — pulled down by bad games</span>
-                <span><i class="dash" style="background:repeating-linear-gradient(90deg,var(--accent-2) 0 3px,transparent 3px 6px)"></i> median — the typical game</span>
+                <span><i class="dash" style="background:repeating-linear-gradient(90deg,var(--chart-ink) 0 5px,transparent 5px 8px)"></i> mean — the average</span>
+                <span><i class="dash" style="background:repeating-linear-gradient(90deg,var(--accent-2) 0 2px,transparent 2px 5px)"></i> median — the typical game</span>
             </div>
         </div>
 
@@ -506,7 +584,8 @@
                     Measured with the real training loop, not a synthetic benchmark.
                 </p>
                 <div class="chart-wrap">
-                    <canvas class="chart short" id="bench"></canvas>
+                    <canvas class="chart short" id="bench" role="img"
+                        aria-label="Training throughput in steps per second: 20 environments on the GPU is fastest at 1,079, against 217 on the CPU."></canvas>
                     <div class="tip" id="bench-tip"></div>
                 </div>
             </div>
@@ -524,15 +603,18 @@
                 <div>
                     <h2>When it all happened</h2>
                     <p class="block-note">
-                        Every run on a wall clock. Gaps are the machine doing something
-                        else; the bars are actual compute.
+                        Every run on a wall clock. Short gaps are the machine doing
+                        something else; long idle stretches are cut out of the axis and
+                        marked, so the weeks of runs stay readable.
                     </p>
                 </div>
             </div>
-            <div class="chart-wrap">
-                <canvas class="chart" id="timeline"></canvas>
+            <div class="chart-wrap scroll-x">
+                <canvas class="chart" id="timeline" role="img"
+                        aria-label="Every training run on a calendar. Long idle stretches are cut out of the axis and marked."></canvas>
                 <div class="tip" id="timeline-tip"></div>
             </div>
+            <div class="chart-key" id="timeline-key"></div>
         </div>
 
         <div class="block" id="brain-block">
@@ -548,7 +630,8 @@
                 </div>
             </div>
             <div class="chart-wrap">
-                <canvas class="chart tall" id="brain"></canvas>
+                <canvas class="chart tall" id="brain" role="img"
+                        aria-label="The Tetris network's real weights drawn as connections between sampled neurons, animated with activity replayed from a real game."></canvas>
                 <div class="tip" id="brain-tip"></div>
             </div>
             <p class="how-to-read">
@@ -651,6 +734,60 @@
 
         const runs = TRAINING_DATA.runs;
         const shipped = TRAINING_DATA.shipped;
+        const runByKey = Object.fromEntries(runs.map(r => [r.key, r]));
+
+        /* Where a game's RULES changed, so scores either side are not on the
+           same scale. Watermelon's fruit sizes were replaced on 2026-08-08
+           (CLAUDE.md, "Watermelon's ceiling was geometric"): the old ladder
+           made the top-tier merge physically impossible, and the unchanged
+           heuristic went from 85.6 drops to 375 on that change alone. The run
+           after it is ~4500 against ~1000 before, and drawn on one axis with a
+           line between them that read as training quadrupling the score.
+
+           Its `parent` in RUN_NOTES records what came next in the story, not
+           inherited weights: the shipped model is that pipeline's
+           behavioural-cloning stage, trained from scratch on the new game.
+           So every chart splits a game at these runs, gives the far side its
+           own scale, and never draws a "continued from" link across. */
+        const RESTARTS = {
+            'watermelon/train_geometry.log': {
+                short: 'new fruit sizes',
+                why: 'a different game: fruit sizes changed, scores not comparable',
+            },
+        };
+        // The restart a run sits after, if any (itself or an ancestor).
+        function eraOf(r) {
+            const seen = new Set();
+            for (let x = r; x && !seen.has(x.key); x = runByKey[x.parent]) {
+                seen.add(x.key);
+                if (RESTARTS[x.key]) return x.key;
+            }
+            return null;
+        }
+        runs.forEach(r => { r.era = eraOf(r); });
+        // Steps after the restart, not cumulative across it.
+        const eraBase = k => runByKey[k].cumulativeSteps - runByKey[k].steps;
+
+        /* The line that was kept and built on, per game and era: the shipped
+           run (or failing that the best kept one) and its ancestors. A run
+           that beat its parent but was never built on — Watermelon's reward
+           redesign, a sibling of the 1032 run — is a branch, not the trunk;
+           putting both on the trunk stacked them on one point. */
+        function trunkOf(list) {
+            const out = new Set();
+            const groups = {};
+            list.forEach(r => { (groups[r.era || ''] = groups[r.era || ''] || []).push(r); });
+            Object.values(groups).forEach(g => {
+                const kept = g.filter(r => r.outcome && r.outcome !== 'rejected');
+                const head = kept.find(r => r.outcome === 'shipped' || r.outcome === 'running')
+                          || kept.slice().sort((a, b) => (b.evalScore || 0) - (a.evalScore || 0))[0];
+                const era = head && head.era;
+                for (let x = head; x && !out.has(x.key) && x.era === era; x = runByKey[x.parent]) {
+                    out.add(x.key);
+                }
+            });
+            return out;
+        }
 
         /* Colours are assigned per game so the eye groups them, with later
            runs standing out more. On a dark page that means lighter; on a
@@ -658,17 +795,25 @@
            lightness, which on Filings and Dispersion drew the newest and most
            important runs as the faintest lines on the chart (~1.8:1). */
         const HUES = { snake: 145, tetris: 265, watermelon: 205 };
+        /* Within a game, neighbouring runs also differ in hue (a 50-degree
+           sweep) and in dash pattern. Lightness alone could not tell seventeen
+           Watermelon runs apart: adjacent ones were 2% apart. */
+        const DASHES = [[], [7, 4], [2, 3]];
         const byGame = {};
         runs.forEach(r => { (byGame[r.game] = byGame[r.game] || []).push(r); });
         function colourRuns() {
             Object.entries(byGame).forEach(([g, list]) => {
                 list.forEach((r, i) => {
                     const t = list.length === 1 ? 1 : i / (list.length - 1);
-                    const light = PAL.light ? 62 - t * 34 : 38 + t * 34;
-                    r.color = `hsl(${HUES[g] || 0} ${45 + t * 30}% ${light}%)`;
+                    const light = PAL.light ? 60 - t * 32 : 40 + t * 32;
+                    r.color = `hsl(${(HUES[g] || 0) - 25 + t * 50} ${45 + t * 30}% ${light}%)`;
+                    r.dash = DASHES[(list.length - 1 - i) % DASHES.length];
                 });
             });
         }
+        // A legend swatch that shows the run's dash pattern as well as colour.
+        const swatchBg = r => !r.dash || !r.dash.length ? r.color
+            : `repeating-linear-gradient(90deg, ${r.color} 0 ${r.dash[0]}px, transparent ${r.dash[0]}px ${r.dash[0] + r.dash[1]}px)`;
         colourRuns();
         // Swatches built once (the ledger) keep their inline colour, so a
         // theme change has to repaint them by hand.
@@ -676,7 +821,7 @@
             const byKey = Object.fromEntries(runs.map(r => [r.key, r]));
             document.querySelectorAll('[data-file] .leg-swatch, [data-file] .row-dot').forEach(el => {
                 const r = byKey[el.closest('[data-file]').dataset.file];
-                if (r) el.style.background = r.color;
+                if (r) el.style.background = el.classList.contains('leg-swatch') ? swatchBg(r) : r.color;
             });
         }
 
@@ -714,37 +859,42 @@
         let xmode = 'log';   // default, because Tetris is 25x longer than anything else
         const hidden = new Set();
 
+        // A tab strip's buttons are toggles, and say which one is on.
+        const ctl = (on, attrs, text) =>
+            `<button type="button" class="ctl${on ? ' on' : ''}" aria-pressed="${on}" ${attrs}>${text}</button>`;
+        function press(b) {
+            [...b.parentNode.children].forEach(c => {
+                c.classList.toggle('on', c === b);
+                c.setAttribute('aria-pressed', String(c === b));
+            });
+        }
+
         const games = [...new Set(runs.map(r => r.game))];
         document.getElementById('game-tabs').innerHTML =
-            ['all', ...games].map(g =>
-                `<button class="ctl${g === 'all' ? ' on' : ''}" data-game="${g}">${g}</button>`
-            ).join('');
+            ['all', ...games].map(g => ctl(g === game, `data-game="${g}"`, g)).join('');
         document.getElementById('metric-tabs').innerHTML =
-            Object.values(METRICS).map(m =>
-                `<button class="ctl${m.key === 's' ? ' on' : ''}" data-metric="${m.key}">${m.label}</button>`
-            ).join('');
+            Object.values(METRICS).map(m => ctl(m.key === metric, `data-metric="${m.key}"`, m.label)).join('');
 
         document.getElementById('game-tabs').addEventListener('click', e => {
             const b = e.target.closest('[data-game]'); if (!b) return;
             game = b.dataset.game;
-            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            press(b);
             renderLegend(); drawCurve();
         });
         document.getElementById('metric-tabs').addEventListener('click', e => {
             const b = e.target.closest('[data-metric]'); if (!b) return;
             metric = b.dataset.metric;
-            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            press(b);
             renderLegend(); drawCurve();
         });
 
         document.getElementById('scale-tabs').innerHTML =
             [['lin', 'linear'], ['log', 'log steps']].map(([k, l]) =>
-                `<button class="ctl${k === xmode ? ' on' : ''}" data-scale="${k}">${l}</button>`
-            ).join('');
+                ctl(k === xmode, `data-scale="${k}"`, l)).join('');
         document.getElementById('scale-tabs').addEventListener('click', e => {
             const b = e.target.closest('[data-scale]'); if (!b) return;
             xmode = b.dataset.scale;
-            [...b.parentNode.children].forEach(c => c.classList.toggle('on', c === b));
+            press(b);
             drawCurve();
         });
 
@@ -779,12 +929,35 @@
                     + (alt.length ? ` Switch to ${alt.join(' or ')} to see ${games.length > 1 ? 'them' : 'it'}.` : '');
             }
 
-            document.getElementById('legend').innerHTML = shown().map(r => `
-                <button class="leg${hidden.has(r.key) ? ' off' : ''}" data-file="${r.key}">
-                    <span class="leg-swatch" style="background:${r.color}"></span>
-                    <span>${r.game} · ${r.label}</span>
-                    <span class="leg-score">${r.evalScore ? r.evalScore.toFixed(0) : ''}</span>
-                </button>`).join('');
+            // Grouped the same way the chart is paneled, so each list sits
+            // under a heading instead of repeating the game in every entry.
+            document.getElementById('legend').innerHTML = curveGroups(shown()).map(g => `
+                <div class="leg-group" role="group" aria-label="${g.title}">
+                    <span class="leg-head">${g.title}</span>
+                    ${g.list.map(r => `
+                    <button type="button" class="leg${hidden.has(r.key) ? ' off' : ''}" data-file="${r.key}"
+                            aria-pressed="${!hidden.has(r.key)}" title="show or hide this run">
+                        <span class="leg-swatch" style="background:${swatchBg(r)}"></span>
+                        <span>${r.label}</span>
+                        <span class="leg-score">${r.evalScore ? r.evalScore.toFixed(0) : ''}</span>
+                    </button>`).join('')}
+                </div>`).join('');
+        }
+
+        /* One panel per game, and a second Watermelon panel after its rules
+           changed. A shared y-axis let the ~4,500-point Watermelon run press
+           Snake (~100) flat against zero, and put two incomparable games on
+           one scale. */
+        function curveGroups(list) {
+            const out = [];
+            list.forEach(r => {
+                const id = r.game + (r.era ? ' ' + r.era : '');
+                let g = out.find(x => x.id === id);
+                if (!g) out.push(g = { id, list: [],
+                    title: r.game + (r.era ? ' · ' + RESTARTS[r.era].short : '') });
+                g.list.push(r);
+            });
+            return out;
         }
         document.getElementById('legend').addEventListener('click', e => {
             const b = e.target.closest('[data-file]'); if (!b) return;
@@ -821,9 +994,30 @@
             return out;
         }
 
-        function drawFrame(ctx, w, h, xs, ys, xFmt, yFmt, yAxisLabel) {
-            ctx.clearRect(0, 0, w, h);
-            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+        // 11px is the floor for chart text; 9-10px read as specks on a phone.
+        const FONT = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
+        const FONT_SMALL = '10.5px Helvetica Neue, Helvetica, Arial, sans-serif';
+
+        /* Text with a halo in the chart's own background, so a label that has
+           to sit on a line or a bar stays readable instead of being crossed. */
+        function haloText(ctx, text, x, y, color) {
+            ctx.save();
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = PAL.bg;
+            ctx.strokeText(text, x, y);
+            ctx.fillStyle = color;
+            ctx.fillText(text, x, y);
+            ctx.restore();
+        }
+
+        /* `box` is the plot area; it defaults to the whole canvas less PAD, and
+           a small-multiple panel passes its own. Only the whole-canvas form
+           clears, or each panel would erase the ones above it. */
+        function drawFrame(ctx, w, h, xs, ys, xFmt, yFmt, yAxisLabel, box) {
+            const B = box || { l: PAD.l, r: w - PAD.r, t: PAD.t, b: h - PAD.b };
+            if (!box) ctx.clearRect(0, 0, w, h);
+            ctx.font = FONT;
             ctx.textBaseline = 'middle';
 
             ys.forEach(v => {
@@ -831,26 +1025,33 @@
                 ctx.strokeStyle = PAL.grid;
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(PAD.l, y + 0.5); ctx.lineTo(w - PAD.r, y + 0.5);
+                ctx.moveTo(B.l, y + 0.5); ctx.lineTo(B.r, y + 0.5);
                 ctx.stroke();
                 ctx.fillStyle = PAL.label;
                 ctx.textAlign = 'right';
-                ctx.fillText(yFmt(v), PAD.l - 9, y);
+                ctx.fillText(yFmt(v), B.l - 9, y);
             });
 
+            // Thinned so labels never touch: at 360px "300k" and "1.0M" ran
+            // into each other. A label is skipped if it would land within 8px
+            // of the last one drawn.
+            let lastRight = -Infinity;
             xs.forEach(v => {
                 const x = xs.scale(v);
+                const text = xFmt(v), tw = ctx.measureText(text).width;
+                if (x - tw / 2 < lastRight + 8 || x + tw / 2 > w - 2) return;
+                lastRight = x + tw / 2;
                 ctx.fillStyle = PAL.label;
                 ctx.textAlign = 'center';
-                ctx.fillText(xFmt(v), x, h - PAD.b + 14);
+                ctx.fillText(text, x, B.b + 14);
             });
 
             ctx.save();
-            ctx.translate(13, (h - PAD.b + PAD.t) / 2);
+            ctx.translate(13, (B.b + B.t) / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.textAlign = 'center';
             ctx.fillStyle = PAL.label;
-            ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.font = FONT_SMALL;
             ctx.fillText(yAxisLabel.toUpperCase(), 0, 0);
             ctx.restore();
         }
@@ -888,67 +1089,102 @@
         let curveGeom = null;
 
         function drawCurve() {
+            const groups = curveGroups(shown());
+            // One 380px chart for a single panel; more than one stacks, each
+            // short enough that the whole set still fits a laptop screen.
+            const PANEL = groups.length > 1 ? 230 : 380;
+            curveCvs.style.height = Math.max(1, groups.length) * PANEL + 'px';
             const { ctx, w, h } = setupCanvas(curveCvs);
-            const list = visible();
 
-            if (!list.length) {
+            if (!groups.length) {
                 ctx.clearRect(0, 0, w, h);
                 ctx.fillStyle = PAL.label;
-                ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.font = FONT;
                 ctx.textAlign = 'center';
                 ctx.fillText('no runs recorded this metric', w / 2, h / 2);
                 curveGeom = null;
                 return;
             }
 
-            let xMax = 0, xMin = Infinity, yLo = Infinity, yHi = -Infinity;
-            list.forEach(r => r.series.forEach(p => {
-                if (p[metric] === undefined) return;
-                xMax = Math.max(xMax, p.t);
-                if (p.t > 0) xMin = Math.min(xMin, p.t);
-                yLo = Math.min(yLo, p[metric]);
-                yHi = Math.max(yHi, p[metric]);
-            }));
-            if (!isFinite(xMin)) xMin = 1;
-            if (yLo === yHi) { yLo -= 1; yHi += 1; }
-            const padY = (yHi - yLo) * 0.08;
-            yLo -= padY; yHi += padY;
+            const panels = groups.map((g, gi) => {
+                const top = gi * PANEL;
+                const titled = groups.length > 1;
+                const B = { l: PAD.l, r: w - PAD.r, t: top + PAD.t + (titled ? 16 : 0),
+                            b: top + PANEL - PAD.b };
+                const list = g.list.filter(r => !hidden.has(r.key));
 
-            const xs = xmode === 'log'
-                ? makeLogScale(xMin, xMax, PAD.l, w - PAD.r)
-                : makeScale(0, xMax, PAD.l, w - PAD.r);
-            const ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
-            const xt = xmode === 'log' ? logTicks(xMin, xMax) : niceTicks(0, xMax, 6);
-            const yt = niceTicks(yLo, yHi, 5);
-            xt.scale = xs; yt.scale = ys;
+                if (titled) {
+                    ctx.font = FONT;
+                    ctx.textBaseline = 'middle';
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = PAL.fg;
+                    ctx.fillText(g.title.toUpperCase(), B.l, top + PAD.t);
+                    if (gi) {
+                        ctx.strokeStyle = PAL.track; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.moveTo(0, top + 0.5); ctx.lineTo(w, top + 0.5); ctx.stroke();
+                    }
+                }
+                if (!list.length) {
+                    ctx.fillStyle = PAL.label; ctx.font = FONT; ctx.textAlign = 'center';
+                    ctx.fillText('every run in this panel is hidden', (B.l + B.r) / 2, (B.t + B.b) / 2);
+                    return { B, list, xs: null, ys: null, top, bottom: top + PANEL };
+                }
 
-            drawFrame(ctx, w, h, xt, yt, fmtSteps,
-                      v => (Math.abs(v) >= 1000 ? fmtSteps(v) : v.toFixed(0)),
-                      METRICS[metric].axis);
-
-            ctx.lineJoin = ctx.lineCap = 'round';
-            list.forEach(r => {
-                ctx.strokeStyle = r.color;
-                ctx.lineWidth = r.outcome === 'shipped' || r.outcome === 'running' ? 2 : 1.25;
-                ctx.beginPath();
-                let started = false;
-                r.series.forEach(p => {
+                let xMax = 0, xMin = Infinity, yLo = Infinity, yHi = -Infinity;
+                list.forEach(r => r.series.forEach(p => {
                     if (p[metric] === undefined) return;
-                    const x = xs(p.t), y = ys(p[metric]);
-                    started ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), started = true);
+                    xMax = Math.max(xMax, p.t);
+                    if (p.t > 0) xMin = Math.min(xMin, p.t);
+                    yLo = Math.min(yLo, p[metric]);
+                    yHi = Math.max(yHi, p[metric]);
+                }));
+                if (!isFinite(xMin)) xMin = 1;
+                if (yLo === yHi) { yLo -= 1; yHi += 1; }
+                const padY = (yHi - yLo) * 0.08;
+                yLo -= padY; yHi += padY;
+
+                const xs = xmode === 'log'
+                    ? makeLogScale(xMin, xMax, B.l, B.r)
+                    : makeScale(0, xMax, B.l, B.r);
+                const ys = makeScale(yLo, yHi, B.b, B.t);
+                const xt = xmode === 'log' ? logTicks(xMin, xMax) : niceTicks(0, xMax, 6);
+                const yt = niceTicks(yLo, yHi, groups.length > 1 ? 3 : 5);
+                xt.scale = xs; yt.scale = ys;
+
+                drawFrame(ctx, w, h, xt, yt, fmtSteps,
+                          // `|| 0` turns the -0 a tick at zero can land on into 0.
+                          v => (Math.abs(v) >= 1e4 ? fmtSteps(v) : (Math.round(v) || 0).toLocaleString()),
+                          METRICS[metric].axis, B);
+
+                ctx.lineJoin = ctx.lineCap = 'round';
+                list.forEach(r => {
+                    ctx.strokeStyle = r.color;
+                    ctx.lineWidth = r.outcome === 'shipped' || r.outcome === 'running' ? 2 : 1.25;
+                    ctx.setLineDash(r.dash || []);
+                    ctx.beginPath();
+                    let started = false;
+                    r.series.forEach(p => {
+                        if (p[metric] === undefined) return;
+                        const x = xs(p.t), y = ys(p[metric]);
+                        started ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), started = true);
+                    });
+                    ctx.stroke();
                 });
-                ctx.stroke();
+                ctx.setLineDash([]);
+                return { B, list, xs, ys, top, bottom: top + PANEL };
             });
 
-            curveGeom = { xs, ys, list, w, h };
+            curveGeom = { panels, w, h };
         }
 
         function nearest(geom, mx, my) {
+            const panel = geom.panels.find(p => my >= p.top && my < p.bottom);
+            if (!panel || !panel.xs) return null;
             let best = null, bestD = Infinity;
-            geom.list.forEach(r => {
+            panel.list.forEach(r => {
                 r.series.forEach(p => {
                     if (p[metric] === undefined) return;
-                    const dx = geom.xs(p.t) - mx, dy = geom.ys(p[metric]) - my;
+                    const dx = panel.xs(p.t) - mx, dy = panel.ys(p[metric]) - my;
                     const d = dx * dx + dy * dy;
                     if (d < bestD) { bestD = d; best = { r, p }; }
                 });
@@ -969,6 +1205,7 @@
                 `<div class="tip-row">${METRICS[metric].axis} <b>${p[metric]}</b></div>`,
             ];
             if (p.e !== undefined) rows.push(`<div class="tip-row">elapsed <b>${fmtHours(p.e)}</b></div>`);
+            if (r.era) rows.push(`<div class="tip-row">${RESTARTS[r.era].why}</div>`);
             curveTip.innerHTML =
                 `<div class="tip-run" style="color:${r.color}">${r.game} · ${r.label}</div>` + rows.join('');
             curveTip.style.opacity = 1;
@@ -1014,14 +1251,14 @@
             // Sits clear of its own line, and flips below it when the baseline
             // is close to the top of the plot — at -9 with textBaseline middle
             // the glyphs sat on the dashes.
-            ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.font = FONT_SMALL;
             ctx.textAlign = 'left';
             const near = ys(base) - PAD.t < 26;
             ctx.textBaseline = near ? 'top' : 'alphabetic';
             const label = 'THE MODEL THIS RUN STARTED FROM — ' + base.toFixed(0);
             const lw = ctx.measureText(label).width;
             ctx.fillStyle = PAL.bg;
-            ctx.fillRect(PAD.l + 4, ys(base) + (near ? 6 : -19), lw + 8, 14);
+            ctx.fillRect(PAD.l + 4, ys(base) + (near ? 5 : -20), lw + 8, 16);
             ctx.fillStyle = PAL.dim;
             ctx.fillText(label, PAD.l + 8, ys(base) + (near ? 9 : -8));
             ctx.textBaseline = 'middle';
@@ -1087,7 +1324,8 @@
                 const [cls, text] = OUTCOME[r.outcome] || ['o-unknown', 'not evaluated'];
                 return `<div class="row" data-file="${r.key}" tabindex="0" role="button" aria-label="${r.game} ${r.label}: show notes">
                     <span class="row-dot" style="background:${r.color}"></span>
-                    <span class="row-name">${r.game} · ${r.label}</span>
+                    <span class="row-name">${r.game} · ${r.label}${r.era
+                        ? `<span class="row-tag">${RESTARTS[r.era].short} — a different game, score not comparable</span>` : ''}</span>
                     <span class="num">${fmtSteps(r.steps)}</span>
                     <span class="num">${fmtHours(r.elapsed)}</span>
                     <span class="num">${r.evalScore ? r.evalScore.toFixed(2) : '—'}</span>
@@ -1122,12 +1360,10 @@
         function tabs(id, items, initial, onPick) {
             const el = document.getElementById(id);
             if (!el) return;
-            el.innerHTML = items.map(v =>
-                `<button class="ctl${v === initial ? ' on' : ''}" data-v="${v}">${v}</button>`
-            ).join('');
+            el.innerHTML = items.map(v => ctl(v === initial, `data-v="${v}"`, v)).join('');
             el.addEventListener('click', e => {
                 const b = e.target.closest('[data-v]'); if (!b) return;
-                [...el.children].forEach(c => c.classList.toggle('on', c === b));
+                press(b);
                 onPick(b.dataset.v);
             });
         }
@@ -1154,75 +1390,125 @@
         const progTip = document.getElementById('prog-tip');
         let progGeom = null;
 
+        /* The steps axis for one game. Runs after a rules change get a zone of
+           their own at the right, past a dashed break, positioned only by order
+           within it: their cumulative steps would claim they inherited the
+           training to the left, which they did not. */
+        function eraLayout(list, w, slack) {
+            const right = w - PAD.r;
+            const old = list.filter(r => !r.era), neu = list.filter(r => r.era);
+            const xMax = Math.max(1, ...old.map(r => r.cumulativeSteps));
+            if (!neu.length) {
+                const xs = makeScale(0, xMax * slack, PAD.l, right);
+                return { x: r => xs(r.cumulativeSteps), xs, xMax, split: null, right };
+            }
+            const zone = Math.max(112, Math.min(230, (right - PAD.l) * 0.22));
+            const split = right - zone;
+            const xs = makeScale(0, xMax * slack, PAD.l, split - 30);
+            const order = neu.slice().sort((a, b) => a.cumulativeSteps - b.cumulativeSteps);
+            const xn = r => order.length === 1 ? split + zone / 2
+                : split + 34 + order.indexOf(r) / (order.length - 1) * (zone - 68);
+            return { x: r => r.era ? xn(r) : xs(r.cumulativeSteps), xs, xMax, split, zone, right,
+                     era: neu[0].era };
+        }
+
+        // The dashed break and its caption, over the full plot height.
+        function drawBreak(ctx, L, top, bottom) {
+            ctx.strokeStyle = PAL.axis;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 4]);
+            ctx.beginPath(); ctx.moveTo(L.split + 0.5, top - 6); ctx.lineTo(L.split + 0.5, bottom + 6); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.font = FONT;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            haloText(ctx, RESTARTS[L.era].short.toUpperCase(), L.split + 8, top + 2, PAL.fg);
+            ctx.font = FONT_SMALL;
+            haloText(ctx, 'not comparable', L.split + 8, top + 17, PAL.label);
+        }
+
         function drawProgression() {
             const { ctx, w, h } = setupCanvas(progCvs);
             const list = scored.filter(r => r.game === progGame)
                                .sort((a, b) => a.cumulativeSteps - b.cumulativeSteps);
             if (!list.length) { progGeom = null; return; }
 
-            const xMax = Math.max(...list.map(r => r.cumulativeSteps));
-            const vals = list.map(r => r.evalScore);
-            let yLo = Math.min(...vals), yHi = Math.max(...vals);
+            const L = eraLayout(list, w, 1.04);
+            const old = list.filter(r => !r.era), neu = list.filter(r => r.era);
+            const trunk = trunkOf(list);
 
-            /* Log scale once the spread passes 3x. Watermelon's newest model
-               scores ~4500 on a game whose fruit sizes changed, against ~600-1040
-               for everything before it; on a linear axis that one point pressed
-               every earlier run flat against the bottom. */
-            const LOG = yHi / Math.max(1, yLo) > 3;
-            let pad, ys, yt;
-            const xs = makeScale(0, xMax * 1.04, PAD.l, w - PAD.r);
-            if (LOG) {
-                yLo /= 1.3; yHi *= 1.3; pad = 0;
-                const ysL = makeScale(Math.log10(yLo), Math.log10(yHi), h - PAD.b, PAD.t);
-                ys = v => ysL(Math.log10(Math.max(v, 1e-6)));
-                yt = [];
-                for (let e = Math.floor(Math.log10(yLo)); e <= Math.ceil(Math.log10(yHi)); e++) {
-                    for (const m of [1, 2, 5]) {
-                        const v = m * Math.pow(10, e);
-                        if (v >= yLo && v <= yHi) yt.push(v);
-                    }
-                }
-            } else {
-                pad = (yHi - yLo) * 0.18 || 10;
-                yLo -= pad; yHi += pad;
-                ys = makeScale(yLo, yHi, h - PAD.b, PAD.t);
-                yt = niceTicks(yLo, yHi, 5);
+            /* Each side of a rules change gets its own score scale. Watermelon
+               used to share one log axis: ~4500 after the change against
+               ~600-1040 before it, with the kept-line drawn straight between
+               them, which read as training multiplying the score by four. */
+            function yScale(vals, top, bottom) {
+                let lo = Math.min(...vals), hi = Math.max(...vals);
+                const pad = (hi - lo) * 0.18 || hi * 0.12 || 10;
+                lo -= pad; hi += pad;
+                const ys = makeScale(lo, hi, bottom, top);
+                const yt = niceTicks(lo, hi, 5);
+                yt.scale = ys;
+                return { ys, yt, lo, pad };
             }
-            const xt = niceTicks(0, xMax, 6);
-            xt.scale = xs; yt.scale = ys;
-            drawFrame(ctx, w, h, xt, yt, fmtSteps, v => v.toFixed(0),
-                      LOG ? 'evaluated score (log scale)' : 'evaluated score');
+            const top = PAD.t + (L.split ? 30 : 0), bottom = h - PAD.b;
+            const YO = yScale((old.length ? old : list).map(r => r.evalScore), top, bottom);
+            const YN = neu.length ? yScale(neu.map(r => r.evalScore), top, bottom) : null;
+            const yOf = r => (r.era ? YN : YO).ys(r.evalScore);
 
-            // The surviving line only. Rejected runs are drawn as strays,
-            // because joining them would imply the next run built on them.
-            const kept = list.filter(r => r.outcome !== 'rejected');
+            const xt = niceTicks(0, L.xMax, L.split ? 4 : 6).filter(v => !L.split || L.xs(v) < L.split - 20);
+            xt.scale = L.xs;
+            const B = { l: PAD.l, r: L.split ? L.split - 12 : w - PAD.r, t: top, b: bottom };
+            drawFrame(ctx, w, h, xt, YO.yt, fmtSteps, v => v.toFixed(0), 'evaluated score', B);
+            if (YN) {
+                // The far side's own score ticks, inside its zone.
+                ctx.font = FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+                YN.yt.forEach(v => {
+                    const y = YN.ys(v);
+                    ctx.strokeStyle = PAL.grid; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(L.split + 4, y + 0.5); ctx.lineTo(L.right, y + 0.5); ctx.stroke();
+                    ctx.fillStyle = PAL.label;
+                    ctx.fillText(v.toFixed(0), L.split + 8, y - 8);
+                });
+                drawBreak(ctx, L, PAD.t, bottom);
+            }
+
+            // The kept line only, and never across a rules change. Rejected
+            // runs are drawn as strays, because joining them would imply the
+            // next run built on them.
+            const chain = list.filter(r => trunk.has(r.key));
             ctx.strokeStyle = PAL.ink;
             ctx.lineWidth = 1.8;
             ctx.lineJoin = ctx.lineCap = 'round';
             ctx.beginPath();
-            kept.forEach((r, i) => {
-                const x = xs(r.cumulativeSteps), y = ys(r.evalScore);
-                i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+            chain.forEach((r, i) => {
+                const prev = chain[i - 1];
+                const x = L.x(r), y = yOf(r);
+                (prev && prev.era === r.era) ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
             });
             ctx.stroke();
 
             list.forEach(r => {
-                const x = xs(r.cumulativeSteps), y = ys(r.evalScore);
+                const x = L.x(r), y = yOf(r);
                 const rejected = r.outcome === 'rejected';
                 if (rejected) {
+                    const Y = r.era ? YN : YO;
                     ctx.strokeStyle = PAL.bad;
                     ctx.lineWidth = 1;
                     ctx.setLineDash([2, 3]);
                     ctx.beginPath();
-                    ctx.moveTo(x, ys(yLo + pad)); ctx.lineTo(x, y);
+                    ctx.moveTo(x, Y.ys(Y.lo + Y.pad)); ctx.lineTo(x, y);
                     ctx.stroke();
                     ctx.setLineDash([]);
                 }
                 ctx.beginPath();
                 ctx.arc(x, y, r.checkpoint ? 5 : 3.5, 0, Math.PI * 2);
-                ctx.fillStyle = rejected ? PAL.bad
-                              : r.outcome === 'shipped' ? PAL.fg : PAL.ink;
-                ctx.fill();
+                if (rejected) {               // hollow: see drawTree
+                    ctx.fillStyle = PAL.bg; ctx.fill();
+                    ctx.strokeStyle = PAL.bad; ctx.lineWidth = 1.8; ctx.stroke();
+                } else {
+                    ctx.fillStyle = r.outcome === 'shipped' ? PAL.fg : PAL.ink;
+                    ctx.fill();
+                }
                 // A ring marks a version whose weights still exist, so it
                 // could be played.
                 if (r.checkpoint) {
@@ -1230,9 +1516,15 @@
                     ctx.lineWidth = 1;
                     ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.stroke();
                 }
+                // The far side has no steps axis to read a value off, so its
+                // points are labelled directly.
+                if (r.era) {
+                    ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    haloText(ctx, r.evalScore.toFixed(0), x, y - 18, PAL.fg);
+                }
             });
 
-            progGeom = { xs, ys, list };
+            progGeom = { x: L.x, y: yOf, list };
         }
 
         hover(progCvs, progTip,
@@ -1240,17 +1532,20 @@
                 if (!progGeom) return null;
                 let best = null, bd = Infinity;
                 progGeom.list.forEach(r => {
-                    const dx = progGeom.xs(r.cumulativeSteps) - mx;
-                    const dy = progGeom.ys(r.evalScore) - my;
+                    const dx = progGeom.x(r) - mx;
+                    const dy = progGeom.y(r) - my;
                     const d = dx * dx + dy * dy;
                     if (d < bd) { bd = d; best = r; }
                 });
                 return bd < 80 * 80 ? best : null;
             },
             r => `<div class="tip-run">${r.label}</div>`
-               + `<div class="tip-row">after <b>${fmtSteps(r.cumulativeSteps)}</b> steps total</div>`
+               + (r.era
+                    ? `<div class="tip-row">${RESTARTS[r.era].why}</div>`
+                    : `<div class="tip-row">after <b>${fmtSteps(r.cumulativeSteps)}</b> steps total</div>`)
                + `<div class="tip-row">scored <b>${r.evalScore.toFixed(2)}</b></div>`
-               + (r.gainPerMStep !== undefined
+               // A gain measured against a parent from a different game means nothing.
+               + (r.gainPerMStep !== undefined && !RESTARTS[r.key]
                     ? `<div class="tip-row">this run <b>${r.gainPerMStep > 0 ? '+' : ''}${r.gainPerMStep}</b> per M steps</div>` : '')
                + (r.checkpoint ? `<div class="tip-row">weights kept — playable</div>` : '')
                + (r.note ? `<div class="tip-row" style="max-width:34ch;white-space:normal">${r.note}</div>` : ''));
@@ -1270,38 +1565,45 @@
             const list = runs.filter(r => r.game === progGame && (r.evalScore || r.parent || r.outcome));
             if (!list.length) { treeGeom = null; return; }
 
-            // Everything that survived sits on one trunk; each rejected run
-            // gets a lane of its own so its branch is visibly a dead end.
+            // The kept line sits on one row; every other run gets a lane of
+            // its own so its branch is visibly a separate attempt.
+            const trunk = trunkOf(list);
             let deadLane = 0;
             const lane = new Map();
-            list.forEach(r => lane.set(r.key, r.outcome === 'rejected' ? ++deadLane : 0));
+            list.forEach(r => lane.set(r.key, trunk.has(r.key) ? 0 : ++deadLane));
             const maxLane = Math.max(...lane.values());
 
-            const xMax = Math.max(...list.map(r => r.cumulativeSteps));
-            const xs = makeScale(0, xMax * 1.06, PAD.l, w - PAD.r);
-            const laneH = (h - PAD.t - PAD.b) / (maxLane + 1.6);
-            const ys = (l) => PAD.t + laneH * (l + 0.5);
+            const L = eraLayout(list, w, 1.06);
+            const top = PAD.t + (L.split ? 46 : 14);
+            const laneH = (h - top - PAD.b) / (maxLane + 1);
+            const ys = (l) => top + laneH * (l + 0.5);
+            const X = r => L.x(r), Y = r => ys(lane.get(r.key));
 
             ctx.clearRect(0, 0, w, h);
-            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.font = FONT;
             ctx.textBaseline = 'middle';
 
-            const xt = niceTicks(0, xMax, 6);
-            xt.forEach(v => {
+            let lastRight = -Infinity;
+            niceTicks(0, L.xMax, L.split ? 4 : 6).forEach(v => {
+                const x = L.xs(v), t = fmtSteps(v), tw = ctx.measureText(t).width;
+                if ((L.split && x > L.split - 20) || x - tw / 2 < lastRight + 8) return;
+                lastRight = x + tw / 2;
                 ctx.fillStyle = PAL.label;
                 ctx.textAlign = 'center';
-                ctx.fillText(fmtSteps(v), xs(v), h - PAD.b + 14);
+                ctx.fillText(t, x, h - PAD.b + 14);
             });
+            if (L.split) drawBreak(ctx, L, PAD.t, h - PAD.b);
 
+            // Links first, then dots, then labels last, so no line crosses a
+            // label. A restart has no link: nothing was inherited across it.
             const byFile = Object.fromEntries(list.map(r => [r.key, r]));
             list.forEach(r => {
                 const p = byFile[r.parent];
-                if (!p) return;
-                const x1 = xs(p.cumulativeSteps), y1 = ys(lane.get(p.key));
-                const x2 = xs(r.cumulativeSteps), y2 = ys(lane.get(r.key));
+                if (!p || RESTARTS[r.key]) return;
+                const x1 = X(p), y1 = Y(p), x2 = X(r), y2 = Y(r);
                 const dead = r.outcome === 'rejected';
                 ctx.strokeStyle = dead ? PAL.bad : PAL.ink;
-                ctx.lineWidth = dead ? 1 : 2;
+                ctx.lineWidth = dead ? 1 : trunk.has(r.key) ? 2 : 1.2;
                 ctx.setLineDash(dead ? [3, 3] : []);
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
@@ -1310,18 +1612,52 @@
                 ctx.setLineDash([]);
             });
 
+            const colour = r => ({ shipped: PAL.fg, improved: PAL.good,
+                                   rejected: PAL.bad, running: PAL.running }[r.outcome] || PAL.axis);
+            /* Rejected runs are hollow. On the light themes improved and
+               rejected are two greys, so colour alone could not tell a dead
+               end from an improvement; shape can. */
             list.forEach(r => {
-                const x = xs(r.cumulativeSteps), y = ys(lane.get(r.key));
-                const c = { shipped: PAL.fg, improved: PAL.good,
-                            rejected: PAL.bad, running: PAL.running }[r.outcome] || PAL.axis;
-                ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
-                ctx.fillStyle = c; ctx.fill();
-                ctx.fillStyle = r.outcome === 'rejected' ? PAL.bad : PAL.dim;
-                ctx.textAlign = 'center';
-                ctx.fillText(r.evalScore ? r.evalScore.toFixed(0) : '—', x, y - 15);
+                ctx.beginPath(); ctx.arc(X(r), Y(r), r.outcome === 'rejected' ? 5 : 6, 0, Math.PI * 2);
+                if (r.outcome === 'rejected') {
+                    ctx.fillStyle = PAL.bg; ctx.fill();
+                    ctx.strokeStyle = colour(r); ctx.lineWidth = 2; ctx.stroke();
+                } else { ctx.fillStyle = colour(r); ctx.fill(); }
+                if (r.outcome === 'shipped') {        // ring it, so it never reads as "unscored"
+                    ctx.strokeStyle = PAL.axis; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(X(r), Y(r), 9.5, 0, Math.PI * 2); ctx.stroke();
+                }
             });
 
-            treeGeom = { xs, ys, lane, list };
+            /* Labels placed greedily: above the dot if that spot is free, else
+               to the right, left or below. Two runs at the same total steps
+               (1032 and 1014 both sit at 34.07M) used to print one number on
+               top of the other. Unscored runs get no label — a lone "—"
+               floating by a dot read as a stray mark. */
+            const boxes = list.map(r => ({ x0: X(r) - 7, x1: X(r) + 7, y0: Y(r) - 7, y1: Y(r) + 7 }));
+            const hit = (b) => boxes.some(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0)
+                            || b.x0 < 2 || b.x1 > w - 2 || b.y0 < 2 || b.y1 > h - PAD.b + 4;
+            ctx.font = FONT;
+            list.slice().sort((a, b) => lane.get(a.key) - lane.get(b.key)).forEach(r => {
+                if (!r.evalScore) return;
+                const text = r.evalScore.toFixed(0), tw = ctx.measureText(text).width, x = X(r), y = Y(r);
+                const spots = [
+                    [x, y - 16, 'center'], [x, y + 17, 'center'], [x + 12, y, 'left'],
+                    [x - 12, y, 'right'], [x + 12, y - 14, 'left'], [x - 12, y - 14, 'right'],
+                    [x + 12, y + 14, 'left'], [x - 12, y + 14, 'right'], [x, y - 30, 'center'],
+                ];
+                const box = ([sx, sy, al]) => {
+                    const x0 = al === 'center' ? sx - tw / 2 : al === 'left' ? sx : sx - tw;
+                    return { x0: x0 - 2, x1: x0 + tw + 2, y0: sy - 7, y1: sy + 7 };
+                };
+                const spot = spots.find(sp => !hit(box(sp))) || spots[0];
+                boxes.push(box(spot));
+                ctx.textAlign = spot[2];
+                haloText(ctx, text, spot[0], spot[1],
+                         r.outcome === 'rejected' ? PAL.bad : r.outcome === 'shipped' ? PAL.fg : PAL.dim);
+            });
+
+            treeGeom = { X, Y, list };
         }
 
         hover(treeCvs, treeTip,
@@ -1329,8 +1665,8 @@
                 if (!treeGeom) return null;
                 let best = null, bd = Infinity;
                 treeGeom.list.forEach(r => {
-                    const dx = treeGeom.xs(r.cumulativeSteps) - mx;
-                    const dy = treeGeom.ys(treeGeom.lane.get(r.key)) - my;
+                    const dx = treeGeom.X(r) - mx;
+                    const dy = treeGeom.Y(r) - my;
                     const d = dx * dx + dy * dy;
                     if (d < bd) { bd = d; best = r; }
                 });
@@ -1339,7 +1675,8 @@
             r => `<div class="tip-run">${r.label}</div>`
                + `<div class="tip-row">${fmtSteps(r.steps)} steps · ${fmtHours(r.elapsed)}</div>`
                + `<div class="tip-row">${(OUTCOME[r.outcome] || ['', 'not evaluated'])[1]}`
-               + (r.evalScore ? ` at <b>${r.evalScore.toFixed(2)}</b>` : '') + '</div>');
+               + (r.evalScore ? ` at <b>${r.evalScore.toFixed(2)}</b>` : '') + '</div>'
+               + (RESTARTS[r.key] ? `<div class="tip-row">restart: ${RESTARTS[r.key].why}</div>` : ''));
 
         /* ── Score distribution ─────────────────────────────────────────── */
         const dists = TRAINING_DATA.distributions || {};
@@ -1355,7 +1692,7 @@
             if (!d) {
                 ctx.clearRect(0, 0, w, h);
                 ctx.fillStyle = PAL.label;
-                ctx.font = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.font = FONT;
                 ctx.textAlign = 'center';
                 ctx.fillText('not measured yet — run tools/eval_distribution.py', w / 2, h / 2);
                 distGeom = null;
@@ -1369,13 +1706,22 @@
             d.scores.forEach(s => {
                 bins[Math.min(BINS - 1, Math.floor((s - lo) / width))]++;
             });
-            const yHi = Math.max(...bins);
+            const tallest = Math.max(...bins);
+            // Headroom above the tallest bar, so it never touches the top
+            // and the mean/median labels have clear space to sit in.
+            const step = (t => (t[1] - t[0]) || 1)(niceTicks(0, tallest, 4));
+            const topTick = Math.ceil(tallest * 1.08 / step) * step;   // a gridline above the tallest bar
+            const yt = [];
+            for (let v = 0; v <= topTick + 1e-9; v += step) yt.push(v);
+            const yHi = topTick * 1.1;
 
+            const top = PAD.t + 24;
             const xs = makeScale(lo, hi, PAD.l, w - PAD.r);
-            const ys = makeScale(0, yHi, h - PAD.b, PAD.t);
-            const xt = niceTicks(lo, hi, 6), yt = niceTicks(0, yHi, 4);
+            const ys = makeScale(0, yHi, h - PAD.b, top);
+            const xt = niceTicks(lo, hi, 6);
             xt.scale = xs; yt.scale = ys;
-            drawFrame(ctx, w, h, xt, yt, v => v.toFixed(0), v => v.toFixed(0), 'games');
+            drawFrame(ctx, w, h, xt, yt, v => v.toFixed(0), v => v.toFixed(0), 'games',
+                      { l: PAD.l, r: w - PAD.r, t: top, b: h - PAD.b });
 
             const bw = (xs(hi) - xs(lo)) / BINS;
             bins.forEach((n, i) => {
@@ -1385,17 +1731,52 @@
                 ctx.fillRect(x + 1, ys(n), bw - 2, ys(0) - ys(n));
             });
 
-            [['mean', d.mean, PAL.ink], ['median', d.median, PAL.good]].forEach(([label, v, col], i) => {
-                ctx.strokeStyle = col; ctx.lineWidth = 1.4;
-                ctx.setLineDash([4, 3]);
-                ctx.beginPath(); ctx.moveTo(xs(v), PAD.t); ctx.lineTo(xs(v), ys(0)); ctx.stroke();
+            /* Mean dashed, median dotted, so the two read differently even
+               where their colours are close (the light themes). Labels go on
+               the far side of each line from the other, so they never stack,
+               and sit in the headroom above the bars. */
+            const marks = [['mean', d.mean, PAL.ink, [6, 4]], ['median', d.median, PAL.good, [1.5, 3]]];
+            const leftOf = d.mean <= d.median ? 'mean' : 'median';
+            ctx.font = FONT;
+            ctx.textBaseline = 'middle';
+            marks.forEach(([label, v, col, dash]) => {
+                const x = xs(v);
+                ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+                ctx.lineCap = 'round';
+                ctx.setLineDash(dash);
+                ctx.beginPath(); ctx.moveTo(x, PAD.t + 4); ctx.lineTo(x, ys(0)); ctx.stroke();
                 ctx.setLineDash([]);
-                ctx.fillStyle = col; ctx.textAlign = 'left';
-                ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
-                ctx.fillText(`${label.toUpperCase()} ${Math.round(v)}`, xs(v) + 5, PAD.t + 8 + i * 12);
+                const left = label === leftOf;
+                ctx.textAlign = left ? 'right' : 'left';
+                haloText(ctx, `${label.toUpperCase()} ${Math.round(v)}`, x + (left ? -6 : 6), PAD.t + 10, col);
             });
 
             distGeom = { xs, ys, bins, lo, width, bw, d };
+            describeDist(d);
+        }
+
+        /* The copy under the chart, from the numbers rather than written for one
+           game: Snake's tail runs toward short games, Watermelon's toward long
+           ones, and a sentence written for one was wrong for the other. */
+        function describeDist(d) {
+            const el = document.getElementById('dist-copy');
+            if (!el) return;
+            const name = distGame.charAt(0).toUpperCase() + distGame.slice(1);
+            const ratio = d.max / Math.max(1, d.min);
+            const gap = d.mean - d.median;
+            const skew = Math.abs(gap) < 0.02 * d.median
+                ? `The mean (${Math.round(d.mean)}) and median (${Math.round(d.median)}) nearly agree, so the spread is roughly even either side.`
+                : gap < 0
+                    ? `The mean (${Math.round(d.mean)}) sits a little below the median (${Math.round(d.median)}): the few short games pull the average down further than the long ones pull it up.`
+                    : `The mean (${Math.round(d.mean)}) sits above the median (${Math.round(d.median)}): a few unusually long games pull the average up.`;
+            // Measured on a model that is no longer the one on the site.
+            const sh = shipped[distGame];
+            const stale = sh && d.mean < sh / 2
+                ? ` These sixty games were played by the model on the site before the fruit sizes changed; the current one has not been through this test yet.`
+                : '';
+            el.innerHTML = `${name}'s ran from <b>${d.min} to ${d.max}</b>`
+                + (ratio >= 1.5 ? ` — the best game was ${Math.abs(ratio - 3) < 0.15 ? 'three' : ratio.toFixed(1)} times the worst, from an identical opponent.` : '.')
+                + ` ${skew}${stale}`;
         }
 
         hover(distCvs, distTip,
@@ -1471,7 +1852,7 @@
             const rowH = (h - top - 14) / rows.length;
 
             ctx.clearRect(0, 0, w, h);
-            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.font = FONT;
             ctx.textBaseline = 'middle';
 
             rows.forEach((r, i) => {
@@ -1515,28 +1896,66 @@
                              .sort((a, b) => a.t0 - b.t0);
             if (!list.length) { tlGeom = null; return; }
 
-            const lo = Math.min(...list.map(r => +r.t0));
-            const hi = Math.max(...list.map(r => +r.t1));
-            const xs = makeScale(lo, hi, PAD.l, w - PAD.r);
+            /* A broken axis. Tetris trained in June and everything else from
+               late July, and on one continuous scale the idle weeks between
+               pushed twenty-seven runs into the right fifth of the chart. Idle
+               stretches over three days are cut out and marked; each stretch
+               of activity keeps its own day ticks, and gets width by how many
+               runs it holds (with a floor), not by its length. */
+            const day = 86400000, IDLE = 3 * day, BREAK = 64;
+            const segs = [];
+            list.forEach(r => {
+                const s = segs[segs.length - 1];
+                if (s && +r.t0 - s.hi <= IDLE) { s.hi = Math.max(s.hi, +r.t1); s.n++; }
+                else segs.push({ lo: +r.t0, hi: +r.t1, n: 1 });
+            });
+            const avail = (w - PAD.r - PAD.l) - BREAK * (segs.length - 1);
+            const raw = segs.map(s => Math.max(0.2, s.n / list.length));
+            const sum = raw.reduce((a, b) => a + b, 0);
+            let cursor = PAD.l;
+            segs.forEach((s, i) => {
+                s.x0 = cursor; s.w = avail * raw[i] / sum; cursor += s.w + BREAK;
+            });
+            const xs = t => {
+                const s = segs.find(g => t <= g.hi + 1) || segs[segs.length - 1];
+                return s.x0 + (Math.max(t, s.lo) - s.lo) / ((s.hi - s.lo) || 1) * s.w;
+            };
             const rowH = (h - PAD.t - PAD.b) / list.length;
 
             ctx.clearRect(0, 0, w, h);
-            ctx.font = '10px Helvetica Neue, Helvetica, Arial, sans-serif';
+            ctx.font = FONT;
             ctx.textBaseline = 'middle';
 
-            // One tick per day, thinned so labels stay at least ~56px apart. At a
-            // label a day across the whole history they were ~18px apart.
-            const day = 86400000;
-            const pxPerDay = xs(lo + day) - xs(lo);
-            const every = day * Math.max(1, Math.ceil(56 / Math.max(1, pxPerDay)));
-            for (let t = new Date(lo).setHours(0, 0, 0, 0); t <= hi; t += every) {
-                if (t < lo) continue;
-                ctx.strokeStyle = PAL.grid; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(xs(t), PAD.t); ctx.lineTo(xs(t), h - PAD.b); ctx.stroke();
+            segs.forEach((s, i) => {
+                // Day ticks, thinned so labels stay at least ~64px apart.
+                const pxPerDay = s.w / Math.max(day, s.hi - s.lo) * day;
+                const every = day * Math.max(1, Math.ceil(64 / Math.max(1, pxPerDay)));
+                let lastRight = -Infinity;
+                for (let t = new Date(s.lo).setHours(0, 0, 0, 0) + day; t <= s.hi; t += every) {
+                    const x = xs(t);
+                    const text = new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+                    const tw = ctx.measureText(text).width;
+                    ctx.strokeStyle = PAL.grid; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, h - PAD.b); ctx.stroke();
+                    if (x - tw / 2 < Math.max(lastRight + 8, s.x0 - 4) || x + tw / 2 > s.x0 + s.w + 8) continue;
+                    lastRight = x + tw / 2;
+                    ctx.fillStyle = PAL.label; ctx.textAlign = 'center';
+                    ctx.fillText(text, x, h - PAD.b + 14);
+                }
+                // The cut: two dashed edges and how long the machine sat idle.
+                const next = segs[i + 1];
+                if (!next) return;
+                const gx0 = s.x0 + s.w + 10, gx1 = next.x0 - 10;
+                ctx.strokeStyle = PAL.axis; ctx.setLineDash([3, 4]);
+                [gx0, gx1].forEach(x => {
+                    ctx.beginPath(); ctx.moveTo(x + 0.5, PAD.t); ctx.lineTo(x + 0.5, h - PAD.b); ctx.stroke();
+                });
+                ctx.setLineDash([]);
+                const days = Math.round((next.lo - s.hi) / day);
                 ctx.fillStyle = PAL.label; ctx.textAlign = 'center';
-                ctx.fillText(new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
-                             xs(t), h - PAD.b + 14);
-            }
+                ctx.fillText(`${days} days`, (gx0 + gx1) / 2, h - PAD.b + 14);
+                ctx.fillText('idle', (gx0 + gx1) / 2, h - PAD.b + 27);
+            });
 
             list.forEach((r, i) => {
                 const y = PAD.t + rowH * (i + 0.5);
@@ -1548,6 +1967,13 @@
             });
 
             tlGeom = { list, xs, rowH };
+
+            // Each bar is its run's colour, so the key names the games' hues.
+            document.getElementById('timeline-key').innerHTML =
+                Object.entries(byGame).map(([g, l]) =>
+                    `<span><i class="bar" style="background:${l[l.length - 1].color}"></i> ${g}</span>`).join('')
+                + `<span><i class="bar" style="background:${PAL.axis};opacity:0.4"></i> faded — rejected</span>`
+                + `<span><i class="vdash"></i> idle time cut out</span>`;
         }
 
         hover(tlCvs, tlTip,
@@ -1754,7 +2180,7 @@
                     ctx.fill();
                 }
                 ctx.fillStyle = PAL.label;
-                ctx.font = '9px Helvetica Neue, Helvetica, Arial, sans-serif';
+                ctx.font = FONT_SMALL;
                 ctx.textAlign = 'center';
                 ctx.fillText((LABELS[c] || '').toUpperCase(), colX(c), h - 10);
             }
@@ -1823,7 +2249,7 @@
                 `<div class="heat-cell">
                     <canvas data-heat="${i}" width="${l.heat.w}" height="${l.heat.h}"></canvas>
                     <span class="heat-label"><b>layer ${i + 1} — ${l.shape[1]} → ${l.shape[0]}</b>
-                    ${(l.shape[0] * l.shape[1]).toLocaleString()} weights ·
+                    ${(l.shape[0] * l.shape[1]).toLocaleString()} weights<br>
                     ±${l.heat.peak.toFixed(2)} peak · ${(l.stats.zeroish * 100).toFixed(0)}% near zero</span>
                 </div>`).join('') + '</div>';
 

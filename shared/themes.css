@@ -68,6 +68,10 @@
     --board-ink:   #ffffff;
     --board-edge:  #2a2a2a;
     --board-scrim: 0, 0, 0;
+
+    /* Native scrollbars and form controls follow the palette. Overridden to
+       light on Filings and Dispersion below. */
+    color-scheme: dark;
 }
 
 
@@ -79,8 +83,23 @@
 
 html, body { background: var(--bg); color: var(--fg); }
 
-.back, .back-nav { color: var(--dim); }
+/* The back link (and select's settings button) is fixed, so it floats over
+   whatever scrolls beneath it: board edges, Inside's charts. A pill in the page
+   colour keeps it legible there, and the padding makes it a real tap target —
+   it was 41x11px. The negative margin cancels the padding, so the text stays
+   exactly where each page put it. */
+.back, .back-nav, .settings-btn {
+    color: var(--dim);
+    font-size: 0.72rem;
+    padding: 0.45rem 0.8rem; margin: -0.45rem -0.8rem;
+    min-height: 2rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg) 84%, transparent);
+}
 .back:hover, .back-nav:hover { color: var(--fg-muted); }
+.back:focus-visible, .back-nav:focus-visible, .settings-btn:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 0;
+}
 
 .eyebrow, .header .eyebrow { color: var(--dim); }
 h1, .header h1, .title { color: var(--fg); font-family: var(--serif); }
@@ -102,6 +121,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 /* select */
 .grid { background: var(--line); border-color: var(--line); }
 .card { background: var(--bg); color: var(--fg-muted); }
+.card-num, .card-tag { font-size: 0.72rem; }
 .card:hover { background: var(--panel-hi); color: var(--fg); }
 .card:hover::after { border-color: var(--accent); }
 .card-num, .card-tag, .card-arrow { color: var(--dim); }
@@ -109,9 +129,17 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 .settings-btn { color: var(--dim); }
 .settings-btn:hover, .settings-btn[aria-expanded="true"] { color: var(--fg); }
-/* Scrolls rather than running off a short landscape phone screen. */
+/* Scrolls rather than running off a short landscape phone screen. The
+   shadow lifts it off the cards it overlaps, so it reads as a popover rather
+   than as part of the grid. */
 .settings-panel { background: var(--panel); border-color: var(--line);
-                  max-height: calc(100vh - 5rem); overflow-y: auto; }
+                  max-height: calc(100vh - 5rem); overflow-y: auto;
+                  box-shadow: 0 18px 48px -8px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--line); }
+[data-theme="filings"] .settings-panel, [data-theme="dispersion"] .settings-panel {
+    box-shadow: 0 18px 48px -10px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--line);
+}
+/* Veils the page while the panel is open: what it covers is behind it. */
+.settings-scrim { background: color-mix(in srgb, var(--bg) 58%, transparent); }
 .settings-title { color: var(--dim); }
 .settings-blurb, .settings-foot { color: var(--dim); }
 .settings-opt { background: var(--bg); border-color: var(--line); color: var(--fg-muted); }
@@ -188,6 +216,9 @@ h2 { color: var(--fg); font-family: var(--serif); }
        card outlines itself into the gap instead and the grid goes clear. */
     outline: 1px solid var(--line);
 }
+/* After the rule above, which otherwise replaced the focus ring with that
+   1px hairline: keyboard focus on a card was all but invisible. */
+[data-theme] .card:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 [data-theme="flow"] .grid, [data-theme="filings"] .grid, [data-theme="sand"] .grid,
 [data-theme="constellation"] .grid, [data-theme="dispersion"] .grid {
     background: transparent;
@@ -255,9 +286,15 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .theme-swatch.on { border-color: var(--accent); }
 .theme-swatch i { display: block; height: 34px; }
 .theme-swatch b {
-    display: block; font-weight: 400; font-size: 0.58rem;
-    letter-spacing: 0.06em; text-transform: uppercase;
-    padding: 0.4rem 0.2rem; color: var(--dim);
+    display: block; font-weight: 400; font-size: 0.62rem;
+    letter-spacing: 0.02em; text-transform: uppercase;
+    padding: 0.4rem 0.3rem; color: var(--dim);
+    white-space: nowrap;
+}
+/* CONSTELLATION is the longest label: below ~380px it overran its tile. */
+@media (max-width: 380px) {
+    .theme-row { gap: 3px; }
+    .theme-swatch b { font-size: 0.56rem; letter-spacing: 0; padding: 0.4rem 0.1rem; }
 }
 .theme-swatch.on b { color: var(--fg); }
 
@@ -301,6 +338,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Filings — ink on warm paper. */
 [data-theme="filings"] {
+    color-scheme: light;
     /* The board's own colour, not pure white, or the overlays' edge shows as
        a faint seam against the #fffefb board. */
     --board-scrim: 255, 254, 251;
@@ -395,6 +433,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Dispersion — black particles on white. */
 [data-theme="dispersion"] {
+    color-scheme: light;
     --board-scrim: 255, 255, 255;
     --board-bg:    #ffffff;
     --board-ink:   #000000;
