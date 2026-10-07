@@ -728,8 +728,10 @@ without waiting for window `load`. `model-source.js` warms the runtime with a
 67-byte model while the real one downloads, and takes `onProgress` as its 4th
 argument. Decoding base64 via `fetch('data:...')` was tried and blocked the
 page 1.5-1.8 s — `Uint8Array.fromBase64` (with the `atob` loop as fallback) is
-the fast path. Halving downloads further needs fp16 weight export, which must
-go through `evaluate.py`/`build_checkpoints.py` before shipping.
+the fast path. Halving downloads further: `tools/fp16_weights.py <game>` stores weights
+as fp16 with a Cast to fp32 (operators unchanged) and gates on playing the same
+seeded games; verified on stub models only (34->17 MB, 100% identical
+decisions) — run it on the real models before relying on it.
 
 **Focus steals Space.** A clicked button keeps focus and Space then activates
 it: Tetris's speed buttons swallowed hard-drop. Pointer clicks on board
@@ -1326,6 +1328,11 @@ python embed_assets.py                    # → image_data.js
 python tools/build_checkpoints.py                  # all three games
 python tools/build_checkpoints.py snake --episodes 10   # one game, rougher
 python tools/probe_checkpoints.py         # which archived .zip files still load
+
+# Halve the shipped models (fp16 weights, fp32 compute). Plays seeded games with
+# both files and refuses unless decisions match on >=99.5% of steps and the mean
+# score holds. Then re-run embed_model.py for the file:// copy, and deploy.
+python tools/fp16_weights.py snake        # also: tetris, watermelon
 
 # After ANY training run — see "After every training run" at the top of this
 # file. The Inside page does not update itself.
