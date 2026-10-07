@@ -35,7 +35,8 @@
        300x540 units and sizes its backing store to whatever this comes to.
 
        275px: what the AI column needs besides its board — the label row, the
-       speed buttons, the stacked model-version control (~190px together) and
+       speed block (heading and buttons), the stacked model-version control
+       (~210px together; measured 35px to spare at 1440x900) and
        .screen's 2rem top padding — plus most of its 4.5rem bottom padding,
        which is room for the scroll cue; the cue hides itself wherever it
        would overlap the boards. 200px: the two gaps, the VS text and the side
@@ -129,7 +130,9 @@ body {
 
 /* ── Board (identical to original) ──────────────────────────────────────── */
 
-main {
+/* .board-main, not main: the page has ONE <main> (.screen), and each board is
+   a labelled <section>. themes.css themes these by the same class. */
+.board-main {
     position: relative;
     width: var(--tetris-w);
     height: var(--tetris-h);
@@ -137,7 +140,7 @@ main {
     outline: 1px solid #2a2a2a;
 }
 
-main canvas {
+.board-main canvas {
     width: 100%;
     height: 100%;
     display: block;
@@ -145,7 +148,7 @@ main canvas {
 
 /* Centred in the canvas's 72-unit score band (x 30, y 36 of 300x540), in
    percentages so it stays there as the board scales. */
-main > button {
+.board-main > button {
     position: absolute;
     left: 10%;
     top: 6.667%;
@@ -164,24 +167,24 @@ main > button {
     align-items: center;
 }
 
-main > button img {
+.board-main > button img {
     width: 62%;
     height: 62%;
     display: block;
     object-fit: contain;
 }
 
-main > button:hover {
+.board-main > button:hover {
     background-color: rgba(200, 200, 200, 0.2);
 }
 
-main > button:active {
+.board-main > button:active {
     background-color: rgba(200, 200, 200, 0.35);
 }
 
 /* ── Controls overlay (identical to original) ────────────────────────────── */
 
-main div.controls {
+.board-main div.controls {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -203,32 +206,47 @@ main div.controls {
     background: rgba(0, 0, 0, 0.7);
 }
 
-main div.controls[hidden] {
+/* The legend on a backing card of its own, like the text the canvas draws
+   (drawCard in game.js). The full-width scrim alone left the start prompt
+   printed straight over a restored board's dimmed pieces. */
+.board-main div.controls .controls-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 100%;
+    padding: 0.5em 0.8em;
+    border-radius: 10px;
+    background: rgba(var(--board-scrim, 0, 0, 0), 0.82);
+}
+
+.board-main div.controls[hidden] {
     display: flex !important;
     opacity: 0;
     /* Transparent was not enough: screen readers still read it. */
     visibility: hidden;
 }
 
-main div.controls.animated {
+.board-main div.controls.animated {
     /* Fade out, then hide from assistive tech once the fade has finished. */
     transition: opacity 0.2s ease, visibility 0s linear 0.2s;
 }
 
-main div.controls p {
+.board-main div.controls p {
     margin: 0.35em 0;
     text-align: center;
+    /* The touch hint wraps on a phone; balanced, it does not strand "drops". */
+    text-wrap: balance;
     color: #fff;
 }
 
-main div.controls div.row {
+.board-main div.controls div.row {
     display: flex;
     flex-direction: row;
     justify-content: center;
     gap: 4px;
 }
 
-main div.controls div.row div.spacer {
+.board-main div.controls div.row div.spacer {
     width: 10px;
 }
 
@@ -258,25 +276,41 @@ kbd.space {
 /* ── AI speed controls ──────────────────────────────────────────────────────
    Sits under the AI board. Scales the AI's think interval and its drop
    animation together, so a piece is never still sliding when the next
-   decision fires. */
+   decision fires. Same block as Snake's and Watermelon's: an "AI SPEED"
+   heading in the switcher's label style over ONE row of six buttons. */
+.speed-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 6px;
+}
+.speed-title {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim, #7d7d7d);
+}
+/* nowrap, and allowed to be wider than the board: on a phone the AI column is
+   ~160px and six buttons at the 11px text floor need ~180, so a wrapping row
+   broke into a ragged block. Centred on the column, it overhangs both sides
+   by a few pixels into the gutter and the VS gap, which are empty below the
+   boards. */
 .speed-controls {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: center;
     gap: 4px;
-    margin-top: 10px;
-    max-width: 100%;
+    width: max-content;
 }
 
-/* Seven buttons at 7px side padding measured 306px inside a 300px row, so the
-   last one ("2x") wrapped onto a line of its own and the control read as a
-   ragged two-row block. Tightening the padding and the letter-spacing brings
-   the row to about 288px so all seven sit on one line. */
 .speed-controls button {
     /* 24px: the WCAG 2.2 minimum target size. It measured 21. */
     min-height: 24px;
+    min-width: 24px;
     font-family: inherit;
-    font-size: 0.7rem;
+    /* Pixels with an 11px floor, like .speed-title: 0.7rem is 12.6px here. */
+    font-size: 12px;
     letter-spacing: 0.02em;
     padding: 4px 5px;
     cursor: pointer;
@@ -312,6 +346,13 @@ kbd.space {
         --tetris-h: max(220px, min(calc(100svh - 64px), calc((100vw - 140px) * 0.9)));
     }
     body:has(.insp-section) .screen { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+    /* The fixed back link gets the top row to itself: the band the "YOU" /
+       "AI" labels sit in, left of the human label. Its 36px pill reached
+       y=55 and covered the human board's restart button on a 667x375 phone.
+       26px tall and moved up, it ends above the canvas (~42px) without
+       taking any height from the boards. `a.` outranks themes.css, which
+       loads later and sizes the pill. */
+    a.back-nav { top: 0.95rem; min-height: 26px; padding-top: 0.25rem; padding-bottom: 0.25rem; }
 }
 
 /* Narrow viewports (phones in portrait): two boards at about half the width
@@ -324,12 +365,24 @@ kbd.space {
     #arena { gap: 6px; }
     #vs { font-size: 0.85rem; margin-top: calc(28px + var(--tetris-h) / 2 - 0.5 * 0.85rem * 1.15); }
     .board-wrap { gap: 8px; }
-    .speed-controls { margin-top: 2px; }
+    /* Six buttons at the 11px text floor still come to ~172px against a
+       ~160px column, so the block lines up with the board's RIGHT edge and
+       any overhang goes left, into the VS gap, which is empty below the
+       boards. Centred, it ran off the screen and scrolled the page sideways. */
+    .speed-block { margin-top: 2px; align-self: flex-end; }
+    .speed-controls { gap: 2px; }
+    .speed-controls button { font-size: 11px; padding: 4px 2px; }
+    /* A row of its own for the fixed back link. The page centres the boards
+       vertically, and on a 375x667 phone that put the "YOU" label under the
+       link's pill. */
+    body:has(.insp-section) .screen { padding-top: 3.6rem; }
 }
 
 /* Start hints: keyboard wording by default, touch wording on phones and
    tablets. Pure CSS, so the right text is there from first paint. */
-.controls-start { margin-top: 1em; font-size: 0.8em; opacity: 0.75; }
+/* max(11px, …): 0.8em of the board-scaled legend came out at 8.8-10px on a
+   laptop. The line wraps instead of shrinking past that. */
+.controls-start { margin-top: 1em; font-size: max(11px, 0.8em); opacity: 0.75; }
 .hint-touch { display: none; }
 @media (hover: none) and (pointer: coarse) {
     .hint-touch { display: inline; }
@@ -338,11 +391,11 @@ kbd.space {
 
 /* A visible focus ring for keyboard users. The buttons set outline: none and
    had no replacement, so tabbing to Restart showed nothing at all. */
-main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+.board-main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
 
 /* The restart icon is a white PNG; invert it on the two light boards. */
-[data-theme="filings"] main > button img,
-[data-theme="dispersion"] main > button img { filter: invert(1); }
+[data-theme="filings"] .board-main > button img,
+[data-theme="dispersion"] .board-main > button img { filter: invert(1); }
 
 /* The switcher defaults to min(420px, 100%), which widened the AI column
    past its board and overflowed the side-by-side layout. */
@@ -350,9 +403,9 @@ main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline
 
 /* On touch screens the keyboard legend is noise: keep only the touch line. */
 @media (hover: none) and (pointer: coarse) {
-    main div.controls div.row,
-    main div.controls kbd,
-    main div.controls p:not(.controls-start) { display: none; }
+    .board-main div.controls div.row,
+    .board-main div.controls kbd,
+    .board-main div.controls p:not(.controls-start) { display: none; }
 }
 
 /* Bigger targets for fingers. */

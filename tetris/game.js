@@ -159,7 +159,6 @@
     // the two stay in step. Module-scope because AIPlayer.applyMove and the
     // game loop both need it and live in different closures.
     var AI_SPEED = 1;
-    var AI_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 1.75, 2];
 
     // ─── Match start ─────────────────────────────────────────────────────────
     // The AI used to begin playing the moment the model finished loading, so
@@ -169,19 +168,22 @@
     // keyboard handler live in different closures.
     var matchStarted = false;
 
-    /* The head-to-head for the current match, or null before the first one.
-       A match begins on the human's first input (after load or after a
-       restart), and at that moment the AI board resets so both start level.
-       `ai` is the AI's state object for its FIRST life in this match;
-       `aiScore` freezes when that life ends (it tops out, or is restarted by
-       hand), so an AI that dies early and auto-restarts is scored on the life
-       it lost, not on its next one. `ai` is null when the model had not
-       loaded yet — the human just plays and no result is recorded.
+    /* The head-to-head for the current match (shared/results.js), or null
+       when there is none: before the first input, when the model had not
+       loaded when the human started, and for a game resumed after a reload.
+       It begins on the human's first input (after load or after a restart),
+       and at that moment the AI board resets so both start level.
 
-       The result used to compare the human's final score with whatever life
-       the AI happened to be on, and the AI was never reset when the human
-       restarted, so it was always several pieces (or games) ahead. */
+       `matchAi` is the AI's state object for its FIRST life in this match.
+       Only that life is fed to the match; the AI's auto-restarts afterwards
+       are for show. The rules themselves — the AI's unfinished score is not
+       a result, so a human who dies first waits until the AI passes them or
+       tops out — live in MatchResults.begin(), shared with the other games.
+       This used to freeze the AI's live score the moment the human died, so
+       dying in the first second beat an AI that had not finished, and
+       restarting the AI by hand locked its score in. */
     var match = null;
+    var matchAi = null;
 
     // Visually hidden aria-live line under each board (see game.html).
     function announce(isAI, text) {
@@ -350,17 +352,24 @@
         }
     }
 
-    /* Largest font no bigger than `size` that fits `text` in `maxW`. Measured
-       once per text/size and remembered on the canvas: the score changes a few
-       times a second and the loop runs at 60. fit() clears the memo, because
-       resizing a canvas resets its context. */
-    function fitFont(ctx, text, size, maxW, weight) {
+    /* Largest font no bigger than `size`, and no smaller than `floor`, that
+       fits `text` in `maxW` (both in canvas units). Measured once per
+       text/size and remembered on the canvas: the score changes a few times a
+       second and the loop runs at 60. fit() clears the memo, because resizing
+       a canvas resets its context.
+
+       It used to shrink all the way to 6 units, which on a phone-sized board
+       drew the AI's loading detail at 7.4 CSS px. It now stops at the floor
+       (the caller's minimum, converted to canvas units) and the caller wraps
+       whatever still does not fit: see wrapLines() and drawCard(). */
+    function fitFont(ctx, text, size, maxW, weight, floor) {
         var memo = ctx._fontMemo || (ctx._fontMemo = {});
-        var key = text + "|" + size + "|" + maxW + "|" + weight;
+        floor = Math.min(size, floor || size);
+        var key = text + "|" + size + "|" + maxW + "|" + weight + "|" + floor;
         if (!memo[key]) {
             var px = size;
             ctx.font = weight + px + "px " + CONFIG.FONT_FAMILY;
-            while (ctx.measureText(text).width > maxW && px > 6) {
+            while (ctx.measureText(text).width > maxW && px - 1 >= floor) {
                 px -= 1;
                 ctx.font = weight + px + "px " + CONFIG.FONT_FAMILY;
             }
@@ -369,10 +378,46 @@
         return memo[key];
     }
 
+    /* `text` broken at spaces into lines no wider than maxW in the current
+       ctx.font, BALANCED: the narrowest width that still needs no more lines
+       than maxW does, so "Couldn't load the AI" becomes "Couldn't load / the
+       AI" rather than leaving "AI" alone on the second line. A single word
+       longer than maxW keeps a line to itself rather than being cut.
+       Memoised alongside fitFont. */
+    function greedyLines(ctx, words, maxW) {
+        var lines = [], cur = "";
+        for (var i = 0; i < words.length; i++) {
+            var next = cur ? cur + " " + words[i] : words[i];
+            if (cur && ctx.measureText(next).width > maxW) { lines.push(cur); cur = words[i]; }
+            else cur = next;
+        }
+        if (cur) lines.push(cur);
+        return lines;
+    }
+    function wrapLines(ctx, text, maxW) {
+        var memo = ctx._fontMemo || (ctx._fontMemo = {});
+        var key = "wrap|" + ctx.font + "|" + maxW + "|" + text;
+        if (memo[key]) return memo[key];
+        var words = text.split(" ");
+        var lines = greedyLines(ctx, words, maxW);
+        if (lines.length > 1) {
+            var lo = 0, hi = maxW;
+            for (var k = 0; k < 12; k++) {
+                var mid = (lo + hi) / 2;
+                if (greedyLines(ctx, words, mid).length > lines.length) lo = mid; else hi = mid;
+            }
+            lines = greedyLines(ctx, words, hi);
+        }
+        return (memo[key] = lines);
+    }
+
     /* A size in canvas units that never renders smaller than minCss CSS
        pixels. On a phone the board is ~170px wide, a 0.57x scale, and the
        desktop sizes came out at 7px. */
     function textSize(base, minCss, s) { return Math.max(base, minCss / (s || 1)); }
+
+    // Text a visitor needs is never drawn below this many CSS pixels.
+    var TEXT_FLOOR = 11;
 
     // Score, high score and the separator. Opaque, and drawn after the pieces.
     function drawHeader(ctx, state, s) {
@@ -389,10 +434,19 @@
         ctx.textBaseline = "middle";
         ctx.fillStyle = boardInk();
         // Kept clear of the restart button on the left, symmetrically.
-        ctx.font = fitFont(ctx, "" + state.score, textSize(40, 20, s), 160, "");
+        ctx.font = fitFont(ctx, "" + state.score, textSize(40, 20, s), 160, "", 20 / s);
         ctx.fillText("" + state.score, VIEW_W / 2, 29);
+        /* At the 11px floor a long "High score: 123456" no longer fits beside
+           the restart button on a phone-sized board, and the band has no room
+           for a second line, so it falls back to the shorter label rather
+           than shrinking. It used to shrink to 10px. */
+        var size = textSize(13, TEXT_FLOOR, s), floor = TEXT_FLOOR / s, maxW = 180;
         var hs = "High score: " + state.highScore;
-        ctx.font = fitFont(ctx, hs, textSize(13, 10, s), 190, "");
+        ctx.font = fitFont(ctx, hs, size, maxW, "", floor);
+        if (ctx.measureText(hs).width > maxW) {
+            hs = "Best: " + state.highScore;
+            ctx.font = fitFont(ctx, hs, size, maxW, "", floor);
+        }
         ctx.globalAlpha = 0.75;
         ctx.fillText(hs, VIEW_W / 2, 60);
         ctx.globalAlpha = 1;
@@ -420,16 +474,39 @@
 
     /* Overlay text (start prompt, loading, game over) on a backing pill, so it
        never prints straight over pieces. lines: [{text, size, min, bold,
-       alpha}], centred on the well at cy. */
+       alpha}], centred on the well at cy. `min` is in CSS pixels: a line
+       shrinks towards it and then WRAPS, so nothing renders below it. */
     function drawCard(ctx, lines, cy, s) {
         var maxW = WELL_W - 28, w = 0, h = 0, laid = [];
         lines.forEach(function (l) {
-            var font = fitFont(ctx, l.text, textSize(l.size, l.min, s), maxW, l.bold ? "bold " : "");
+            var weight = l.bold ? "bold " : "";
+            var min = Math.max(l.min || TEXT_FLOOR, TEXT_FLOOR);
+            var size = textSize(l.size, min, s);
+            var font = fitFont(ctx, l.text, size, maxW, weight, min / s);
             ctx.font = font;
+            /* A match line too long even at the floor breaks after its dash
+               first ("You 255 · AI 50 —" / "AI still playing, needs 206 to
+               win"), sized for the longer half, rather than leaving one word
+               on a line of its own. */
+            var parts = [l.text], cut = l.text.indexOf(" \u2014 ");
+            if (cut > 0 && ctx.measureText(l.text).width > maxW) {
+                parts = [l.text.slice(0, cut + 2), l.text.slice(cut + 3)];
+                ctx.font = weight + size + "px " + CONFIG.FONT_FAMILY;
+                var longer = ctx.measureText(parts[0]).width > ctx.measureText(parts[1]).width
+                    ? parts[0] : parts[1];
+                font = fitFont(ctx, longer, size, maxW, weight, min / s);
+                ctx.font = font;
+            }
             var px = parseFloat(font.replace(/^bold /, ""));
-            w = Math.max(w, ctx.measureText(l.text).width);
-            laid.push({ l: l, font: font, h: px * 1.45 });
-            h += px * 1.45;
+            var wrapped = [];
+            parts.forEach(function (part) { wrapped = wrapped.concat(wrapLines(ctx, part, maxW)); });
+            wrapped.forEach(function (t, i) {
+                // Wrapped continuation lines sit closer than separate entries.
+                var lh = px * (i === 0 ? 1.45 : 1.2);
+                w = Math.max(w, ctx.measureText(t).width);
+                laid.push({ l: l, text: t, font: font, h: lh });
+                h += lh;
+            });
         });
         var padX = 14, padY = 10;
         ctx.fillStyle = boardScrim(0.82);
@@ -442,7 +519,7 @@
         laid.forEach(function (it) {
             ctx.font = it.font;
             ctx.globalAlpha = it.l.alpha || 1;
-            ctx.fillText(it.l.text, VIEW_W / 2, y + it.h / 2);
+            ctx.fillText(it.text, VIEW_W / 2, y + it.h / 2);
             y += it.h;
         });
         ctx.globalAlpha = 1;
@@ -825,11 +902,23 @@
             return typeof v === "number" && isFinite(v) ? v : 0;
         }
 
+        /* Only the human's board is saved. The AI's used to be too, but the
+           AI board resets at the start of every match, so a restored AI game
+           was thrown away on the first key; it only ever showed for the
+           moment before the player started. Its high score is still kept.
+           Any save left by an older build is dropped. */
+        if (isAI) Store.clear(SAVE_KEY);
+
         function saveGame() {
             // A finished board is not worth restoring — drop it and keep only
             // the high score, so a reload starts fresh instead of reopening on
             // a game-over screen.
-            if (state.lost) {
+            if (isAI) {
+                // High score only; see above.
+            } else if (state.lost || !(state.started || state.resumed)) {
+                // Nor is a board nobody has played: saving the untouched
+                // board meant a plain reload came back as a "resumed" game
+                // that could never be scored.
                 Store.clear(SAVE_KEY);
             } else {
                 Store.write(SAVE_KEY, {
@@ -842,7 +931,11 @@
             Store.write(HIGH_KEY, Math.max(state.highScore || 0, state.score || 0));
         }
 
+        /* `resumed` marks a game carried over a reload. It is played to the
+           end but never scored: the AI board starts afresh when it resumes,
+           so the two games did not start level (see startMatch). */
         function restoreGame() {
+            if (isAI) return null;
             var saved = Store.read(SAVE_KEY, null);
             if (!isValidSavedState(saved)) return null;
             return {
@@ -851,6 +944,7 @@
                 bag:       saved.bag,
                 paused:    false,
                 lost:      false,
+                resumed:   true,
                 score:     saved.score || 0,
                 highScore: Math.max(saved.score || 0, loadHighScore())
             };
@@ -867,10 +961,6 @@
            reload the page any more. The buttons used to reload, so restarting
            the AI also threw away the human's game. */
         function resetBoard() {
-            // Restarting the AI by hand ends its match life there and then.
-            if (isAI && match && match.ai === state && match.aiScore === null) {
-                match.aiScore = state.score;
-            }
             state = createState(Math.max(state.highScore || 0, state.score || 0, loadHighScore()));
             timers = { lastTime: performance.now(), dropCounter: 0, lockCounter: 0, horizCounter: 0 };
             aiThinkTimer = 0;
@@ -907,9 +997,14 @@
                losses were recorded 0.9 s apart. The board then waits for a
                first input again (hooks.onReset), so the restarting key does
                not also start the next game; it is marked on the event so the
-               start handler, which runs next, leaves it alone. */
+               start handler, which runs next, leaves it alone.
+
+               Space or Enter only, as the card says (the wording all three
+               games share): arrows still held or mashed from the last piece
+               no longer throw the result card away. */
             KB.on(KB.ANY, function (e) {
                 if (!state.lost || e.repeat || KB.isIgnoredKey(e)) return;
+                if (e.key !== " " && e.key !== "Enter") return;
                 if (performance.now() - (state.lostAt || 0) < RESTART_GRACE) return;
                 resetBoard();
                 e.tetrisRestarted = true;
@@ -1042,28 +1137,25 @@
                     Store.write(HIGH_KEY, state.highScore);
 
                     if (isAI) {
-                        if (match && match.ai === state && match.aiScore === null) {
-                            match.aiScore = state.score;
-                        }
+                        if (match && state === matchAi) match.aiDied(state.score);
                         announce(true, "The AI topped out with " + state.score + ".");
                     } else {
-                        state.matchLine = null;
                         // Only a real match is a result: not a game started
-                        // before the AI had loaded, or with no AI at all.
-                        if (matchStarted && match && match.ai) {
-                            var you = state.score;
-                            var them = match.aiScore !== null ? match.aiScore : match.ai.score;
-                            state.matchLine = "You " + you + " · AI " + them + " — " +
-                                (you > them ? "You win" : you < them ? "AI wins" : "Draw");
-                            if (typeof MatchResults !== "undefined") {
-                                MatchResults.record("tetris", you, them, match);
-                            }
-                        }
+                        // before the AI had loaded, or with no AI at all. The
+                        // card reads the match's line every frame, so "AI
+                        // still playing, needs N" counts down live.
+                        state.match = match;
+                        if (match) match.humanDied(state.score);
+                        var line = resultLine(state);
                         announce(false, "Game over. Score " + state.score + "." +
-                                        (state.matchLine ? " " + state.matchLine + "." : ""));
+                                        (line ? " " + line + "." : ""));
                     }
                 }
             }
+
+            // The AI's first life in the match feeds the match its score on
+            // every change. Cheap: aiScore() returns at once when unchanged.
+            if (isAI && match && state === matchAi && !state.lost) match.aiScore(state.score);
 
             // AI auto-restart after loss
             if (isAI && state.lost && !state.restarting) {
@@ -1128,11 +1220,13 @@
 
             // Game over
             if (state.lost && !waiting) {
-                var over = [{ text: isAI ? "AI DIED" : "GAME OVER", size: 36, min: 18, bold: true }];
-                // The head-to-head, at full ink like the score.
-                if (!isAI && state.matchLine) over.push({ text: state.matchLine, size: 16, min: 12 });
+                var over = [{ text: isAI ? "AI GAME OVER" : "GAME OVER", size: isAI ? 30 : 36, min: 18, bold: true }];
+                // The head-to-head, at full ink like the score. Re-read every
+                // frame: a match waiting on the AI changes as it plays.
+                var result = isAI ? "" : resultLine(state);
+                if (result) over.push({ text: result, size: 16, min: 12 });
                 over.push({
-                    text: isAI ? "Restarting\u2026" : (TOUCH ? "Tap to restart" : "Press any key to restart"),
+                    text: isAI ? "Restarting\u2026" : (TOUCH ? "Tap to play again" : "Press Space or Enter to play again"),
                     size: 15, min: 11, alpha: 0.75
                 });
                 drawCard(ctx, over, WELL_MID, s);
@@ -1146,10 +1240,10 @@
                 // Was "Run embed_model.py, then refresh": developer instructions
                 // shown to every visitor during every normal load.
                 drawCard(ctx, [
-                    { text: loading ? (aiLoadFailed ? "Couldn't load the AI" : "Loading AI\u2026") : "Ready",
+                    { text: loading ? (aiLoadFailed ? "Couldn't load the AI" : "Loading AI\u2026") : "AI ready",
                       size: 20, min: 14, bold: true },
                     { text: loading ? (aiLoadFailed ? "Check your connection and refresh" : loadingDetail())
-                                    : (TOUCH ? "Tap to start" : "Press any key to start"),
+                                    : "Starts with your first move",
                       size: 14, min: 11, alpha: 0.75 }
                 ], WELL_MID, s);
             }
@@ -1190,6 +1284,17 @@
         };
     }
 
+    /* The line under the human's GAME OVER: the match's own line (a result,
+       "AI still playing, needs N to win", or why it was not scored), or a
+       note for a game that was never a match. Empty when the AI never
+       loaded, as in the other games. */
+    function resultLine(st) {
+        if (st.match) return st.match.line();
+        if (st.resumed) return "Resumed game, not scored";
+        if (st.aiJoinedLate) return "Not scored: the AI loaded after you started";
+        return "";
+    }
+
     /* A static "Downloading the model" gave no sign of life for the whole
        download, which on a slow connection reads as stuck. */
     function loadingDetail() {
@@ -1219,7 +1324,14 @@
         // like the first game — and the AI board pauses with it.
         var humanGame = createGame(humanCanvas, false, null, {
             onReset: function () {
+                // A match still running (restart button) or waiting on the AI
+                // (play again before it finished) is void: the AI board
+                // restarts with the next game.
+                if (match) match.cancel("a new game started");
+                match = null;
+                matchAi = null;
                 matchStarted = false;
+                setStartHint(false);
                 showControls(controlsEl, true, false);
                 announce(false, "New game. " + (TOUCH ? "Tap" : "Press any key") + " to start.");
             }
@@ -1233,31 +1345,65 @@
         }
 
         /* Read by shared/confirm-exit.js: in progress once the first key has
-           released the boards and while the human has not lost. Both boards
-           are saved on beforeunload/visibilitychange and restored on return,
-           so the message says that rather than warning the run will be lost. */
+           released the boards and while the human has not lost. The human's
+           board is saved on beforeunload/visibilitychange and restored on
+           return, so the message says that rather than warning the run will
+           be lost. */
         window.gameInProgress = function () {
             try { return matchStarted && !humanGame.getState().lost; }
             catch (e) { return false; }
         };
-        window.gameExitMessage = "Leave the game? Your board is saved and will be here when you come back.";
+        window.gameExitMessage = "Leave the game? Your board is saved and will be here when you come back, but a resumed game is not scored.";
 
+        /* The start prompt. A game restored after a reload says it will
+           resume, and that it is not scored (see startMatch). */
+        function setStartHint(resumed) {
+            var keys = controlsEl.querySelector(".hint-keys");
+            var touch = controlsEl.querySelector(".hint-touch");
+            if (keys) keys.textContent = resumed ? "Press any key to resume \u00b7 not scored"
+                                                 : "Press any key to start";
+            if (touch) touch.textContent = (resumed ? "Tap to resume (not scored)"
+                                                    : "Tap to start") +
+                " \u00b7 tap rotates, swipe moves, swipe down drops";
+        }
+        setStartHint(!!humanGame.getState().resumed);
         showControls(controlsEl, true, false);
+
+        // ── AI board ──────────────────────────────────────────────────────────
+        var aiCanvas  = document.getElementById("canvas-ai");
+        var aiPlayer  = null;
+        // Created ONCE. It used to be created here with no player and then
+        // again on the same canvas after the model loaded, leaving the first
+        // loop repainting underneath the second forever, with a second set of
+        // save handlers attached.
+        var aiGame    = createGame(aiCanvas, true, null);
+
         /* A match starts here, on the human's first input after load or
            after a restart. The AI board restarts with it so both begin level;
-           see `match`. If the model is not loaded yet, the human just plays
-           and nothing is recorded. */
+           see `match`. No match begins if the model is not loaded yet (the
+           human just plays), or for a game resumed after a reload: the AI
+           board starts afresh while the human's game is half played, so the
+           two would not start level. The AI still plays alongside it. */
         function startMatch() {
             if (matchStarted) return;
             showControls(controlsEl, false, true);
-            if (aiPlayer) {
-                aiGame.reset();
-                match = { ai: aiGame.getState(), aiScore: null };
-            } else {
-                match = { ai: null, aiScore: null };
+            var resumed = !!humanGame.getState().resumed;
+            humanGame.getState().started = true;    // worth saving now; see saveGame
+            if (aiPlayer) aiGame.reset();
+            if (match) match.cancel("a new game started");
+            match = null;
+            matchAi = null;
+            if (aiPlayer && !resumed && typeof MatchResults !== "undefined") {
+                matchAi = aiGame.getState();
+                match = MatchResults.begin("tetris", { speed: AI_SPEED });
+                // Screen readers hear the outcome once it is settled; the
+                // "needs N" countdown in between would be noise.
+                match.onChange(function (m) {
+                    if (m.state === "done" || m.state === "void") announce(false, m.line() + ".");
+                });
             }
             matchStarted = true;   // releases the AI board — see the flag above
-            announce(false, "Game started.");
+            announce(false, resumed ? "Game resumed. It will not be scored." : "Game started.");
         }
         // Not once: every restart needs a fresh start. A held key's OS repeat
         // and the key that just restarted the board do not count.
@@ -1353,17 +1499,61 @@
             else humanRotate();
         });
 
-        // ── AI board ──────────────────────────────────────────────────────────
-        var aiCanvas  = document.getElementById("canvas-ai");
-        var aiPlayer  = null;
-        // Created ONCE. It used to be created here with no player and then
-        // again on the same canvas after the model loaded, leaving the first
-        // loop repainting underneath the second forever, with a second set of
-        // save handlers attached.
-        var aiGame    = createGame(aiCanvas, true, null);
         // Tapping the AI board ("Tap to start") starts the match too.
         aiCanvas.addEventListener("pointerup", function (e) {
             if (e.pointerType !== "mouse") startMatch();
+        });
+
+        /* ── Buttons ───────────────────────────────────────────────────────
+           Wired BEFORE the model is awaited. They used to be wired after it,
+           so on a slow connection Restart and the speed buttons did nothing
+           at all for the length of the download. None of them needs the
+           model: restarting a board works without one, and the speed is just
+           a number the AI reads once it plays.
+
+           Restart in place. No blur here: a pointer click is blurred by the
+           delegated handler below, and keyboard activation keeps focus where
+           the keyboard user put it. */
+        document.getElementById("restart-human").addEventListener("click", function () {
+            humanGame.reset();
+        });
+        document.getElementById("restart-ai").addEventListener("click", function () {
+            /* Restarting the AI during its first life in a match would let
+               whoever pressed it pick the AI's score, so the match is void.
+               Once that life has ended the AI only plays for show, and a
+               restart changes nothing. */
+            if (match && !match.aiDone) match.cancel("the AI was restarted");
+            aiGame.reset();
+        });
+        // ── AI speed buttons ──────────────────────────────────────────────
+        var speedBox = document.getElementById("speed-ai");
+        if (speedBox) {
+            speedBox.addEventListener("click", function(e) {
+                var btn = e.target.closest("button[data-speed]");
+                if (!btn) return;
+                var v = parseFloat(btn.getAttribute("data-speed"));
+                if (!isFinite(v) || v <= 0) return;
+                AI_SPEED = v;
+                // Any speed but 1x voids a match in progress (results.js).
+                if (match) match.speed(v);
+                var all = speedBox.querySelectorAll("button[data-speed]");
+                for (var i = 0; i < all.length; i++) {
+                    all[i].classList.toggle("active", all[i] === btn);
+                    all[i].setAttribute("aria-pressed", all[i] === btn ? "true" : "false");
+                }
+            });
+        }
+
+        /* A mouse click leaves the button focused, and Space on a focused
+           button belongs to the button (see KB.init) — so after picking a
+           speed or a model version, Space re-pressed that button instead of
+           hard-dropping, until you clicked somewhere else. Drop focus after a
+           pointer click; keyboard activation (detail 0) keeps it, so tabbing
+           through the controls still works. */
+        document.getElementById("arena").addEventListener("click", function(e) {
+            if (e.detail === 0) return;
+            var b = e.target.closest && e.target.closest("button");
+            if (b) b.blur();
         });
 
         // Try to load ONNX model. The .onnx is preferred over HTTP; the
@@ -1385,8 +1575,12 @@
 
             aiPlayer = new AIPlayer(session);
             aiGame.setAIPlayer(aiPlayer);
-            // The human board's loop needs the AI's score to record a match,
-            // and the two live in separate createGame closures.
+            // The model arrived while the human was already playing: the AI
+            // joins in for show, and the game says why it is not scored.
+            var hs = humanGame.getState();
+            if (matchStarted && !hs.lost && !hs.resumed) hs.aiJoinedLate = true;
+            // A handle for tests and the console; the page itself no longer
+            // reads the AI board from outside its closure.
             window.__aiGame = aiGame;
             console.log("AI model loaded successfully.");
 
@@ -1415,49 +1609,5 @@
             aiLoadFailed = true;
             console.warn("AI model failed to load:", e.message);
         }
-
-        // ── Restart buttons ───────────────────────────────────────────────────
-        // Both restart buttons reload the page. Saved boards must be dropped
-        // first, or the reload would restore the game being restarted. High
-        // scores live under separate keys and survive.
-        // Restart in place. Blurred afterwards so Space goes back to the board
-        // rather than pressing Restart again.
-        document.getElementById("restart-human").addEventListener("click", function(e) {
-            humanGame.reset();
-            e.currentTarget.blur();
-        });
-        // ── AI speed buttons ──────────────────────────────────────────────
-        var speedBox = document.getElementById("speed-ai");
-        if (speedBox) {
-            speedBox.addEventListener("click", function(e) {
-                var btn = e.target.closest("button[data-speed]");
-                if (!btn) return;
-                var v = parseFloat(btn.getAttribute("data-speed"));
-                if (!isFinite(v) || v <= 0) return;
-                AI_SPEED = v;
-                var all = speedBox.querySelectorAll("button[data-speed]");
-                for (var i = 0; i < all.length; i++) {
-                    all[i].classList.toggle("active", all[i] === btn);
-                    all[i].setAttribute("aria-pressed", all[i] === btn ? "true" : "false");
-                }
-            });
-        }
-
-        document.getElementById("restart-ai").addEventListener("click", function(e) {
-            aiGame.reset();
-            e.currentTarget.blur();
-        });
-
-        /* A mouse click leaves the button focused, and Space on a focused
-           button belongs to the button (see KB.init) — so after picking a
-           speed or a model version, Space re-pressed that button instead of
-           hard-dropping, until you clicked somewhere else. Drop focus after a
-           pointer click; keyboard activation (detail 0) keeps it, so tabbing
-           through the controls still works. */
-        document.getElementById("arena").addEventListener("click", function(e) {
-            if (e.detail === 0) return;
-            var b = e.target.closest && e.target.closest("button");
-            if (b) b.blur();
-        });
     });
 })();
