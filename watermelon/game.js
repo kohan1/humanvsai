@@ -31,10 +31,10 @@
 
    ── Head-to-head ──
    A match starts with the human's first drop of a game. At that moment the
-   AI board resets and starts too — it never plays ahead of you. The AI's
-   match score is its FIRST life (frozen if it loses first; it keeps playing
-   for show). A result is recorded only if the model was loaded when the
-   match began. See "Match" near the bottom of this file.
+   AI board resets and starts too — it never plays ahead of you. The rules
+   (the AI's first life is its match score, and losing first means waiting
+   for it to pass you or lose) are shared/results.js's MatchResults.begin().
+   See "Match" near the bottom of this file.
    ────────────────────────────────────────────────────────────────────────── */
 
 (() => {
@@ -149,7 +149,8 @@
     // cooldown between drops, and how fast the cloud slides to its target. At
     // 2x with unchanged easing the AI would be ready to drop before the cloud
     // had arrived, and just stall on the alignment check.
-    const AI_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 1.75, 2];
+    // 1.75x was dropped: all three games offer the same six speeds.
+    const AI_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2];
     let AI_SPEED = 1;
     const CLOUD_EASE_BASE = 0.2;
     const SHAKE_STRENGTH    = 50;
@@ -219,6 +220,11 @@
             let balls, bounds, loss;
             let wall1, wall2, ground, lossLine;
             let nextBall, cloud, cloudBall;
+            // Where the held fruit is, and where it will drop. The cloud
+            // SPRITE follows it but is clamped inside the walls when drawn:
+            // aimed at the far edge, the drop x is right against the wall and
+            // the cloud, centred on it, was cut in half by the canvas edge.
+            let cloudX = CANVAS_W / 2;
 
             let score        = 0;
             let highScore    = 0;
@@ -265,6 +271,7 @@
             // Decoded p5.Image objects, one set per instance.
             let FRUIT_IMG   = [];
             let CLOUD_IMAGE = null;
+            let cloudHalfW  = 60;
 
             /* ── Preload ──────────────────────────────────────────────────────
 
@@ -363,6 +370,8 @@
                 cloud = new p.Sprite(CANVAS_W / 2, 50, 75, 50, "n");
                 cloud.img = CLOUD_IMAGE;
                 cloud.scale = 0.8;
+                // Half the drawn cloud (148px image at 0.8), plus a pixel.
+                cloudHalfW = Math.ceil(CLOUD_IMAGE.width * 0.8 / 2) + 1;
 
                 balls = new p.Group();
                 balls.tier;
@@ -375,7 +384,7 @@
 
                 balls.collide(balls, combineFruits);
 
-                createCloudBall(cloud.x, cloud.y, Math.floor(p.random(0, 5)));
+                createCloudBall(cloudX, cloud.y, Math.floor(p.random(0, 5)));
 
                 canDrop = true;
                 highScore = store.read(KEY_HIGH, 0) || 0;
@@ -423,22 +432,22 @@
                     // middle after every single drop and then out again to the
                     // next column, a constant pendulum on the AI board.
                     targetX = !policy ? CANVAS_W / 2
-                            : want === null || want === undefined ? clampDropX(cloud.x, heldTier)
+                            : want === null || want === undefined ? clampDropX(cloudX, heldTier)
                             : clampDropX(want * CANVAS_W, heldTier);
                 }
                 // The AI board's cloud tracks at the selected speed; the human
-                // board is never sped up. Capped below 1 because moveTowards
-                // treats the factor as a fraction of the remaining distance —
-                // at >=1 it teleports and the motion reads as a jump cut.
-                cloud.moveTowards(
-                    targetX,
-                    cloud.y,
-                    cfg.interactive ? CLOUD_EASE_BASE
-                                    : Math.min(0.9, CLOUD_EASE_BASE * AI_SPEED)
-                );
+                // board is never sped up. Eases a fraction of the remaining
+                // distance per frame, as the sprite's moveTowards() did.
+                // Capped below 1: at >=1 it teleports and the motion reads as
+                // a jump cut.
+                const ease = cfg.interactive ? CLOUD_EASE_BASE
+                                             : Math.min(0.9, CLOUD_EASE_BASE * AI_SPEED);
+                cloudX += (targetX - cloudX) * ease;
+                cloud.vel.x = 0;
+                cloud.x = Math.min(CANVAS_W - cloudHalfW, Math.max(cloudHalfW, cloudX));
 
                 if (cloudBall) {
-                    cloudBall.x = cloud.x;
+                    cloudBall.x = cloudX;
                     cloudBall.y = cloud.y + 50;
                 }
 
@@ -453,7 +462,7 @@
                 // The drop guide, on the cream board.
                 p.stroke("gray");
                 p.strokeWeight(6);
-                p.line(cloud.x, cloud.y, cloud.x, CANVAS_H);
+                p.line(cloudX, cloud.y, cloudX, CANVAS_H);
 
                 // Stack limit — fruit resting above this line ends the game.
                 // Stays red on every theme: it is the one mark on the board
@@ -494,11 +503,13 @@
                 // Restart/Shake row sits just under it) also arrived here.
                 if (e && e.target && e.target.closest &&
                     e.target.closest("button, a, input, select, label")) return;
-                // Bounds-check both axes: each instance reports pointer
-                // position relative to its own canvas, so this is what stops
-                // a click on the other board from dropping here.
-                if (p.mouseX <= -25 || p.mouseX >= CANVAS_W + 25) return;
-                if (p.mouseY <= -25 || p.mouseY >= CANVAS_H + 25) return;
+                // Only a release ON this board drops. The old check allowed
+                // 25px outside the canvas, which took in the Score and Next
+                // bubbles just above it: clicking either dropped a fruit.
+                // The target also rules out the other board, the page around
+                // it and a drag that started here and ended elsewhere.
+                if (!e || !e.target || !cfg.container ||
+                    !cfg.container.contains(e.target)) return;
                 aimX = p.mouseX;
                 dropAtAim();
             };
@@ -512,9 +523,10 @@
                mostly-sideways drag is the browser's to give us: it aims, and
                lifting the finger drops, as it always has.
 
-               500 ms rather than a stricter 300: a deliberate tap on a phone
-               is often 250-400 ms, and a missed drop reads as a broken game. */
-            const TAP_SLOP_PX = 10, TAP_MAX_MS = 500;
+               A press that does not move is a tap however long it lasts. It
+               used to need to end within 500 ms, so a slow, deliberate press
+               did nothing at all, which reads as a broken game. */
+            const TAP_SLOP_PX = 10;
             let touch = null;
 
             // p5play (lib/physics.min.js, ~line 4122) calls preventDefault()
@@ -556,8 +568,7 @@
                     touch = null;
                     lastTouchAt = performance.now();
                     const dx = e.clientX - t.x0, dy = e.clientY - t.y0;
-                    const tap = Math.hypot(dx, dy) <= TAP_SLOP_PX &&
-                                lastTouchAt - t.t0 <= TAP_MAX_MS;
+                    const tap = Math.hypot(dx, dy) <= TAP_SLOP_PX;
                     if (!tap && !t.aiming) return;
                     aimX = canvasX(e.clientX);
                     dropAtAim();
@@ -565,6 +576,12 @@
                 c.addEventListener("pointercancel", () => {
                     touch = null;
                     lastTouchAt = performance.now();
+                });
+                // A long press would otherwise open the context menu (and on
+                // Android cancel the pointer), so the drop never happened.
+                // Only during a touch: a mouse right-click keeps its menu.
+                c.addEventListener("contextmenu", (e) => {
+                    if (touch || performance.now() - lastTouchAt < 800) e.preventDefault();
                 });
             }
 
@@ -574,8 +591,8 @@
             // the time before.
             function dropAtAim() {
                 if (cloudBall && canDrop && !isGameOver && !loading) {
-                    cloud.x = clampDropX(aimX, cloudBall.tier);
-                    cloudBall.x = cloud.x;
+                    cloudX = clampDropX(aimX, cloudBall.tier);
+                    cloudBall.x = cloudX;
                 }
                 drop();
             }
@@ -677,7 +694,7 @@
                     // old timer spawned a second held fruit on the fresh board,
                     // and the one it replaced hung at y~100 as an obstacle.
                     if (isGameOver || g !== gen) return;
-                    createCloudBall(cloud.x, cloud.y, nextBall.tier);
+                    createCloudBall(cloudX, cloud.y, nextBall.tier);
                     queueBall();
                     saveGame();
                     canDrop = true;
@@ -708,6 +725,7 @@
                     saveHighScore(highScore);
                 }
                 renderScore();
+                if (cfg.onScore) cfg.onScore(score);
 
                 a.overlaps(b);
                 a.direction = a.angleTo(b);
@@ -851,7 +869,7 @@
                 }
                 if (typeof state.cloudTier === "number") {
                     if (cloudBall) cloudBall.remove();
-                    createCloudBall(cloud.x, cloud.y, state.cloudTier);
+                    createCloudBall(cloudX, cloud.y, state.cloudTier);
                 }
                 if (typeof state.nextTier === "number") queueBall(state.nextTier);
                 else queueBall();
@@ -868,8 +886,10 @@
                     if (domShakeCount) domShakeCount.innerText = numOfShakes;
                     if (domShakeBtn) domShakeBtn.disabled = numOfShakes < 1;
                 }
-                // A game already under way, not a fresh one — see Match.
+                // A game already under way, not a fresh one — see Match. Its
+                // first drop was long ago, so no "Click to drop" prompt.
                 restored = (state.balls && state.balls.length > 0) || score > 0;
+                if (restored && domStartHint) domStartHint.hidden = true;
                 loading = false;
             }
 
@@ -886,18 +906,18 @@
                 isGameOver = true;
                 canDrop = false;
                 gameOverAt = performance.now();
+                // Never printed over the Game Over card (a game that ended
+                // before its first drop counted, e.g. a restored one).
+                if (domStartHint) domStartHint.hidden = true;
 
                 // gameOver() is guarded against re-entry, so this fires once
-                // per game. The human board's hook records the match and hands
-                // back the result line (or null when nothing was at stake).
+                // per game. The human board's hook ends its side of the match
+                // and hands back the result line (or null when nothing was at
+                // stake); later changes arrive through showResult().
                 const result = cfg.onGameOver ? cfg.onGameOver(score, restored) : null;
-                if (domResult) {
-                    domResult.textContent = result ? result.text : "";
-                    domResult.classList.toggle("is-note", !!(result && result.note));
-                    domResult.hidden = !result;
-                }
+                showResult(result);
                 announce((cfg.interactive ? "Game over." : "The AI's game is over.") +
-                         ` Score ${score}.` + (result ? " " + result.text : ""), true);
+                         ` Score ${score}.` + (result && result.text ? " " + result.text : ""), true);
 
                 store.clear(KEY_SAVED);
                 // Otherwise closing the tab on this screen left the old drop
@@ -914,6 +934,15 @@
                     const g = gen;
                     setTimeout(() => { if (isGameOver && g === gen) reset(); }, 1500);
                 }
+            }
+
+            // The match line on the Game Over card. { text, note } or null.
+            function showResult(result) {
+                if (!domResult) return;
+                const text = result && result.text ? result.text : "";
+                domResult.textContent = text;
+                domResult.classList.toggle("is-note", !!(result && result.note));
+                domResult.hidden = !text;
             }
 
             // Resets this board only. The original reloaded the document,
@@ -940,7 +969,7 @@
                 if (cfg.persist) store.write(KEY_DROPPED, 0);
 
                 queueBall(Math.floor(p.random(0, 5)));
-                createCloudBall(cloud.x, cloud.y, Math.floor(p.random(0, 5)));
+                createCloudBall(cloudX, cloud.y, Math.floor(p.random(0, 5)));
 
                 if (domGameOver) domGameOver.hidden = true;
                 if (domShakeCount) domShakeCount.innerText = 0;
@@ -986,6 +1015,9 @@
             /* ── State snapshot handed to an AI policy ────────────────────── */
 
             function buildState() {
+                // Before setup() there are no balls to list (it threw
+                // "balls is not iterable"); say "not ready" instead.
+                if (!ready) return null;
                 const fruit = [];
                 for (const b of balls) {
                     if (b.isCloud) continue;
@@ -997,7 +1029,7 @@
                     lossLineY: lossLine.y,
                     holdingTier: cloudBall ? cloudBall.tier : null,
                     nextTier: nextBall.tier,
-                    cloudX: cloud.x,
+                    cloudX,
                     canDrop,
                     framesSinceDrop: p.frameCount - dropFrame,
                     isGameOver,
@@ -1028,6 +1060,15 @@
                 reset();
             });
             if (domPlayAgain)  domPlayAgain.addEventListener("click", reset);
+            // "Tap to play again": anywhere on your Game Over card, not only
+            // the button. Not straight away, for the same reason as the keys
+            // below: a tap still landing from the last drop must not skip it.
+            if (cfg.interactive && domGameOver) {
+                domGameOver.addEventListener("click", (e) => {
+                    if (e.target.closest && e.target.closest("button")) return;
+                    if (isGameOver && performance.now() - gameOverAt >= 700) reset();
+                });
+            }
 
             // Expose the bits the controller needs.
             api = {
@@ -1043,6 +1084,9 @@
                 getGen: () => gen,
                 isReady: () => ready,
                 setPolicy(fn) { policy = fn; },
+                showResult,
+                say: (text) => announce(text, true),
+                isGameOver: () => isGameOver,
             };
         };
 
@@ -1053,22 +1097,29 @@
     /* ── Boot both boards ─────────────────────────────────────────────────── */
 
     /* ── Match ────────────────────────────────────────────────────────────
-       The same rules as Snake and Tetris:
+       The rules live in shared/results.js (MatchResults.begin), shared with
+       Snake and Tetris so the three cannot drift apart again:
 
-       - A match starts with the human's first drop of a game. The AI board
-         resets at that moment and starts with you; before it, the AI waits.
-         It used to start the instant its model loaded, often a minute ahead.
-       - The AI's match score is its FIRST life. If it loses before you, that
-         score is frozen; the board restarts and keeps playing for show.
-       - A result is recorded only if the model was loaded when the match
-         started. An AI that never loaded scored 0 and was recorded as a loss.
+       - A match starts with the human's first drop of a game, if the model
+         is loaded. The AI board resets at that moment and starts with you;
+         before it, the AI waits.
+       - The AI's match score is its FIRST life. If you lose first you have
+         not won yet: your card reads "AI still playing, needs N to win" and
+         follows it live until the AI passes you or loses. It used to freeze
+         the AI's unfinished score the moment you lost, so losing early won.
+         The AI keeps playing (and restarting) afterwards for show; later
+         lives are not part of the match.
        - A game RESTORED after a reload is not a match. Your board comes back
          mid-game; the AI's does not, and there is no fair way to line a fresh
          AI up against a head start. You finish the game, the AI plays
-         alongside for show, and nothing is recorded. The next game counts.
-       - Restarting the AI mid-match voids it, for the same reason. */
+         alongside for show, and the card says "Resumed game, not scored".
+       - Restarting the AI or changing its speed voids the match; results.js
+         itself voids it on a model-version or difficulty change.
+       - A model that arrives mid-game joins on your next drop, unranked. */
     let aiRunning = false;       // the AI may drop fruit
-    const match = { live: false, ranked: false, aiScore: null, voided: false };
+    let match = null;            // the MatchResults match in play, if any
+    let matchAiGen = -1;         // the AI board's gen during its first life
+    let resumed = false;         // your current game was restored on load
 
     function startAiBoard() {
         const ai = window.watermelonBoards.ai;
@@ -1080,7 +1131,40 @@
         return true;
     }
 
+    // Waiting for your first drop: the AI holds still under its "AI ready" card.
+    function pauseAiBoard() {
+        aiRunning = false;
+        aiTargetFrac = null;
+        showAiWaiting();
+    }
+
     function aiAvailable() { return !!aiSession && !aiStopped; }
+
+    // The line for your Game Over card: { text, note } or null.
+    function matchResult() {
+        if (resumed) return { text: "Resumed game, not scored", note: true };
+        if (!match) return null;
+        const text = match.line();
+        return text ? { text, note: match.state === "void" } : null;
+    }
+
+    function watchMatch(m) {
+        m.onChange(() => {
+            if (m !== match) return;
+            const human = getHuman();
+            if (!human) return;
+            const settled = m.state === "done" || m.state === "void";
+            if (human.isGameOver()) {
+                // Live while the AI plays on, then the verdict.
+                human.showResult(matchResult());
+                if (settled) human.say(m.line());
+            } else if (settled && !human.isStarted() && aiRunning) {
+                // You already restarted and the AI has now settled the old
+                // match: it waits for your first drop like any other game.
+                pauseAiBoard();
+            }
+        });
+    }
 
     const getHuman = createBoard({
         id: "human",
@@ -1090,39 +1174,38 @@
         announceScore: true,
         onDrop(first, restored) {
             if (first) {
+                // A new game: an earlier match still waiting on the AI's
+                // first life is abandoned, not settled.
+                if (match) match.cancel("a new game started");
+                match = null;
+                resumed = restored;
                 const up = aiAvailable() && startAiBoard();
-                match.live = true;
-                match.ranked = up && !restored;
-                match.aiScore = null;
-                match.voided = false;
-                match.restored = restored;
+                if (up && !restored && typeof MatchResults !== "undefined") {
+                    match = MatchResults.begin("watermelon", { speed: AI_SPEED });
+                    matchAiGen = getAI().getGen();
+                    watchMatch(match);
+                }
             } else if (!aiRunning && aiAvailable()) {
                 // The model arrived mid-game: the AI joins in, unranked.
                 startAiBoard();
             }
         },
-        onGameOver(score) {
-            const m = { ...match };
-            match.live = false;
-            if (!m.ranked) {
-                if (m.voided)   return { text: "Not scored: the AI was restarted", note: true };
-                if (m.restored) return { text: "Resumed game, not scored", note: true };
-                return null;
-            }
-            const ai = m.aiScore !== null ? m.aiScore : getAI().getScore();
-            if (typeof MatchResults !== "undefined") {
-                MatchResults.record("watermelon", score, ai, "watermelon-" + Date.now());
-            }
-            const verdict = score > ai ? "You win" : score < ai ? "AI wins" : "Draw";
-            return { text: `You ${score} · AI ${ai} — ${verdict}` };
+        onGameOver(score, restored) {
+            // A restored game can end before its first drop (it came back
+            // already over the line), so the board's own flag counts too.
+            if (restored) resumed = true;
+            if (match) match.humanDied(score);
+            return matchResult();
         },
         onReset() {
-            // Back to waiting for the first drop. The AI pauses too, so its
-            // board is fresh when the next match starts.
-            match.live = false;
-            aiRunning = false;
-            aiTargetFrac = null;
-            showAiWaiting();
+            resumed = false;
+            // Restarted mid-game: nothing to settle.
+            if (match && match.state === "playing") match.cancel("a new game started");
+            // Lost, and the AI is still on its first life: let it finish, so
+            // the result is recorded. It pauses once it has (watchMatch).
+            if (match && match.state === "waiting") return;
+            match = null;
+            pauseAiBoard();
         },
     });
 
@@ -1131,15 +1214,15 @@
         container: document.getElementById("canvas-ai"),
         interactive: false,
         persist: false,
+        onScore(score) {
+            if (match && getAI().getGen() === matchAiGen) match.aiScore(score);
+        },
         onGameOver(score) {
-            if (match.live && match.aiScore === null) match.aiScore = score;
+            if (match && getAI().getGen() === matchAiGen) match.aiDied(score);
             return null;
         },
         onRestartClick() {
-            if (match.live && match.ranked && match.aiScore === null) {
-                match.ranked = false;
-                match.voided = true;
-            }
+            if (match && !match.aiDone) match.cancel("the AI was restarted");
         },
     });
 
@@ -1153,12 +1236,13 @@
     window.gameInProgress = function () {
         try {
             var st = getHuman().getState();
-            return !st.isGameOver && ((st.fruit && st.fruit.length > 0) || st.score > 0);
+            return !!st && !st.isGameOver && ((st.fruit && st.fruit.length > 0) || st.score > 0);
         } catch (e) { return false; }
     };
     // The human board is saved after every drop and restored on return, so the
-    // default "your run will be lost" would be untrue here.
-    window.gameExitMessage = "Leave the game? Your board is saved and will be here when you come back.";
+    // default "your run will be lost" would be untrue here. A restored game is
+    // not a match (see Match), so say that too — the same words as Tetris.
+    window.gameExitMessage = "Leave the game? Your board is saved and will be here when you come back, but a resumed game is not scored.";
 
     /* ── AI opponent ──────────────────────────────────────────────────────
 
@@ -1343,7 +1427,7 @@
     // model is still loading or has failed: those cards say more.
     function showAiWaiting() {
         if (!aiAvailable()) return;
-        setAiStatus("AI ready", "It starts when you drop your first fruit");
+        setAiStatus("AI ready", "Starts with your first move");
     }
 
     // After repeated inference failures, say so on the board and stop retrying.
@@ -1399,14 +1483,12 @@
         }
     }
 
-    /* Mounted in the AI board's side column, with the speed controls, once
-       the shipped model is live. Under the board it shared a row with the
-       fixed "scroll down" cue, and on a laptop it fell below the fold; the
-       side column has room for the full (stacked) control. When the layout
-       narrows, that column wraps under the board and this takes a full row. */
+    /* Mounted in its own slot once the shipped model is live: beside the AI
+       board under Restart on a wide screen, under the board's controls on a
+       phone (see .board-body in style.css). */
     function mountCheckpointSwitcher() {
         if (typeof CheckpointSwitcher === "undefined") return;
-        const col = document.querySelector("#board-ai .board-controls");
+        const col = document.getElementById("ckpt-ai");
         if (!col) return;
         CheckpointSwitcher.mount({
             game: "watermelon",
@@ -1518,6 +1600,7 @@
             const v = parseFloat(btn.getAttribute("data-speed"));
             if (!isFinite(v) || v <= 0) return;
             AI_SPEED = v;
+            if (match) match.speed(v);
             speedBox.querySelectorAll("button[data-speed]").forEach((b) => {
                 b.classList.toggle("active", b === btn);
                 b.setAttribute("aria-pressed", b === btn ? "true" : "false");
@@ -1539,7 +1622,7 @@
             // you are already mid-game it joins on your next drop, unranked.
             const human = window.watermelonBoards.human;
             if (human && human.isStarted && human.isStarted()) {
-                setAiStatus("AI ready", "It joins on your next drop");
+                setAiStatus("AI ready", "Joins on your next drop");
             } else {
                 showAiWaiting();
             }

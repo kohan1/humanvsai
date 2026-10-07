@@ -18,29 +18,42 @@
     --canvas-w:   448px;
     --canvas-h:   599px;
 
-    /* ── Board size: fitted to the viewport's HEIGHT as well as its width ──
-       The board was a fixed 448x599, so on a laptop the floor — where the
-       fruit actually settle — was cut off: by 96px at 1280x720, 48px at
-       1366x768, 16px at 1280x800. Now the score bubbles shrink on short
-       screens and the board takes what is left, the way Snake's does. The
-       game's own coordinates stay 448x599 (p5 divides pointer positions by
-       the CSS scale), so nothing in game.js depends on the size chosen here.
+    /* ── Board size: fitted to the viewport's height AND width ──────────────
+       The game's own coordinates stay 448x599 (p5 divides pointer positions
+       by the CSS scale), so nothing in game.js depends on the size chosen
+       here. Three layouts, all built from the same markup (see .board-body):
 
-       --wm-chrome-v is everything in the column besides bubbles and board:
-       .screen's 2rem top padding (36px on the 18px root), the 15.3px label,
-       two 0.6rem gaps, the bubble row's 11px of extra box, and ~18px of air
-       under the floor.
-       --wm-w-cap is the width two side-by-side boards may each take: the
-       viewport less both 150px side columns, their gaps, VS and padding.
+         wide       landscape: the boards side by side, each with a side
+                    column of controls, big round score bubbles
+         compact    landscape but short (a phone on its side, or a laptop at
+                    200% zoom): the same, with one-line score pills
+         stacked    portrait: one board above the other, pills, sized so
+                    BOTH boards fit on one screen
+
+       Wide used to stack the boards below 1080px, at nearly full size, which
+       put the AI board entirely below the fold on every tablet and small
+       laptop (y=1085 at 1024x768). Landscape now always means side by side.
+
+       --wm-head-h  label + score row above each canvas
+       --wm-side    the side column of controls
+       --wm-v       everything in the AI column that is not head or board:
+                    .screen's 2rem top padding, the head-to-board gap, the
+                    speed row under the AI board and a little air
+       --wm-h-pad   everything across the arena that is not a board: both
+                    side columns and their gaps, VS and its gaps, padding
        Custom properties are not validated when parsed, so there is no "vh
        line, then svh line" fallback here — that would keep the svh value and
        fail at use time (the same note as snake/style.css). */
-    --wm-bubble:  clamp(84px, 16.7svh, 150px);
-    --wm-chrome-v: 102px;
-    --wm-w-cap:   calc((100vw - 500px) / 2);
-    --wm-board-h: max(240px, min(599px,
-                      calc(100svh - var(--wm-bubble) - var(--wm-chrome-v)),
-                      calc(var(--wm-w-cap) * 599 / 448)));
+    --wm-side:    150px;
+    --wm-gap:     1.25rem;     /* side column to board */
+    --wm-arena-gap: 40px;      /* board to VS */
+    --wm-bubble:  clamp(84px, 14svh, 150px);
+    --wm-head-h:  calc(15.3px + 0.5rem + var(--wm-bubble) + 4px);
+    --wm-v:       calc(36px + 0.6rem + 62px);
+    --wm-h-pad:   calc(2 * var(--wm-side) + 2 * var(--wm-gap) + 2 * var(--wm-arena-gap) + 44px + 3rem);
+    --wm-board-h: max(200px, min(599px,
+                      calc(100svh - var(--wm-head-h) - var(--wm-v)),
+                      calc((100vw - var(--wm-h-pad)) / 2 * 599 / 448)));
     --wm-board-w: calc(var(--wm-board-h) * 448 / 599);
 }
 
@@ -101,23 +114,22 @@ html { font-size: 18px; }
 
 /* ── Two-board layout ────────────────────────────────────────────────────── */
 
+/* The page's one landmark; the boards inside are sections. */
+.screen > main { display: block; min-width: 0; max-width: 100%; }
+
 #arena {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
     justify-content: center;
-    gap: 40px;
+    gap: var(--wm-arena-gap);
 }
 
 #vs {
-    /* Centred on the canvas, not the column. align-self: center centred it on
-       label + bubbles + board + speed row + switcher, which sat it 50-90px
-       high. 0.85rem label (line-height is 100% on this page) + two 0.6rem
-       gaps + the bubbles + half the board, less half this line. */
+    /* Centred on the canvases: the head row, the gap under it, half the
+       board, less half this line (line-height is 100% on this page). */
     align-self: flex-start;
-    /* +11px measured at 1280px: the bubble row's box is taller than its
-       150px circles once their shadows and line boxes are counted. */
-    margin-top: calc(15.3px + 1.2rem + var(--wm-bubble) + 11px + var(--wm-board-h) / 2 - 1rem);
+    margin-top: calc(var(--wm-head-h) + 0.6rem + var(--wm-board-h) / 2 - 1rem);
     font-size: 2rem;
     font-weight: 700;
     letter-spacing: 0.05em;
@@ -125,16 +137,7 @@ html { font-size: 18px; }
     flex-shrink: 0;
 }
 
-.board-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    /* Tightened from 1rem: the 599px canvas plus bubbles made the arena 839px
-       tall, which left the fixed scroll cue only 9px of clearance on a 945px
-       screen. This is framing space, not the original game's styling. */
-    gap: 0.5rem;
-    flex-shrink: 0;
-}
+.board-wrap { flex-shrink: 0; }
 
 .board-label {
     /* Snake's and Tetris's 0.85rem, which is 15.3px on their 18px root. */
@@ -143,6 +146,75 @@ html { font-size: 18px; }
     letter-spacing: 0.15em;
     text-transform: uppercase;
     color: var(--dim);
+}
+
+/* ── One board: placed by a grid, never reordered ───────────────────────────
+   Every part of a board is a direct child of .board-body, in DOM order:
+
+     you   head, controls, canvas, key hint
+     ai    head, canvas, speed row, controls, model note
+
+   Each layout below only PLACES those children with grid areas, so the order
+   a keyboard reaches them is the order they read in — the controls used to
+   come before your board in the markup and be moved under it with `order`. */
+.board-body {
+    display: grid;
+    column-gap: var(--wm-gap);
+    row-gap: 0.6rem;
+    justify-content: center;
+}
+.board-head        { grid-area: head; }
+.board-controls    { grid-area: ctl; }
+.board-main        { grid-area: canvas; }
+.key-hint          { grid-area: keys; }
+.speed-block       { grid-area: speed; }
+.ckpt-slot         { grid-area: ckpt; }
+
+/* Wide: [controls | board] VS [board | controls], symmetric about VS. The
+   canvas spans every row of its side column, and the last of those rows
+   takes the slack, so the side column's items stack from the top. */
+#board-human .board-body {
+    grid-template-columns: var(--wm-side) var(--wm-board-w);
+    grid-template-rows: var(--wm-head-h) auto auto 1fr;
+    grid-template-areas:
+        ".    head"
+        "ctl  canvas"
+        "keys canvas"
+        ".    canvas";
+}
+#board-ai .board-body {
+    grid-template-columns: var(--wm-board-w) var(--wm-side);
+    grid-template-rows: var(--wm-head-h) auto auto 1fr auto;
+    grid-template-areas:
+        "head   ."
+        "canvas ctl"
+        "canvas ckpt"
+        "canvas ."
+        "speed  speed";
+}
+
+/* Both side columns start level with each other, about centred on the canvas
+   (half the board, less half the human column's ~170px), and never above it. */
+#board-human .board-controls,
+#board-ai .board-controls {
+    margin-top: max(0px, calc(var(--wm-board-h) / 2 - 85px));
+}
+
+/* Label above the bubbles, centred over the canvas. */
+.board-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.5rem;
+}
+
+/* The speed row spans the board and its side column, but starts at the
+   board's left edge and is at least as wide, so it centres UNDER THE BOARD
+   whenever it fits and only spills right when the board is narrower. */
+.speed-block {
+    justify-self: start;
+    min-width: var(--wm-board-w);
 }
 
 /* ── Info bubbles (original .bubble rules, unchanged) ────────────────────── */
@@ -199,6 +271,7 @@ html { font-size: 18px; }
     justify-items: center;
     grid-template-columns: 1fr 1fr;
     width: max-content;
+    max-width: 100%;
     gap: 0.5rem;
     margin: 0 auto;
 }
@@ -226,17 +299,21 @@ html { font-size: 18px; }
 
 /* ── Board ───────────────────────────────────────────────────────────────── */
 
-main {
+.board-main {
     position: relative;
     width: var(--wm-board-w);
     height: var(--wm-board-h);
-    flex-shrink: 0;
     background-color: var(--canvas-bg);
     box-shadow: 6px 6px 9.3px rgba(0, 0, 0, 0.25);
+    /* A long press on the board is a drop (game.js), not a text selection
+       or the iOS callout. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
 
 /* !important because p5 writes the canvas size as an inline style. */
-main canvas {
+.board-main canvas {
     display: block;
     width: 100% !important;
     height: 100% !important;
@@ -273,24 +350,33 @@ main canvas {
     align-items: center;
     justify-content: center;
     gap: 1rem;
+    padding: 0 0.5rem;
     /* Matches the cream board it covers — see BOARD_BG in game.js. */
     background: rgba(253, 251, 236, 0.88);
     color: var(--wm-ink);
     pointer-events: none;
 }
 
+/* Your game-over card is clickable as a whole: "Tap to play again". */
 .overlay.gameover { pointer-events: auto; }
+#gameover-human { cursor: pointer; }
+#gameover-ai { pointer-events: none; }
 
 .overlay .overlay-title {
     font-size: 28px;
     font-weight: 700;
+    text-align: center;
 }
+/* "GAME OVER" and "AI GAME OVER", as on Snake and Tetris; the markup keeps
+   sentence case so a screen reader says the words instead of spelling them. */
+.overlay.gameover .overlay-title { text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* Full ink. These were at 0.7 opacity, which measured 3.45:1 on the cream. */
 .overlay .overlay-sub {
     font-size: 15px;
     line-height: 1.35;
-    max-width: 80%;
+    max-width: 90%;
+    text-align: center;
 }
 
 .overlay .overlay-score {
@@ -305,19 +391,22 @@ main canvas {
 .overlay .overlay-result {
     font-size: 20px;
     font-weight: 700;
-    max-width: 90%;
+    max-width: 92%;
     line-height: 1.25;
+    text-align: center;
 }
 .overlay .overlay-result.is-note { font-size: 14px; font-weight: 400; }
 
 /* The start prompt. Unlike the overlays it sits on a LIVE board, so it gets a
    backing pill — the same scrim the other two games put behind board text —
-   and never prints straight over fruit. */
+   and never prints straight over fruit. Wraps rather than shrinks on a small
+   board. */
 .start-hint {
     position: absolute;
     left: 50%;
     top: 48%;
     transform: translate(-50%, -50%);
+    width: max-content;
     max-width: 86%;
     padding: 0.55em 1.1em;
     border-radius: 999px;
@@ -325,52 +414,30 @@ main canvas {
     color: var(--board-ink, #fff);
     font-size: 15px;
     line-height: 1.3;
+    text-align: center;
     pointer-events: none;
-    white-space: nowrap;
 }
 
 /* Start hints: keyboard wording by default, touch wording on phones and
    tablets — the same split Snake makes. Pure CSS, right from first paint. */
 .hint-touch { display: none; }
 @media (hover: none) and (pointer: coarse) {
+    :root { --wm-keys-h: 0px !important; }
     .hint-touch { display: inline; }
     .hint-keys  { display: none !important; }
 }
 
 /* ── Controls ────────────────────────────────────────────────────────────── */
 
-/* Canvas plus its side column. The controls sit beside the board rather
-   than under it so they stay in view without scrolling past a 599px canvas.
-   Human is [controls | board], AI is [board | controls] — equal widths, so
-   the two boards are symmetric about the VS divider and the arena centres. */
-.board-main {
-    display: flex;
-    flex-direction: row;
-    /* Top, not centre: both side columns carry an explicit offset (below),
-       and on a short board the AI's taller column centred its board a few
-       px LOWER than yours. */
-    align-items: flex-start;
-    gap: 1.25rem;
-}
-
-/* Label, bubbles and canvas as one unit, so the label and bubbles centre on
-   the canvas rather than on the board plus its side column. */
-.board-column {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.6rem;
-}
-
 .board-controls {
-    width: 150px;
-    flex-shrink: 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     /* Centre the column's contents. With `stretch` the button spanned the full
        150px while the high score and shakes sat at their natural width, so the
        three items didn't line up with each other. */
     align-items: center;
+    align-self: start;
     text-align: center;
     gap: 0.75rem;
     font-size: 14px;
@@ -379,10 +446,11 @@ main canvas {
 
 /* Sized to the text rather than the column, so it centres with everything
    else instead of spanning the full width. */
-.board-controls button { width: auto; }
+.board-controls button { width: auto; max-width: 100%; }
 
 /* The keyboard controls, under Shake. Small and quiet, but full contrast. */
 .key-hint {
+    align-self: start;
     margin: 0.5rem 0 0;
     font-size: 12px;
     line-height: 1.9;
@@ -406,13 +474,14 @@ main canvas {
     flex-direction: column;
     align-items: center;
     gap: 0.4rem;
-    margin-top: 0.25rem;
 }
+/* The switcher's own title style (shared/checkpoints.css .ckpt-title), so
+   the two labels under the AI board read as one family. */
 .speed-title {
     font-size: 11px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--dim);
+    color: var(--ckpt-dim, var(--dim));
 }
 
 .board-controls .shakes {
@@ -423,26 +492,9 @@ main canvas {
     margin-top: 0.25rem;
 }
 
-/* The AI board's column holds only a high score — keep the same 150px width
-   as the human side so both boards stay the same overall width, and align it
-   to the top so it sits level with the human board's high score rather than
-   floating in the middle of the column. */
-#board-ai .board-controls { justify-content: flex-start; }
-
-/* The model-version switcher, mounted here by game.js. Its stacked variant
-   fits the 150px column; the margin is the column's own gap already. */
-#board-ai .board-controls .ckpt { margin-top: 0.25rem; width: 100%; }
-
-/* Both side columns sit level with each other, centred on the canvas. They
-   used to be centred by .board-main's align-items on their own board COLUMN,
-   and the AI's column is taller (it carries the speed row and the checkpoint
-   switcher), so the AI's high score hung 80px lower than the human's. Same
-   offset as #vs: label + gaps + bubble row puts the canvas top at the first
-   three terms, then half the canvas, less half the human column's ~170px. */
-.board-main > .board-controls {
-    align-self: flex-start;
-    margin-top: max(0px, calc(15.3px + 1.2rem + var(--wm-bubble) + 11px + var(--wm-board-h) / 2 - 85px));
-}
+/* The model-version switcher, mounted in .ckpt-slot by game.js. */
+.ckpt-slot { min-width: 0; align-self: start; }
+.ckpt-slot .ckpt { width: 100%; margin: 0.25rem 0 0; }
 
 button {
     font-family: inherit;
@@ -469,70 +521,30 @@ label { cursor: pointer; }
    no model behind it. It plays for real now, so the wash just made it look
    washed out next to the human board. */
 
-/* Each board is up to 150 + 20 + 448 = 618px, so the arena needs ~1400px with
-   padding. Tighten the spacing first. Below that the boards themselves narrow
-   (--wm-w-cap), which keeps both side columns beside their boards down to
-   1080px. They used to drop under the boards from 1340px, which on a laptop
-   put Restart and Shake below the fold. */
+/* ── Wide, tightening ───────────────────────────────────────────────────────
+   Each board is up to 150 + 22 + 448 = 620px. Tighten the spacing first, then
+   narrow the side columns; below that the boards themselves shrink
+   (--wm-h-pad), which keeps both side columns beside their boards. */
 @media (max-width: 1440px) {
-    #arena { gap: 24px; }
-    .board-main { gap: 0.9rem; }
+    :root { --wm-arena-gap: 24px; --wm-gap: 0.9rem; }
+}
+@media (max-width: 1100px) {
+    :root { --wm-side: 120px; --wm-arena-gap: 16px; --wm-gap: 0.75rem; }
+    .board-controls { font-size: 13px; }
+    .board-controls button { font-size: 13px; }
 }
 
-/* Below 1080px the boards stack, and each side column wraps under its board
-   as a row. */
-@media (max-width: 1080px) {
-    :root { --wm-w-cap: calc(100vw - 3rem); }
-    #arena { flex-direction: column; align-items: center; }
-    #vs { align-self: center; margin-top: 0; }
-    .board-main { flex-direction: column; align-items: center; gap: 0.75rem; }
-    .board-main > .board-controls { align-self: auto; margin-top: 0; }
-    .board-controls {
-        order: 2; width: auto; max-width: max(var(--wm-board-w), 340px);
-        padding-top: 0;
-        /* Items of different heights (two-line high score, a single button,
-           the two-line shakes block) sat on a ragged top edge in a row. */
-        align-items: center;
-        flex-direction: row; flex-wrap: wrap; justify-content: center;
-    }
-    .key-hint, .speed-block, #board-ai .board-controls .ckpt { flex-basis: 100%; }
-    .key-hint { margin: 0; }
-    .key-hint span { display: inline-block; margin: 0 0.5em; }
-    .key-hint br { display: none; }
-    #board-ai .board-controls .ckpt { width: min(320px, 100%); }
-    .board-controls .speed-controls { max-width: none; }
-}
-
-/* ── Compact: phones, and any screen too short for the bubbles ─────────────
-   In portrait the AI board started at y=947 on a 390x844 phone — entirely
-   below the fold, which is the whole point of the page. The 150px bubbles
-   become one-line pills beside the label, the side columns shed their extra
-   lines, and the boards are sized so BOTH fit on one screen: 190px is the
-   two label rows, the controls row under your board, VS, gaps and padding. */
-@media (max-width: 600px), (max-height: 500px) {
-    :root {
-        --wm-board-h: max(200px, min(599px,
-                          calc((100vw - 1.5rem) * 599 / 448),
-                          calc((100svh - 190px) / 2)));
-    }
+/* ── Compact: one-line score pills ──────────────────────────────────────────
+   Any short screen, and every portrait one. The 150px bubbles become pills
+   beside the label, and the side columns shed their extra lines. */
+@media (max-height: 500px), (max-aspect-ratio: 1/1) {
+    :root { --wm-head-h: 30px; --wm-gap: 0.5rem; --wm-arena-gap: 8px; }
     body:has(.insp-section) .screen { padding: 0.75rem 0.75rem 3rem; }
-    #arena { gap: 8px; }
-    #vs { font-size: 1.1rem; }
-    .board-wrap { gap: 0; }
-    .board-main { gap: 0.4rem; }
-    .board-main > .board-controls { align-self: auto; margin-top: 0; }
+    #vs { font-size: 1.1rem; margin-top: calc(var(--wm-head-h) + 0.4rem + var(--wm-board-h) / 2 - 0.55rem); }
+    .board-body { row-gap: 0.4rem; }
 
-    /* Label and pills on one line, the board full width under them. */
-    .board-column {
-        display: grid;
-        grid-template-columns: auto auto;
-        justify-content: center;
-        align-items: center;
-        column-gap: 0.75rem;
-        row-gap: 0.4rem;
-    }
-    .board-column > main { grid-column: 1 / -1; justify-self: center; }
-
+    /* Label and pills on one line, centred over the board. */
+    .board-head { flex-direction: row; justify-content: center; align-items: center; gap: 0.75rem; }
     .info-row { gap: 0.4rem; }
     .bubble {
         height: 30px;
@@ -549,39 +561,82 @@ label { cursor: pointer; }
     .bubble .bubble-title, .bubble.next { font-size: 12px; }
     .bubble.next img { width: 24px; height: 20px; }
 
-    .board-controls { gap: 0.4rem 0.75rem; font-size: 13px; }
+    .board-controls { gap: 0.4rem 0.75rem; font-size: 13px; padding-top: 0; }
     .board-controls button { font-size: 13px; padding: 0.35em 0.75em; }
     /* One line each: the crown already says "high score". */
     .highScoreTitle { position: absolute; width: 1px; height: 1px; overflow: hidden;
                       clip: rect(0 0 0 0); white-space: nowrap; }
     .highScore { grid-template-columns: auto auto; margin: 0; }
-    .board-controls .shakes { flex-direction: row; margin-top: 0; }
 
     .start-hint { font-size: 13px; }
     .overlay .overlay-title { font-size: 22px; }
-    .overlay { gap: 0.6rem; }
+    .overlay .overlay-result { font-size: 16px; }
+    .overlay .overlay-score { font-size: 15px; }
+    .overlay .overlay-sub { font-size: 13px; }
+    .overlay { gap: 0.55rem; }
+    .overlay button { font-size: 13px; padding: 0.35em 0.75em; }
 }
 
-/* Narrow: the fixed "← back" link sits at the top left, right where the
-   centred YOU row lands on a 390px screen, so the column starts below it. */
-@media (max-width: 600px) {
+/* ── Compact landscape: a phone on its side, or 1280x720 at 200% zoom ───────
+   Still side by side, with narrow side columns whose text wraps. The fixed
+   "← back" link sits at the top left, right where your side column and the
+   YOU row land, so the whole arena starts below it (it used to sit on YOU and
+   the Score pill). The side column grows from 86px at 640px wide to 150px. */
+@media (max-height: 500px) and (min-aspect-ratio: 1/1) {
     :root {
+        --wm-side: clamp(86px, calc((100vw - 640px) / 2 + 86px), 150px);
+        --wm-h-pad: calc(2 * var(--wm-side) + 84px);
+        --wm-board-h: max(160px, min(599px,
+                          calc(100svh - 108px),
+                          calc((100vw - var(--wm-h-pad)) / 2 * 599 / 448)));
+    }
+    body:has(.insp-section) .screen { padding: 3.25rem 0.75rem 3rem; }
+    #board-human .board-controls,
+    #board-ai .board-controls { margin-top: 0; }
+    .board-controls .shakes { gap: 0.3rem; }
+    .key-hint { line-height: 1.7; justify-self: center; }
+    .key-hint span { display: block; margin-bottom: 0.3em; }
+    .key-hint br { display: none; }
+}
+
+/* ── Stacked: portrait, phones and tablets ──────────────────────────────────
+   One column; each board's parts in their DOM order, so your Restart and
+   Shake row sits between the YOU row and your board and the AI's controls
+   come after its board. Sized so BOTH boards fit on one screen: 206px is the
+   back link's clearance, two head rows, your controls row, VS and the gaps;
+   --wm-keys-h the keyboard hint under your board, where there is a keyboard. */
+@media (max-aspect-ratio: 1/1) {
+    :root {
+        --wm-keys-h: 30px;
         --wm-board-h: max(200px, min(599px,
                           calc((100vw - 1.5rem) * 599 / 448),
-                          calc((100svh - 222px) / 2)));
+                          calc((100svh - 206px - var(--wm-keys-h)) / 2)));
     }
-    body:has(.insp-section) .screen { padding-top: 2.75rem; }
-}
-
-/* Short and wide (a phone on its side): there is room for the two boards side
-   by side, and not for either one stacked above anything. */
-@media (max-height: 500px) and (min-width: 601px) {
-    :root {
-        --wm-board-h: max(200px, min(599px, calc(100svh - 64px),
-                          calc((100vw - 120px) / 2 * 599 / 448)));
+    body:has(.insp-section) .screen { padding-top: 3.4rem; }
+    #arena { flex-direction: column; align-items: center; gap: 6px; }
+    #vs { align-self: center; margin-top: 0; }
+    #board-human .board-body,
+    #board-ai .board-body {
+        /* As wide as the widest row (your controls on one line, the model
+           note), never wider than the screen; the board centres in it. */
+        grid-template-columns: fit-content(calc(100vw - 1.5rem));
+        grid-template-rows: none;
+        justify-items: center;
     }
-    #arena { flex-direction: row; align-items: flex-start; }
-    #vs { align-self: center; }
+    #board-human .board-body { grid-template-areas: "head" "ctl" "canvas" "keys"; }
+    #board-ai .board-body    { grid-template-areas: "head" "canvas" "speed" "ctl" "ckpt"; }
+    #board-human .board-controls,
+    #board-ai .board-controls {
+        margin-top: 0;
+        flex-direction: row; flex-wrap: wrap; justify-content: center;
+        max-width: calc(100vw - 1.5rem);
+    }
+    .board-controls .shakes { flex-direction: row; margin-top: 0; }
+    .speed-block { justify-self: center; min-width: 0; }
+    .ckpt-slot { width: min(320px, calc(100vw - 1.5rem)); justify-self: center; }
+    .key-hint { margin: 0; justify-self: center; }
+    .key-hint span { display: inline-block; margin: 0 0.5em; }
+    .key-hint br { display: none; }
 }
 
 /* ── Neural-network inspector and checkpoint switcher ───────────────────────
@@ -608,24 +663,25 @@ label { cursor: pointer; }
 #canvas-human, #canvas-human canvas { touch-action: pan-y !important; }
 
 /* ── AI speed controls ──────────────────────────────────────────────────────
-   Same control as Tetris, restyled for this game's palette. Scales the AI's
-   drop cooldown and cloud tracking together — speeding up one without the
-   other makes the AI wait on an alignment it cannot reach in time. */
+   The same control on all three games: six speeds on ONE row (it used to wrap
+   3/3/1 in the side column, with "2x" alone on the last line). Scales the
+   AI's drop cooldown and cloud tracking together — speeding up one without
+   the other makes the AI wait on an alignment it cannot reach in time. */
 .speed-controls {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: center;
     gap: 4px;
-    max-width: 150px;
 }
 
 .speed-controls button {
     font-family: inherit;
     font-size: 12px;
     letter-spacing: 0.03em;
-    /* 24px tall: the minimum tap target. These were 22px. */
+    /* 24px tall: the minimum tap target (32px on touch, below). */
     min-height: 24px;
     padding: 3px 7px;
+    white-space: nowrap;
     width: auto;
     cursor: pointer;
     color: var(--wm-ink);
@@ -637,6 +693,9 @@ label { cursor: pointer; }
 }
 
 .speed-controls button:hover { opacity: 1; }
+@media (pointer: coarse) {
+    .speed-controls button { min-height: 32px; }
+}
 
 .speed-controls button.active {
     opacity: 1;
@@ -646,7 +705,7 @@ label { cursor: pointer; }
 }
 
 /* shared/themes.css restyles this row for every theme EXCEPT the default
-   Mesh, which left seven whitesmoke chips with brown text under the AI board
+   Mesh, which left a row of whitesmoke chips with brown text under the AI board
    on a #080808 page - the only light-on-dark control on it. Same treatment
    as the other dark themes. */
 [data-theme="mesh"] .speed-controls button {
@@ -654,4 +713,11 @@ label { cursor: pointer; }
 }
 [data-theme="mesh"] .speed-controls button.active {
     background: var(--panel-hi); border-color: var(--accent); color: var(--fg);
+}
+
+/* Under a 188px board (compact landscape) the row is wider than the board and
+   spills right, under the side column; trimmed padding keeps that short. */
+@media (max-height: 500px), (max-aspect-ratio: 1/1) {
+    .speed-controls { gap: 3px; }
+    .speed-controls button { padding: 3px 5px; }
 }
