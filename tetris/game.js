@@ -1004,6 +1004,10 @@
                 var loading = !aiPlayer || !aiPlayer.session;
                 ctx.fillStyle = boardScrim(0.75);
                 ctx.fillRect(0, 0, 300, 540);
+                // Same as the game-over screen: under the scrim the score and
+                // high score read at about 2:1 and looked broken.
+                drawScore(ctx, state.score, CONFIG.SCALE);
+                drawHighScore(ctx, state.highScore, CONFIG.SCALE);
                 ctx.fillStyle = boardInk();
                 ctx.font = "bold 18px " + CONFIG.FONT_FAMILY;
                 ctx.textAlign = "center";
