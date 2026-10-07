@@ -81,7 +81,17 @@
    at equal specificity. The default theme's values are the original colours,
    so leaving the theme alone changes nothing. */
 
-html, body { background: var(--bg); color: var(--fg); }
+/* The page colour goes on html ONLY; body stays transparent. Every page's
+   background renderer is a position:fixed canvas, and on the game pages it
+   sits at z-index -1 so no game markup had to be restacked. A negative layer
+   paints above the ROOT background but below body's, so a painted body hid
+   the theme's background on all three game pages — and since body is only
+   100% tall, the backdrop showed below it as a hard seam once you scrolled
+   to the inspector. html's background covers the whole canvas, however far
+   the page scrolls. Transparent beats each game's own `html, body` rule
+   because this file loads after it. */
+html { background: var(--bg); color: var(--fg); }
+body { background: transparent; color: var(--fg); }
 
 /* The back link (and select's settings button) is fixed, so it floats over
    whatever scrolls beneath it: board edges, Inside's charts. A pill in the page
@@ -94,7 +104,9 @@ html, body { background: var(--bg); color: var(--fg); }
     padding: 0.45rem 0.8rem; margin: -0.45rem -0.8rem;
     min-height: 2rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--bg) 84%, transparent);
+    /* Opaque. At 84% the charts and copy scrolling under it showed through,
+       which on Inside at tablet widths put body text inside the pill. */
+    background: var(--bg);
 }
 .back:hover, .back-nav:hover { color: var(--fg-muted); }
 .back:focus-visible, .back-nav:focus-visible, .settings-btn:focus-visible {
@@ -227,6 +239,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
 /* The play area's frame. Snake and Tetris outline `main` with a hardcoded
    #2a2a2a, which is invisible against a light theme's board — so a themed
    board had no edge at all and bled into the page. */
+[data-theme] #board-human .board-main,
+[data-theme] #board-ai .board-main,
+/* The pre-rename selectors, kept for one round so a game page that has not
+   yet moved its board out of <main> keeps its frame. */
 [data-theme] #board-human main,
 [data-theme] #board-ai main { outline-color: var(--board-edge); }
 
@@ -268,10 +284,12 @@ h2 { color: var(--fg); font-family: var(--serif); }
    area — the human board looked broken next to a correctly themed AI board.
    Reuses the same scrim/ink pair as the game-over and waiting overlays, so all
    three invert together. */
+[data-theme] .board-main div.controls,
 [data-theme] main div.controls {
     background: rgba(var(--board-scrim), 0.72);
     color: var(--board-ink);
 }
+[data-theme] .board-main div.controls p,
 [data-theme] main div.controls p { color: var(--board-ink); }
 
 /* Theme picker */
@@ -286,15 +304,18 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .theme-swatch.on { border-color: var(--accent); }
 .theme-swatch i { display: block; height: 34px; }
 .theme-swatch b {
-    display: block; font-weight: 400; font-size: 0.62rem;
-    letter-spacing: 0.02em; text-transform: uppercase;
-    padding: 0.4rem 0.3rem; color: var(--dim);
+    /* 11px and capitalised rather than 9-10px in capitals: CONSTELLATION in
+       capitals needed ~98px and its tile is ~87px on a phone, so the old fix
+       was to shrink it to 9px — below the site's 11px floor. Mixed case is
+       about 30% narrower and fits every tile at full size. */
+    display: block; font-weight: 400; font-size: 0.6875rem;
+    letter-spacing: 0.01em; text-transform: capitalize;
+    padding: 0.4rem 0.2rem; color: var(--dim);
     white-space: nowrap;
 }
-/* CONSTELLATION is the longest label: below ~380px it overran its tile. */
 @media (max-width: 380px) {
     .theme-row { gap: 3px; }
-    .theme-swatch b { font-size: 0.56rem; letter-spacing: 0; padding: 0.4rem 0.1rem; }
+    .theme-swatch b { letter-spacing: 0; padding: 0.4rem 0.1rem; }
 }
 .theme-swatch.on b { color: var(--fg); }
 
@@ -326,8 +347,11 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --line:        #1c1d24;
     --line-soft:   #15161c;
     --accent:      #ece7d4;
-    --accent-2:    #b8b3a2;
-    --warn:        #8a857a;
+    /* A muted sage / terracotta pair, not two greys: the Inside page marks
+       improved and rejected runs with these, and at #b8b3a2 / #8a857a the
+       two read as one colour. 9.0:1 and 7.5:1 on --panel-hi. */
+    --accent-2:    #9cc29a;
+    --warn:        #d79a86;
     --chart-grid:  #171820;
     --chart-axis:  #7b786e;
     --chart-ink:   #ece7d4;
@@ -360,9 +384,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --line:        #dddbd3;
     --line-soft:   #e8e6de;
     --accent:      #111111;
-    --accent-2:    #4a4a46;
-    /* Carries the ledger's REJECTED labels as text: #8a8880 was 3.20:1. */
-    --warn:        #706e67;
+    /* Improved / rejected on the Inside page: a dark green and a brick red
+       rather than two near-identical greys. Both clear 5.3:1 on --panel-hi. */
+    --accent-2:    #2e6a3c;
+    --warn:        #9b3d2f;
     --chart-grid:  #e4e2da;
     --chart-axis:  #9c9b94;
     --chart-ink:   #111111;
@@ -395,8 +420,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --line:        #1c1c1c;
     --line-soft:   #141414;
     --accent:      #ffffff;
-    --accent-2:    #a8a8a8;
-    --warn:        #7a7a7a;   /* was #6f6f6f, 4.18:1 as ledger text */
+    /* Muted green / red so improved and rejected differ in hue, not just by
+       a step of grey. 9.5:1 and 7.3:1 on --panel-hi. */
+    --accent-2:    #8cc79c;
+    --warn:        #dc8e8e;
     --chart-grid:  #171717;
     --chart-axis:  #565656;
     --chart-ink:   #ffffff;
@@ -421,8 +448,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --line:        #16203f;
     --line-soft:   #111930;
     --accent:      #9db9ff;
-    --accent-2:    #7f93c4;
-    --warn:        #6f7ea6;
+    /* Teal / rose against the navy, so improved and rejected are told apart
+       by hue. 8.7:1 and 7.5:1 on --panel-hi. */
+    --accent-2:    #7cc8a8;
+    --warn:        #e695a0;
     --chart-grid:  #141d3a;
     --chart-axis:  #6f7ea6;
     --chart-ink:   #9db9ff;
@@ -451,8 +480,9 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --line:        #e2e2e2;
     --line-soft:   #eeeeee;
     --accent:      #000000;
-    --accent-2:    #555555;
-    --warn:        #727272;   /* was #909090, 3.19:1 as ledger text */
+    /* Dark green / brick red; both 5.8:1 or better on --panel-hi. */
+    --accent-2:    #2b6a3b;
+    --warn:        #a83a32;
     --chart-grid:  #ececec;
     --chart-axis:  #9a9a9a;
     --chart-ink:   #000000;

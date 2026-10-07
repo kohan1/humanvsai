@@ -122,7 +122,7 @@
             .chart-wrap.scroll-x::after {
                 content: 'scroll sideways →'; position: sticky; left: 0;
                 display: block; padding: 0.35rem 0.6rem;
-                font-size: 0.68rem; color: var(--dim, #7d7d7d);
+                font-size: 0.6875rem; color: var(--dim, #7d7d7d);
             }
         }
 
@@ -140,12 +140,16 @@
            At 2.41x and 2.97x some weight cells landed on 3 screen pixels and
            others on 2, and that uneven repeat is what read as grain — the
            image was never blurred, it was aliased. */
+        /* Every map sits in a box as tall as the tallest one, so the captions
+           under them line up. Layer 4 is 64x40 against 64x64 for the
+           others, and its caption used to sit 30-50px higher. */
+        .heat-fig { display: flex; align-items: center; justify-content: center; }
         .heat-cell canvas {
             max-width: 100%; height: auto;
             image-rendering: pixelated; border: 1px solid #1a1a1a;
         }
         .heat-label {
-            font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
+            font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase;
             color: #4a4a4a; text-align: center; line-height: 1.7;
             /* Balanced, or a caption wraps with one orphan word on its own line. */
             text-wrap: balance;
@@ -172,14 +176,14 @@
         }
         .arch-step:last-child { border-right: 0; }
         .arch-kind {
-            font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+            font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase;
             color: #4a4a4a;
         }
         .arch-shape {
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-size: 0.72rem; color: #cfe4ff;
         }
-        .arch-params { font-size: 0.6rem; color: #6a6a6a; font-variant-numeric: tabular-nums; }
+        .arch-params { font-size: 0.6875rem; color: #6a6a6a; font-variant-numeric: tabular-nums; }
         .arch-summary {
             display: flex; flex-wrap: wrap; gap: 2rem;
             margin-top: 1.1rem; font-size: 0.7rem; color: #7a7a7a;
@@ -211,7 +215,7 @@
         .tip {
             position: absolute; pointer-events: none; opacity: 0;
             background: #131313; border: 1px solid #262626;
-            padding: 0.6rem 0.75rem; font-size: 0.68rem; line-height: 1.6;
+            padding: 0.6rem 0.75rem; font-size: 0.6875rem; line-height: 1.6;
             transition: opacity 0.12s; white-space: nowrap; z-index: 20;
         }
         .tip .tip-run { color: #fff; margin-bottom: 0.25rem; }
@@ -222,7 +226,7 @@
            shape gets one — without it the reader has to infer the encoding. */
         .chart-key {
             display: flex; flex-wrap: wrap; gap: 0.45rem 1.6rem;
-            margin-top: 0.9rem; font-size: 0.66rem; color: #6f6f6f;
+            margin-top: 0.9rem; font-size: 0.6875rem; color: #6f6f6f;
         }
         .chart-key span { display: inline-flex; align-items: center; gap: 0.55em; }
         .chart-key i { display: inline-block; width: 15px; height: 2px; flex-shrink: 0; }
@@ -236,6 +240,8 @@
         }
         .chart-key i.bar { width: 11px; height: 11px; }
         .chart-key i.hollow { background: none; border: 2px solid; }
+        /* The ring the charts draw around the shipped model. */
+        .chart-key i.ringed { box-shadow: 0 0 0 2px var(--bg-soft, #0a0a0a), 0 0 0 3px var(--chart-axis, #4a4a4a); margin: 0 3px; }
         /* The vertical break a chart draws where the game's rules changed. */
         .chart-key i.vdash {
             width: 2px; height: 13px;
@@ -249,15 +255,18 @@
         }
         .how-to-read b { color: #b9b9b9; font-weight: 400; }
 
-        .omitted { margin-top: 0.8rem; font-size: 0.66rem; line-height: 1.6; color: #4f4f4f; }
+        .omitted { margin-top: 0.8rem; font-size: 0.6875rem; line-height: 1.6; color: #4f4f4f; }
         .omitted:empty { display: none; }
         .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; margin-top: 1rem; }
+        /* 24px tall and 11px text: at 0.66rem with 0.2rem padding each run
+           was a 19px target set in 10.6px type, too small to hit on a phone. */
         .leg {
             display: inline-flex; align-items: center; gap: 0.5em;
-            font-size: 0.66rem; color: #777; cursor: pointer;
+            font-size: 0.6875rem; color: #777; cursor: pointer;
             background: none; border: 0; font-family: inherit;
-            padding: 0.2rem 0; transition: color 0.15s, opacity 0.15s;
+            min-height: 24px; padding: 0.2rem 0; transition: color 0.15s, opacity 0.15s;
         }
+        @media (pointer: coarse) { .leg { min-height: 32px; } }
         .leg:hover { color: #eee; }
         .leg.off { opacity: 0.32; }
         .leg-swatch { width: 18px; height: 2px; flex-shrink: 0; }
@@ -266,7 +275,7 @@
                      gap: 0.3rem 1.2rem; width: 100%; }
         .leg-head {
             flex: 0 0 100%; margin-top: 0.4rem;
-            font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+            font-size: 0.6875rem; letter-spacing: 0.12em; text-transform: uppercase;
             color: var(--dim, #7d7d7d);
         }
         canvas.chart.tree { height: 470px; }
@@ -278,13 +287,13 @@
             display: grid; grid-template-columns: 12px 1.6fr 0.55fr 0.55fr 0.6fr minmax(8.5rem, 0.7fr);
             gap: 1rem; align-items: center;
             padding: 0.85rem 1.1rem; border-top: 1px solid #141414;
-            font-size: 0.72rem; color: #888; cursor: pointer;
+            font-size: 0.72rem; color: #888;
             transition: background 0.14s, color 0.14s;
         }
         .row:first-child { border-top: 0; }
         .row:hover { background: #111; color: #ddd; }
         .row.head {
-            color: #4a4a4a; font-size: 0.68rem; letter-spacing: 0.12em;
+            color: #4a4a4a; font-size: 0.6875rem; letter-spacing: 0.12em;
             text-transform: uppercase; cursor: default; background: #0b0b0b;
         }
         .row.head:hover { background: #0b0b0b; color: #4a4a4a; }
@@ -307,11 +316,33 @@
             .row > :nth-child(6) { grid-area: outcome; text-align: right; }
             .row-note { padding: 0.9rem; }
         }
-        .row-dot { width: 7px; height: 7px; border-radius: 50%; }
+        .row-dot { display: inline-block; vertical-align: middle; width: 7px; height: 7px; border-radius: 50%; }
         .row-name { color: #ccc; }
-        .row-tag { display: block; margin-top: 0.2rem; font-size: 0.66rem; color: var(--dim, #7d7d7d); }
+        /* Only a run with notes is clickable, and its name is a real button
+           that says whether its note is open. Every row used to be a
+           role=button labelled "show notes" — which hid the steps, time,
+           score and outcome from a screen reader, and promised notes on
+           rows that had none. */
+        .row.has-note { cursor: pointer; }
+        .row-toggle {
+            background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+            font: inherit; color: inherit; text-align: left;
+            /* Inline, so the +/- marker follows the last word when a long
+               name wraps; the padding enlarges the hit area to ~24px. */
+            display: inline; padding: 0.35rem 0; line-height: inherit;
+        }
+        .row-toggle::after {
+            content: '+'; color: var(--dim, #7d7d7d); font-size: 0.9em; margin-left: 0.45em;
+        }
+        .row-toggle[aria-expanded="true"]::after { content: '\2212'; }
+        .row-toggle:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 3px; }
+        .sr-only {
+            position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+            overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+        }
+        .row-tag { display: block; margin-top: 0.2rem; font-size: 0.6875rem; color: var(--dim, #7d7d7d); }
         .row .num { font-variant-numeric: tabular-nums; text-align: right; }
-        .row-outcome { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; }
+        .row-outcome { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; }
         /* NOT a .row. It used to carry that class, which made it a six-column
            grid, so its text became an anonymous grid item in the 12px dot
            column and wrapped one word wide. It is a plain block. */
@@ -325,6 +356,7 @@
             color: #8a8a8a;
             background: #111;
         }
+        .row-note[hidden] { display: none; }
         .o-shipped  { color: #cfe4ff; }
         .o-improved { color: #8fd6a8; }
         .o-rejected { color: #d98a8a; }
@@ -332,7 +364,7 @@
         .o-unknown  { color: #4a4a4a; }
 
         .foot {
-            margin-top: 5rem; font-size: 0.68rem; letter-spacing: 0.12em;
+            margin-top: 5rem; font-size: 0.6875rem; letter-spacing: 0.12em;
             color: rgba(255,255,255,0.14); text-transform: uppercase;
         }
     </style>
@@ -398,33 +430,42 @@
         <div class="block" id="evals-block">
             <div class="block-head">
                 <div>
-                    <h2>Why the best model is not the last one</h2>
+                    <h2>When a "new best" is only luck</h2>
                     <p class="block-note">
-                        While it trains, the model stops every 250,000 steps and plays
-                        fifteen games. The games never change — same starting pieces,
-                        same order — so every check is measuring the model, not luck of
-                        the draw.
+                        While it trains, the model stops every 250,000 steps, plays a
+                        fixed set of games, and saves a copy whenever it beats its best
+                        so far. Keeping the best rather than the last has paid off: on the
+                        20M-step GPU run the saved best measured 1032.43 against 959.93
+                        for the model the run ended on. This run shows where that stops
+                        working.
                     </p>
                 </div>
             </div>
             <div class="chart-wrap">
                 <canvas class="chart" id="evals" role="img"
-                        aria-label="Fixed-seed checks during one training run: individual scores swing by hundreds of points, while the best-so-far line only steps up."></canvas>
+                        aria-label="316 checks of the same fifteen games during Watermelon's 79-million-step run. Scores swing between about 750 and 1,140; the two checks that beat the starting score did so by under 13 points, and both saved models scored worse than the starting model when re-measured on more games."></canvas>
                 <div class="tip" id="evals-tip"></div>
             </div>
             <p class="how-to-read">
-                Left to right is training progress. Each dot is one of those checks.
-                <b>They swing by hundreds of points on identical games</b> — so the model
-                you happen to stop on is close to a coin flip. The solid line is the best
-                score seen so far, and training saves a copy every time that line steps
-                up. Without it, whatever the run ended on would be what shipped, and three
-                earlier runs ended below the model they started from.
+                This is Watermelon's 100M-step second attempt, stopped at 79M. Left to
+                right is training progress; each dot is one check of the same
+                <b>fifteen</b> games. <b>On identical games the score swings by hundreds of
+                points</b> — 751 to 1,136 across 316 checks. The dashed line is the model the
+                run started from, scored on those same fifteen: 1,123, because it had itself
+                been saved as the luckiest check of the run before. Over 60 games it scores
+                1,042. Twice a check edged past 1,123, by 7 and by 12 points — a fraction of
+                that swing — and the run saved each as a new best. Re-measured on more games
+                they scored <b>1,015.80 and 996.78: both worse than where the run
+                started</b>. A best picked on a few fixed games is partly a pick of which
+                model those games happened to flatter. Checks now play 40 games rather than
+                15, and no model replaces the one on the site until it has been measured
+                separately.
             </p>
             <div class="chart-key">
                 <span><i class="dot" style="background:var(--chart-axis)"></i> a check</span>
-                <span><i class="dot" style="background:var(--chart-ink)"></i> a new best</span>
-                <span><i style="background:var(--chart-ink)"></i> best so far — what gets kept</span>
-                <span><i class="dash"></i> the model this run started from</span>
+                <span><i class="dot" style="background:var(--chart-ink)"></i> saved as a new best</span>
+                <span><i style="background:var(--chart-ink)"></i> best so far on these games</span>
+                <span><i class="dash"></i> the starting model, on these same games</span>
             </div>
         </div>
 
@@ -454,7 +495,8 @@
                 score it achieved. The line only joins versions that were kept and built
                 on — a run that scored worse was discarded, so nothing was ever built on
                 top of it, and joining it to the line would suggest otherwise. Hover any
-                point for what changed in that run and what it bought per million steps.
+                point for what changed in that run, what it bought per million steps, and
+                whether its weights still exist to be played.
             </p>
             <p class="how-to-read">
                 <b>Watermelon has a break in it.</b> Its fruit sizes were changed after
@@ -467,12 +509,13 @@
                 imitation rather than continued from the runs before it. So it gets its
                 own panel and its own scale.
             </p>
+            <!-- The same marks as the family tree below: one colour and shape
+                 per outcome on both charts. -->
             <div class="chart-key">
                 <span><i style="background:var(--chart-ink)"></i> the line that was kept</span>
-                <span><i class="dot" style="background:var(--fg)"></i> shipped to the site</span>
-                <span><i class="dot" style="background:var(--chart-ink)"></i> kept, an improvement</span>
+                <span><i class="dot ringed" style="background:var(--fg)"></i> on the site</span>
+                <span><i class="dot" style="background:var(--accent-2)"></i> an improvement</span>
                 <span><i class="dot hollow" style="border-color:var(--warn)"></i> discarded, scored worse</span>
-                <span><i class="ring"></i> weights still exist — playable</span>
                 <span><i class="vdash"></i> rules changed — not comparable</span>
             </div>
         </div>
@@ -506,7 +549,7 @@
                 rather than continued from anything to the left.
             </p>
             <div class="chart-key">
-                <span><i class="dot" style="background:var(--fg)"></i> shipped</span>
+                <span><i class="dot ringed" style="background:var(--fg)"></i> on the site</span>
                 <span><i class="dot" style="background:var(--accent-2)"></i> an improvement</span>
                 <span><i class="dot hollow" style="border-color:var(--warn)"></i> rejected — dead end</span>
                 <span><i class="dot" style="background:var(--chart-running)"></i> still running</span>
@@ -566,9 +609,9 @@
                 Read left to right: numbers describing the board go in one end, and a
                 score for every move the AI could make comes out the other. Each box in
                 between is a layer of the network, and its figures are the shape of that
-                layer's weight matrix — <b>outputs × inputs</b>. So <b>1024 × 238</b>
-                means 1,024 units each looking at all 238 input numbers, which is where
-                its 243,712 weights come from. A <b>convolution</b> layer slides one
+                layer's weight matrix — <b>outputs × inputs</b>. <span id="arch-example">So
+                <b>1024 × 238</b> means 1,024 units each looking at all 238 input numbers,
+                which is where its 243,712 weights come from.</span> A <b>convolution</b> layer slides one
                 small filter across the board, so it learns shapes wherever they appear;
                 a <b>dense</b> layer connects everything to everything. Snake and
                 Watermelon see a grid and use both; Tetris is dense throughout. Every
@@ -579,13 +622,17 @@
 
         <div class="block two-up">
             <div>
-                <h2>Where the time went</h2>
+                <h2>How fast it trains</h2>
                 <p class="block-note">
-                    Measured with the real training loop, not a synthetic benchmark.
+                    Watermelon training speed in steps per second, measured with the
+                    real training loop on a Ryzen 7 3700X and an RTX 4060 Ti, by how
+                    many games run in parallel. Twenty was the fastest setting in
+                    both rounds of measurement. Doubling the observation to the 2,652 numbers the
+                    site's model reads cost 25–45% of the speed.
                 </p>
                 <div class="chart-wrap">
-                    <canvas class="chart short" id="bench" role="img"
-                        aria-label="Training throughput in steps per second: 20 environments on the GPU is fastest at 1,079, against 217 on the CPU."></canvas>
+                    <canvas class="chart" id="bench" role="img" style="height:300px"
+                        aria-label="Watermelon training speed in steps per second. With the original 1,332-number observation: 20 parallel games on the GPU is fastest at 1,079, against 217 for 16 on the CPU. With the 2,652-number observation the site's model uses: 602 at 20 games and 449 at 16, both on the GPU."></canvas>
                     <div class="tip" id="bench-tip"></div>
                 </div>
             </div>
@@ -671,11 +718,18 @@
                     <h2>Every run, and what became of it</h2>
                     <p class="block-note">
                         A new model only replaces the one on the site if it scores higher.
-                        Click a row for what happened.
+                        Open a run (+) for what happened in it.
+                    </p>
+                    <p class="block-note">
+                        A score is an average over a fixed set of games, and a different
+                        set gives a different average for the same model. Snake's shipped
+                        model scored 145.70 when it was installed, averages 149 over the 30
+                        games the in-game version picker measures, and 144 over the sixty in
+                        the histogram above.
                     </p>
                 </div>
             </div>
-            <div class="ledger" id="ledger"></div>
+            <div class="ledger" id="ledger" role="table" aria-label="Every training run"></div>
         </div>
 
         <p class="foot" id="foot"></p>
@@ -686,7 +740,9 @@
     <script src="inside/data.js"></script>
     <script>
     (() => {
-        initMesh('mesh', { intensity: 0.42 });
+        // 30 fps, as on the game pages: the background shares the main thread
+        // with every chart on this page and the brain animation.
+        initMesh('mesh', { intensity: 0.42, maxFps: 30 });
 
         /* Canvas cannot use CSS, so the charts read the theme's variables and
            re-read them whenever the theme changes. Without this every chart
@@ -728,7 +784,7 @@
         }
         readPalette();
         new MutationObserver(() => {
-            readPalette(); colourRuns(); recolourSwatches(); drawHeat(); redraw();
+            readPalette(); colourRuns(); recolourSwatches(); drawHeat(); renderTimelineKey(); redraw();
         }).observe(document.documentElement,
                    { attributes: true, attributeFilter: ['data-theme'] });
 
@@ -770,15 +826,15 @@
 
         /* The line that was kept and built on, per game and era: the shipped
            run (or failing that the best kept one) and its ancestors. A run
-           that beat its parent but was never built on — Watermelon's reward
-           redesign, a sibling of the 1032 run — is a branch, not the trunk;
-           putting both on the trunk stacked them on one point. */
+           that beat the model it started from but was never built on —
+           Watermelon's reward redesign, outcome 'superseded' — is a branch,
+           not the trunk. */
         function trunkOf(list) {
             const out = new Set();
             const groups = {};
             list.forEach(r => { (groups[r.era || ''] = groups[r.era || ''] || []).push(r); });
             Object.values(groups).forEach(g => {
-                const kept = g.filter(r => r.outcome && r.outcome !== 'rejected');
+                const kept = g.filter(r => ['shipped', 'improved', 'running'].includes(r.outcome));
                 const head = kept.find(r => r.outcome === 'shipped' || r.outcome === 'running')
                           || kept.slice().sort((a, b) => (b.evalScore || 0) - (a.evalScore || 0))[0];
                 const era = head && head.era;
@@ -996,7 +1052,7 @@
 
         // 11px is the floor for chart text; 9-10px read as specks on a phone.
         const FONT = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
-        const FONT_SMALL = '10.5px Helvetica Neue, Helvetica, Arial, sans-serif';
+        const FONT_SMALL = '11px Helvetica Neue, Helvetica, Arial, sans-serif';
 
         /* Text with a halo in the chart's own background, so a label that has
            to sit on a line or a bar stays readable instead of being crossed. */
@@ -1215,8 +1271,18 @@
         });
         curveCvs.addEventListener('mouseleave', () => { curveTip.style.opacity = 0; });
 
-        /* ── Eval chart: the fixed-seed checks of the live run ──────────── */
-        const evalRun = runs.filter(r => r.evals && r.evals.length > 2).pop();
+        /* ── Eval chart: the fixed-seed checks of one run ─────────────────
+           A named run, not "the latest one with checks": the copy above is
+           written about what this particular run showed — that its saved
+           "new bests" were selection noise — and would be wrong for any other
+           run that happened to be logged later. */
+        const EVAL_RUN = 'watermelon/train_100m_v2.log';
+        const evalRun = runByKey[EVAL_RUN] && runByKey[EVAL_RUN].evals.length > 2
+            ? runByKey[EVAL_RUN] : null;
+        // What the two saved "new bests" scored when measured again on more
+        // games (RUN_NOTES / CLAUDE.md): 1130.80 became 1015.80, and the
+        // final best, 1135.60, is the archived 996.78 model.
+        const REMEASURED = { 33750016: 1015.80, 63250016: 996.78 };
         const evalCvs = document.getElementById('evals');
         const evalTip = document.getElementById('evals-tip');
         let evalGeom = null;
@@ -1238,7 +1304,8 @@
             xt.scale = xs; yt.scale = ys;
             drawFrame(ctx, w, h, xt, yt, fmtSteps, v => v.toFixed(0), 'score, fixed games');
 
-            // The bar the run had to beat: the model it started from.
+            // The bar the run had to beat: the model it started from, scored
+            // on these same games (its step-0 check).
             const base = pts[0].score;
             ctx.strokeStyle = PAL.axis;
             ctx.setLineDash([3, 4]);
@@ -1247,21 +1314,6 @@
             ctx.moveTo(PAD.l, ys(base) + 0.5); ctx.lineTo(w - PAD.r, ys(base) + 0.5);
             ctx.stroke();
             ctx.setLineDash([]);
-
-            // Sits clear of its own line, and flips below it when the baseline
-            // is close to the top of the plot — at -9 with textBaseline middle
-            // the glyphs sat on the dashes.
-            ctx.font = FONT_SMALL;
-            ctx.textAlign = 'left';
-            const near = ys(base) - PAD.t < 26;
-            ctx.textBaseline = near ? 'top' : 'alphabetic';
-            const label = 'THE MODEL THIS RUN STARTED FROM — ' + base.toFixed(0);
-            const lw = ctx.measureText(label).width;
-            ctx.fillStyle = PAL.bg;
-            ctx.fillRect(PAD.l + 4, ys(base) + (near ? 5 : -20), lw + 8, 16);
-            ctx.fillStyle = PAL.dim;
-            ctx.fillText(label, PAD.l + 8, ys(base) + (near ? 9 : -8));
-            ctx.textBaseline = 'middle';
 
             // Running best — the thing actually kept.
             ctx.strokeStyle = PAL.ink;
@@ -1283,6 +1335,30 @@
                 ctx.fill();
             });
 
+            /* The baseline's label, drawn last and kept clear of everything.
+               It sits above the HIGHEST point of the best-so-far line, not
+               just above the dashes: on this run the best line rises a few
+               pixels off the baseline, and at 360px it ran straight through a
+               label pinned to the dashes. Flips below when there is no room
+               above, and shortens when the full text will not fit. */
+            ctx.font = FONT_SMALL;
+            ctx.textAlign = 'left';
+            const topBest = Math.max(...pts.map(p => p.score));
+            const above = Math.min(ys(base), ys(topBest)) - 4 - 7;   // a dot's radius, then a gap
+            const room = above - PAD.t >= 16;
+            const fits = t => ctx.measureText(t).width + 12 <= w - PAD.r - PAD.l;
+            const label = [`STARTING MODEL, SAME 15 GAMES — ${base.toFixed(0)}`,
+                           `STARTING MODEL — ${base.toFixed(0)}`, `START — ${base.toFixed(0)}`].find(fits)
+                          || `START — ${base.toFixed(0)}`;
+            const lw = ctx.measureText(label).width;
+            const ly = room ? above : ys(base) + 9;
+            ctx.textBaseline = room ? 'alphabetic' : 'top';
+            ctx.fillStyle = PAL.bg;
+            ctx.fillRect(PAD.l + 4, room ? ly - 12 : ly - 3, lw + 8, 16);
+            ctx.fillStyle = PAL.dim;
+            ctx.fillText(label, PAD.l + 8, ly);
+            ctx.textBaseline = 'middle';
+
             evalGeom = { xs, ys, pts, w, h };
         }
 
@@ -1298,9 +1374,10 @@
             });
             if (bestD > 80 * 80) { evalTip.style.opacity = 0; return; }
             evalTip.innerHTML =
-                `<div class="tip-run">${best.best ? 'new best' : 'check'}</div>` +
+                `<div class="tip-run">${best.t < 1000 ? 'the starting model' : best.best ? 'saved as a new best' : 'check'}</div>` +
                 `<div class="tip-row">step <b>${best.t.toLocaleString()}</b></div>` +
-                `<div class="tip-row">score <b>${best.score}</b></div>`;
+                `<div class="tip-row">score <b>${best.score}</b> on these 15 games</div>` +
+                (REMEASURED[best.t] ? `<div class="tip-row">re-measured on more games: <b>${REMEASURED[best.t].toFixed(2)}</b></div>` : '');
             evalTip.style.opacity = 1;
             const tw = evalTip.offsetWidth, th = evalTip.offsetHeight;
             evalTip.style.left = Math.min(Math.max(8, mx + 14), evalGeom.w - tw - 8) + 'px';
@@ -1310,46 +1387,63 @@
 
         /* ── Ledger ─────────────────────────────────────────────────────── */
         const OUTCOME = {
-            shipped:  ['o-shipped',  'on the site'],
-            improved: ['o-improved', 'improved'],
-            rejected: ['o-rejected', 'rejected'],
-            running:  ['o-running',  'running'],
+            shipped:    ['o-shipped',  'on the site'],
+            improved:   ['o-improved', 'improved'],
+            // Beat the model it started from, but something better already
+            // existed, so it was never built on or installed.
+            superseded: ['o-improved', 'beat its start · not kept'],
+            rejected:   ['o-rejected', 'rejected'],
+            running:    ['o-running',  'running'],
         };
+        // No recorded verdict says exactly that. It used to say "not
+        // evaluated", which contradicted runs whose notes quote a measured
+        // score (from the version picker) that is deliberately not charted.
+        const outcomeOf = r => OUTCOME[r.outcome] || ['o-unknown', 'no verdict'];
+        // Two decimals everywhere, with thousands grouped: Tetris's 106774.50
+        // was unreadable next to Snake's 145.70.
+        const fmtScore = v => v.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        /* A table to a screen reader: each row reads as its own text — run,
+           steps, time, score, outcome — under column headers. Only rows that
+           HAVE a note get a control, a real button with aria-expanded; the
+           note is a full-width row of its own beneath. */
         const ledger = document.getElementById('ledger');
         ledger.innerHTML =
-            `<div class="row head"><span></span><span>run</span>
-             <span class="num">steps</span><span class="num">time</span>
-             <span class="num">score</span><span>outcome</span></div>` +
-            runs.slice().reverse().map(r => {
-                const [cls, text] = OUTCOME[r.outcome] || ['o-unknown', 'not evaluated'];
-                return `<div class="row" data-file="${r.key}" tabindex="0" role="button" aria-label="${r.game} ${r.label}: show notes">
-                    <span class="row-dot" style="background:${r.color}"></span>
-                    <span class="row-name">${r.game} · ${r.label}${r.era
+            `<div class="row head" role="row"><span role="columnheader"><span class="sr-only">colour</span></span><span role="columnheader">run</span>
+             <span class="num" role="columnheader">steps</span><span class="num" role="columnheader">time</span>
+             <span class="num" role="columnheader">score</span><span role="columnheader">outcome</span></div>` +
+            runs.slice().reverse().map((r, i) => {
+                const [cls, text] = outcomeOf(r);
+                const name = `${r.game} · ${esc(r.label)}`;
+                const noteId = `run-note-${i}`;
+                return `<div class="row${r.note ? ' has-note' : ''}" role="row" data-file="${r.key}">
+                    <span role="cell"><span class="row-dot" style="background:${r.color}"></span></span>
+                    <span class="row-name" role="cell">${r.note
+                        ? `<button type="button" class="row-toggle" aria-expanded="false" aria-controls="${noteId}">${name}</button>`
+                        : name}${r.era
                         ? `<span class="row-tag">${RESTARTS[r.era].short} — a different game, score not comparable</span>` : ''}</span>
-                    <span class="num">${fmtSteps(r.steps)}</span>
-                    <span class="num">${fmtHours(r.elapsed)}</span>
-                    <span class="num">${r.evalScore ? r.evalScore.toFixed(2) : '—'}</span>
-                    <span class="row-outcome ${cls}">${text}</span>
-                </div>`;
+                    <span class="num" role="cell">${fmtSteps(r.steps)}</span>
+                    <span class="num" role="cell">${fmtHours(r.elapsed)}</span>
+                    <span class="num" role="cell">${r.evalScore ? fmtScore(r.evalScore) : '—'}</span>
+                    <span class="row-outcome ${cls}" role="cell">${text}</span>
+                </div>${r.note
+                    ? `<div class="row-note" role="row" hidden><span role="cell" id="${noteId}">${esc(r.note)}</span></div>` : ''}`;
             }).join('');
 
+        // One note open at a time. A click anywhere on a row with a note
+        // works for the mouse; the button is what the keyboard reaches.
         ledger.addEventListener('click', e => {
-            const row = e.target.closest('.row[data-file]'); if (!row) return;
-            const r = runs.find(x => x.key === row.dataset.file);
-            const open = row.nextElementSibling && row.nextElementSibling.classList.contains('row-note');
-            ledger.querySelectorAll('.row-note').forEach(n => n.remove());
-            if (open || !r.note) return;
-            const note = document.createElement('div');
-            note.className = 'row-note';
-            note.textContent = r.note;
-            row.after(note);
-        });
-
-        // Rows are buttons for the keyboard too, not just the mouse.
-        ledger.addEventListener('keydown', e => {
-            if (e.key !== 'Enter' && e.key !== ' ') return;
-            const row = e.target.closest('.row[data-file]'); if (!row) return;
-            e.preventDefault(); row.click();
+            const row = e.target.closest('.row.has-note'); if (!row) return;
+            const btn = row.querySelector('.row-toggle');
+            const opening = btn.getAttribute('aria-expanded') !== 'true';
+            ledger.querySelectorAll('.row-toggle[aria-expanded="true"]').forEach(b => {
+                b.setAttribute('aria-expanded', 'false');
+                b.closest('.row').nextElementSibling.hidden = true;
+            });
+            if (opening) {
+                btn.setAttribute('aria-expanded', 'true');
+                row.nextElementSibling.hidden = false;
+            }
         });
 
         document.getElementById('foot').textContent =
@@ -1384,7 +1478,10 @@
 
         /* ── Progression: skill against cumulative experience ───────────── */
         const scored = runs.filter(r => r.evalScore);
-        const progGames = [...new Set(scored.map(r => r.game))];
+        // A game needs two scored runs to show progress. Tetris has one (its
+        // single billion-step run), and a tab holding one dot is not a chart.
+        const progGames = [...new Set(scored.map(r => r.game))]
+            .filter(g => scored.filter(r => r.game === g).length > 1);
         let progGame = progGames.includes('watermelon') ? 'watermelon' : progGames[0];
         const progCvs = document.getElementById('progression');
         const progTip = document.getElementById('prog-tip');
@@ -1487,6 +1584,13 @@
             });
             ctx.stroke();
 
+            // The same marks as the family tree: shipped is the page colour
+            // with a ring, an improvement is --accent-2, a discard is hollow
+            // in --warn, and a score with no recorded verdict is --chart-axis.
+            // Shipped used to be --fg and improvements --chart-ink, which are
+            // the same colour on four of the six themes.
+            const colour = r => ({ shipped: PAL.fg, improved: PAL.good, superseded: PAL.good,
+                                   rejected: PAL.bad, running: PAL.running }[r.outcome] || PAL.axis);
             list.forEach(r => {
                 const x = L.x(r), y = yOf(r);
                 const rejected = r.outcome === 'rejected';
@@ -1501,20 +1605,21 @@
                     ctx.setLineDash([]);
                 }
                 ctx.beginPath();
-                ctx.arc(x, y, r.checkpoint ? 5 : 3.5, 0, Math.PI * 2);
+                ctx.arc(x, y, rejected ? 4.5 : 5, 0, Math.PI * 2);
                 if (rejected) {               // hollow: see drawTree
                     ctx.fillStyle = PAL.bg; ctx.fill();
                     ctx.strokeStyle = PAL.bad; ctx.lineWidth = 1.8; ctx.stroke();
                 } else {
-                    ctx.fillStyle = r.outcome === 'shipped' ? PAL.fg : PAL.ink;
+                    ctx.fillStyle = colour(r);
                     ctx.fill();
                 }
-                // A ring marks a version whose weights still exist, so it
-                // could be played.
-                if (r.checkpoint) {
-                    ctx.strokeStyle = PAL.axis;   // was fixed white: invisible on light themes
+                // The ring marks the model on the site, as in the tree. It
+                // used to mark "weights still exist", which was true of most
+                // dots and so told the reader little; that is in the tooltip.
+                if (r.outcome === 'shipped') {
+                    ctx.strokeStyle = PAL.axis;
                     ctx.lineWidth = 1;
-                    ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.stroke();
                 }
                 // The far side has no steps axis to read a value off, so its
                 // points are labelled directly.
@@ -1543,7 +1648,7 @@
                + (r.era
                     ? `<div class="tip-row">${RESTARTS[r.era].why}</div>`
                     : `<div class="tip-row">after <b>${fmtSteps(r.cumulativeSteps)}</b> steps total</div>`)
-               + `<div class="tip-row">scored <b>${r.evalScore.toFixed(2)}</b></div>`
+               + `<div class="tip-row">scored <b>${fmtScore(r.evalScore)}</b> · ${outcomeOf(r)[1]}</div>`
                // A gain measured against a parent from a different game means nothing.
                + (r.gainPerMStep !== undefined && !RESTARTS[r.key]
                     ? `<div class="tip-row">this run <b>${r.gainPerMStep > 0 ? '+' : ''}${r.gainPerMStep}</b> per M steps</div>` : '')
@@ -1612,7 +1717,7 @@
                 ctx.setLineDash([]);
             });
 
-            const colour = r => ({ shipped: PAL.fg, improved: PAL.good,
+            const colour = r => ({ shipped: PAL.fg, improved: PAL.good, superseded: PAL.good,
                                    rejected: PAL.bad, running: PAL.running }[r.outcome] || PAL.axis);
             /* Rejected runs are hollow. On the light themes improved and
                rejected are two greys, so colour alone could not tell a dead
@@ -1674,8 +1779,8 @@
             },
             r => `<div class="tip-run">${r.label}</div>`
                + `<div class="tip-row">${fmtSteps(r.steps)} steps · ${fmtHours(r.elapsed)}</div>`
-               + `<div class="tip-row">${(OUTCOME[r.outcome] || ['', 'not evaluated'])[1]}`
-               + (r.evalScore ? ` at <b>${r.evalScore.toFixed(2)}</b>` : '') + '</div>'
+               + `<div class="tip-row">${outcomeOf(r)[1]}`
+               + (r.evalScore ? ` at <b>${fmtScore(r.evalScore)}</b>` : '') + '</div>'
                + (RESTARTS[r.key] ? `<div class="tip-row">restart: ${RESTARTS[r.key].why}</div>` : ''));
 
         /* ── Score distribution ─────────────────────────────────────────── */
@@ -1799,7 +1904,10 @@
         /* ── Architecture ───────────────────────────────────────────────── */
         const arch = TRAINING_DATA.architecture || {};
         const archGames = Object.keys(arch);
-        let archGame = archGames.includes('watermelon') ? 'watermelon' : archGames[0];
+        // Tetris first: it is the simplest of the three (dense throughout),
+        // and the worked example under the diagram follows whichever tab is
+        // open — it used to open on Watermelon while describing Tetris.
+        let archGame = archGames.includes('tetris') ? 'tetris' : archGames[0];
 
         function drawArch() {
             const a = arch[archGame];
@@ -1833,6 +1941,18 @@
                     <div><b>${a.layers.filter(l => l.kind === 'conv').length}</b>convolution layers</div>
                     <div><b>${a.layers.filter(l => l.kind === 'dense').length}</b>dense layers</div>
                  </div>`;
+
+            // The worked example, from this network's own first dense layer.
+            const ex = document.getElementById('arch-example');
+            const d = a.layers.find(l => l.kind === 'dense');
+            if (ex && d) {
+                const [out, inp] = d.shape;
+                const first = a.layers[0] === d;
+                ex.innerHTML = `In the ${archGame.charAt(0).toUpperCase() + archGame.slice(1)} network, `
+                    + `<b>${out} × ${inp}</b> means ${out.toLocaleString()} units each looking at all `
+                    + `${inp.toLocaleString()} ${first ? 'input numbers' : 'numbers the convolutions hand on'}, `
+                    + `which is where its ${d.params.toLocaleString()} weights come from.`;
+            }
         }
 
         tabs('arch-tabs', archGames, archGame, v => { archGame = v; drawArch(); });
@@ -1843,45 +1963,71 @@
         const benchTip = document.getElementById('bench-tip');
         let benchGeom = null;
 
+        /* Grouped by observation size: the July figures were measured on the
+           1,332-number observation, and the model the site ships reads 2,652
+           numbers, which was re-measured separately. One axis for both, so
+           the cost of the bigger observation is the gap between the groups. */
         function drawBench() {
             const { ctx, w, h } = setupCanvas(benchCvs);
             if (!bench) return;
-            const rows = bench.results;
-            const xMax = Math.max(...rows.map(r => r.fps));
-            const left = 86, right = w - 46, top = 16;
-            const rowH = (h - top - 14) / rows.length;
+            const groups = [];
+            bench.results.forEach(r => {
+                const k = r.obs || 0;
+                let g = groups.find(x => x.obs === k);
+                if (!g) groups.push(g = { obs: k, rows: [] });
+                g.rows.push(r);
+            });
+            const xMax = Math.max(...bench.results.map(r => r.fps));
+            const left = 92, right = w - 46, top = 6;
+            const HEAD = 22;
+            const rowH = (h - top - 6 - HEAD * groups.length) / bench.results.length;
 
             ctx.clearRect(0, 0, w, h);
             ctx.font = FONT;
             ctx.textBaseline = 'middle';
 
-            rows.forEach((r, i) => {
-                const y = top + rowH * (i + 0.5);
-                const bw = (r.fps / xMax) * (right - left);
-                ctx.fillStyle = (r.device === 'cpu' ? PAL.bad : PAL.ink) + '7a';
-                ctx.fillRect(left, y - rowH * 0.3, bw, rowH * 0.6);
-                ctx.fillStyle = PAL.dim;
-                ctx.textAlign = 'right';
-                ctx.fillText(`${r.envs} envs · ${r.device}`, left - 8, y);
-                ctx.fillStyle = r.device === 'cpu' ? PAL.bad : PAL.ink;
+            const hits = [];
+            let y0 = top;
+            groups.forEach(g => {
+                ctx.fillStyle = PAL.fg;
                 ctx.textAlign = 'left';
-                ctx.fillText(r.fps.toLocaleString(), left + bw + 6, y);
+                ctx.fillText(g.obs
+                    ? `${g.obs.toLocaleString()}-NUMBER OBSERVATION${g.obs === bench.shippedObs ? ' · THE SITE\'S MODEL' : ''}`
+                    : 'OBSERVATION', 8, y0 + HEAD / 2 + 2);
+                y0 += HEAD;
+                g.rows.forEach(r => {
+                    const y = y0 + rowH / 2;
+                    const bw = (r.fps / xMax) * (right - left);
+                    ctx.fillStyle = (r.device === 'cpu' ? PAL.bad : PAL.ink) + '7a';
+                    ctx.fillRect(left, y - rowH * 0.3, bw, rowH * 0.6);
+                    ctx.fillStyle = PAL.dim;
+                    ctx.textAlign = 'right';
+                    ctx.fillText(`${r.envs} games · ${r.device === 'cpu' ? 'CPU' : 'GPU'}`, left - 8, y);
+                    ctx.fillStyle = r.device === 'cpu' ? PAL.bad : PAL.ink;
+                    ctx.textAlign = 'left';
+                    ctx.fillText(r.fps.toLocaleString(), left + bw + 6, y);
+                    hits.push({ r, y0, y1: y0 + rowH });
+                    y0 += rowH;
+                });
             });
-            benchGeom = { rows, left, right, top, rowH };
+            benchGeom = { hits };
         }
 
         hover(benchCvs, benchTip,
             (mx, my) => {
                 if (!benchGeom) return null;
-                const i = Math.floor((my - benchGeom.top) / benchGeom.rowH);
-                return benchGeom.rows[i] ? { r: benchGeom.rows[i] } : null;
+                const hit = benchGeom.hits.find(b => my >= b.y0 && my < b.y1);
+                return hit ? { r: hit.r } : null;
             },
             ({ r }) => {
-                const cpu = bench.results.find(x => x.device === 'cpu');
-                return `<div class="tip-run">${r.envs} envs on ${r.device.toUpperCase()}</div>`
+                // Only compare like with like: the CPU figure is for the
+                // smaller observation.
+                const cpu = bench.results.find(x => x.device === 'cpu' && x.obs === r.obs);
+                return `<div class="tip-run">${r.envs} parallel games on the ${r.device === 'cpu' ? 'CPU' : 'GPU'}</div>`
+                     + (r.obs ? `<div class="tip-row">${r.obs.toLocaleString()}-number observation</div>` : '')
                      + `<div class="tip-row"><b>${r.fps.toLocaleString()}</b> ${bench.unit}</div>`
                      + (cpu && r.device !== 'cpu'
-                        ? `<div class="tip-row"><b>${(r.fps / cpu.fps).toFixed(1)}×</b> the CPU baseline</div>` : '');
+                        ? `<div class="tip-row"><b>${(r.fps / cpu.fps).toFixed(1)}×</b> the CPU on the same observation</div>` : '');
             });
 
         /* ── Wall-clock timeline ────────────────────────────────────────── */
@@ -1967,8 +2113,11 @@
             });
 
             tlGeom = { list, xs, rowH };
+            renderTimelineKey();
+        }
 
-            // Each bar is its run's colour, so the key names the games' hues.
+        // Each bar is its run's colour, so the key names the games' hues.
+        function renderTimelineKey() {
             document.getElementById('timeline-key').innerHTML =
                 Object.entries(byGame).map(([g, l]) =>
                     `<span><i class="bar" style="background:${l[l.length - 1].color}"></i> ${g}</span>`).join('')
@@ -2096,11 +2245,17 @@
             ctx.clearRect(0, 0, w, h);
 
             const cols = brain.nodes.length;
-            const padX = 60, padY = 34;
+            /* Below ~500px the columns are 50-60px apart and "HIDDEN 1024" is
+               ~75px wide, so neighbouring labels ran into each other
+               ("BOARD + PIEHIDDEN 1024"). There each label goes on two short
+               lines instead, and the plot gives up a little height for them. */
+            const narrow = w < 500;
+            const padX = narrow ? 34 : 60, padY = narrow ? 30 : 34;
+            const padB = narrow ? 46 : padY;
             const colX = (i) => padX + (w - padX * 2) * (cols === 1 ? 0.5 : i / (cols - 1));
             const nodeY = (col, j) => {
                 const n = brain.nodes[col];
-                const usable = h - padY * 2;
+                const usable = h - padY - padB;
                 return padY + (n === 1 ? usable / 2 : usable * j / (n - 1));
             };
 
@@ -2153,7 +2308,9 @@
                 }
             });
 
-            const LABELS = ['board + pieces', 'hidden 1024', 'hidden 1024', 'hidden 512', 'placements'];
+            const LABELS = narrow
+                ? [['input', '238'], ['hidden', '1024'], ['hidden', '1024'], ['hidden', '512'], ['moves', '40']]
+                : [['board + pieces'], ['hidden 1024'], ['hidden 1024'], ['hidden 512'], ['placements']];
             for (let c = 0; c < cols; c++) {
                 for (let j = 0; j < brain.nodes[c]; j++) {
                     const on = brainHover && brainHover.col === c && brainHover.idx === j;
@@ -2182,7 +2339,8 @@
                 ctx.fillStyle = PAL.label;
                 ctx.font = FONT_SMALL;
                 ctx.textAlign = 'center';
-                ctx.fillText((LABELS[c] || '').toUpperCase(), colX(c), h - 10);
+                const lines = LABELS[c] || [''];
+                lines.forEach((t, k) => ctx.fillText(t.toUpperCase(), colX(c), h - 10 - (lines.length - 1 - k) * 14));
             }
 
             brainGeom = { colX, nodeY, cols };
@@ -2208,7 +2366,10 @@
             const names = ['input', 'hidden layer 1', 'hidden layer 2', 'hidden layer 3', 'placement'];
             brainTip.innerHTML =
                 `<div class="tip-run">${names[found.col] || 'neuron'}</div>` +
-                `<div class="tip-row">one of <b>${brain.layers[Math.min(found.col, brain.layers.length - 1)].shape[found.col === 0 ? 1 : 0].toLocaleString()}</b> in this layer</div>` +
+                // Column 0 is the first matrix's INPUT side; column c > 0 is the
+                // output side of matrix c - 1. (It used to index matrix c, which
+                // called the second 1024-wide layer 512 and the 512 layer 40.)
+                `<div class="tip-row">one of <b>${(found.col === 0 ? brain.layers[0].shape[1] : brain.layers[found.col - 1].shape[0]).toLocaleString()}</b> in this layer</div>` +
                 `<div class="tip-row">showing a sample of ${brain.nodes[found.col]}</div>`;
             brainTip.style.opacity = 1;
             const tw = brainTip.offsetWidth, th = brainTip.offsetHeight;
@@ -2245,20 +2406,24 @@
         function drawHeat() {
             if (!brain) return;
             const host = document.getElementById('brain-heat');
+            // One integer scale for the whole row, chosen so the widest map
+            // still fits, so every layer's cells are the same physical size.
+            const widest = Math.max(...brain.layers.map(l => l.heat.w));
+            const scale = Math.max(1, Math.floor(190 / widest));
+            const figH = Math.max(...brain.layers.map(l => l.heat.h)) * scale;
             host.innerHTML = '<div class="heat-row">' + brain.layers.map((l, i) =>
                 `<div class="heat-cell">
-                    <canvas data-heat="${i}" width="${l.heat.w}" height="${l.heat.h}"></canvas>
+                    <div class="heat-fig" style="height:${figH}px">
+                        <canvas data-heat="${i}" width="${l.heat.w}" height="${l.heat.h}"
+                                role="img" aria-label="Layer ${i + 1} weights as a heat map: blue positive, red negative"></canvas>
+                    </div>
                     <span class="heat-label"><b>layer ${i + 1} — ${l.shape[1]} → ${l.shape[0]}</b>
                     ${(l.shape[0] * l.shape[1]).toLocaleString()} weights<br>
                     ±${l.heat.peak.toFixed(2)} peak · ${(l.stats.zeroish * 100).toFixed(0)}% near zero</span>
                 </div>`).join('') + '</div>';
 
-            // One integer scale for the whole row, chosen so the widest map
-            // still fits, so every layer's cells are the same physical size.
-            const widest = Math.max(...brain.layers.map(l => l.heat.w));
             const pos = PAL.brainPos.split(',').map(Number);
             const neg = PAL.brainNeg.split(',').map(Number);
-            const scale = Math.max(1, Math.floor(190 / widest));
 
             brain.layers.forEach((l, i) => {
                 const cvs = host.querySelector(`[data-heat="${i}"]`);
@@ -2281,18 +2446,47 @@
             });
         }
 
-        /* ── Boot ───────────────────────────────────────────────────────── */
+        /* ── Boot ─────────────────────────────────────────────────────────
+           Charts below the first are drawn when they come within a screen of
+           the viewport, not all at load: drawing every one eagerly made the
+           first render a single ~420 ms task on a throttled CPU. A theme
+           change or resize repaints what is on screen now and marks the rest
+           stale, to be repainted when it is next scrolled to. */
         renderLegend();
         drawArch();
         drawH2H();
         drawBrainNote();
         drawHeat();
+        // The parts of lazily drawn charts that are TEXT, not pixels, are
+        // filled now, so they are there for a reader who never scrolls.
+        if (!evalRun) document.getElementById('evals-block').style.display = 'none';
+        if (!brain) document.getElementById('brain-block').style.display = 'none';
+        if (dists[distGame]) describeDist(dists[distGame]);
+        renderTimelineKey();
+
+        const LAZY = { evals: drawEvals, progression: drawProgression, tree: drawTree,
+                       dist: drawDist, bench: drawBench, timeline: drawTimeline, brain: drawBrain };
+        const near = new Set(), stale = new Set(Object.keys(LAZY));
+        const io = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                const id = e.target.id;
+                if (!e.isIntersecting) { near.delete(id); return; }
+                near.add(id);
+                if (stale.delete(id)) LAZY[id]();
+            });
+        }, { rootMargin: '600px 0px' }) : null;
         function redraw() {
-            drawCurve(); drawEvals(); drawProgression(); drawTree();
-            drawDist(); drawBench(); drawTimeline(); drawBrain();
+            drawCurve();
+            Object.entries(LAZY).forEach(([id, fn]) => {
+                if (!io || near.has(id)) { stale.delete(id); fn(); } else stale.add(id);
+            });
         }
         window.addEventListener('resize', redraw);
-        redraw();
+        // Its own task, so parsing the data, building the page and drawing
+        // the first chart are not one long block on a slow phone.
+        requestAnimationFrame(() => drawCurve());
+        if (io) Object.keys(LAZY).forEach(id => io.observe(document.getElementById(id)));
+        else redraw();
     })();
     </script>
 </body>
