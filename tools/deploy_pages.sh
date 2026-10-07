@@ -124,6 +124,10 @@ done
 for f in snake/snake_ai.onnx tetris/tetris_ai.onnx watermelon/watermelon_ai.onnx; do
     [ -s "$STAGE/$f" ] || { echo "ABORT: $f missing or empty in the staged site"; exit 1; }
 done
+# model-source.js runs inference in this worker and falls back to the main
+# thread without it — silently, so a missing file would only show up as the
+# games getting janky again. Check for it instead.
+[ -s "$STAGE/shared/ort-worker.js" ] || { echo "ABORT: shared/ort-worker.js missing in the staged site"; exit 1; }
 if grep -rq '<script src="model_data\.js"' "$STAGE"/*/game.html; then
     echo "ABORT: a deployed game.html still loads model_data.js as a script"
     exit 1
@@ -133,7 +137,11 @@ fi
 # generated separately from the deploy, so the two can drift — and the failure
 # mode is a button that downloads a 404 and leaves the player on the previous
 # model with an error in the console nobody reads.
-python - "$STAGE" <<'PYEOF' || exit 1
+# python3 where it exists (macOS and most Linux ship no bare `python`),
+# python on Windows, where python3 is often the Store stub.
+PY="$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python)"
+case "$PY" in *WindowsApps*) PY="$(command -v python 2>/dev/null || echo python)" ;; esac
+"$PY" - "$STAGE" <<'PYEOF' || exit 1
 import json, pathlib, sys
 stage = pathlib.Path(sys.argv[1])
 txt = (stage / "shared" / "checkpoints.js").read_text(encoding="utf-8")
@@ -220,7 +228,13 @@ echo "deployed to https://kohan1.github.io/humanvsai/"
 #
 # Blocking here makes the failure mode impossible: the next deploy cannot start
 # until this one is terminal.
-GH="/c/Program Files/GitHub CLI/gh.exe"
+# gh on PATH first (the Mac, Linux, or Windows with gh installed normally),
+# then the Windows installer's default location, which Git Bash does not put
+# on PATH. It used to look ONLY at the Windows path, so a deploy from the Mac
+# printed "gh not found", skipped this wait, and left the exact cancel-by-
+# redeploy trap described above wide open on the primary dev machine.
+GH="$(command -v gh 2>/dev/null || true)"
+[ -n "$GH" ] || GH="/c/Program Files/GitHub CLI/gh.exe"
 if [ -x "$GH" ]; then
     printf "waiting for the Pages deployment"
     confirmed=

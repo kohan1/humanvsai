@@ -39,6 +39,22 @@
     --chart-axis:  #4a4a4a;
     --chart-ink:   #cfe4ff;
     --chart-track: #1a1a1a;
+    /* A run still in progress. Amber on the dark themes; the light themes
+       darken it, because #e0c07a on paper measured 1.75:1. */
+    --chart-running: #e0c07a;
+    /* The Inside page's network drawing, as bare "r, g, b" triples so the
+       canvas can apply its own alpha. Positive / negative weights, the halo
+       and colour a firing neuron moves toward, and the resting colour of the
+       input, hidden and output columns. Dark themes brighten toward white as
+       a neuron fires; the light themes darken toward ink instead, because a
+       white halo on a white page is not there at all. */
+    --brain-pos:   140, 190, 255;
+    --brain-neg:   235, 130, 130;
+    --brain-fire:  255, 255, 255;
+    --brain-halo:  190, 220, 255;
+    --brain-in:    127, 155, 191;
+    --brain-mid:   95, 107, 122;
+    --brain-out:   207, 228, 255;
     --mono:        ui-monospace, SFMono-Regular, Menlo, monospace;
     --grain:       0;
     --glow:        207, 228, 255;
@@ -52,6 +68,10 @@
     --board-ink:   #ffffff;
     --board-edge:  #2a2a2a;
     --board-scrim: 0, 0, 0;
+
+    /* Native scrollbars and form controls follow the palette. Overridden to
+       light on Filings and Dispersion below. */
+    color-scheme: dark;
 }
 
 
@@ -61,10 +81,37 @@
    at equal specificity. The default theme's values are the original colours,
    so leaving the theme alone changes nothing. */
 
-html, body { background: var(--bg); color: var(--fg); }
+/* The page colour goes on html ONLY; body stays transparent. Every page's
+   background renderer is a position:fixed canvas, and on the game pages it
+   sits at z-index -1 so no game markup had to be restacked. A negative layer
+   paints above the ROOT background but below body's, so a painted body hid
+   the theme's background on all three game pages — and since body is only
+   100% tall, the backdrop showed below it as a hard seam once you scrolled
+   to the inspector. html's background covers the whole canvas, however far
+   the page scrolls. Transparent beats each game's own `html, body` rule
+   because this file loads after it. */
+html { background: var(--bg); color: var(--fg); }
+body { background: transparent; color: var(--fg); }
 
-.back, .back-nav { color: var(--dim); }
+/* The back link (and select's settings button) is fixed, so it floats over
+   whatever scrolls beneath it: board edges, Inside's charts. A pill in the page
+   colour keeps it legible there, and the padding makes it a real tap target —
+   it was 41x11px. The negative margin cancels the padding, so the text stays
+   exactly where each page put it. */
+.back, .back-nav, .settings-btn {
+    color: var(--dim);
+    font-size: 0.72rem;
+    padding: 0.45rem 0.8rem; margin: -0.45rem -0.8rem;
+    min-height: 2rem;
+    border-radius: 999px;
+    /* Opaque. At 84% the charts and copy scrolling under it showed through,
+       which on Inside at tablet widths put body text inside the pill. */
+    background: var(--bg);
+}
 .back:hover, .back-nav:hover { color: var(--fg-muted); }
+.back:focus-visible, .back-nav:focus-visible, .settings-btn:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 0;
+}
 
 .eyebrow, .header .eyebrow { color: var(--dim); }
 h1, .header h1, .title { color: var(--fg); font-family: var(--serif); }
@@ -86,6 +133,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 /* select */
 .grid { background: var(--line); border-color: var(--line); }
 .card { background: var(--bg); color: var(--fg-muted); }
+.card-num, .card-tag { font-size: 0.72rem; }
 .card:hover { background: var(--panel-hi); color: var(--fg); }
 .card:hover::after { border-color: var(--accent); }
 .card-num, .card-tag, .card-arrow { color: var(--dim); }
@@ -93,9 +141,17 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 .settings-btn { color: var(--dim); }
 .settings-btn:hover, .settings-btn[aria-expanded="true"] { color: var(--fg); }
-/* Scrolls rather than running off a short landscape phone screen. */
+/* Scrolls rather than running off a short landscape phone screen. The
+   shadow lifts it off the cards it overlaps, so it reads as a popover rather
+   than as part of the grid. */
 .settings-panel { background: var(--panel); border-color: var(--line);
-                  max-height: calc(100vh - 5rem); overflow-y: auto; }
+                  max-height: calc(100vh - 5rem); overflow-y: auto;
+                  box-shadow: 0 18px 48px -8px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--line); }
+[data-theme="filings"] .settings-panel, [data-theme="dispersion"] .settings-panel {
+    box-shadow: 0 18px 48px -10px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--line);
+}
+/* Veils the page while the panel is open: what it covers is behind it. */
+.settings-scrim { background: color-mix(in srgb, var(--bg) 58%, transparent); }
 .settings-title { color: var(--dim); }
 .settings-blurb, .settings-foot { color: var(--dim); }
 .settings-opt { background: var(--bg); border-color: var(--line); color: var(--fg-muted); }
@@ -130,8 +186,6 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .o-shipped { color: var(--accent); }
 .o-improved { color: var(--accent-2); }
 .o-rejected { color: var(--warn); }
-/* Was a fixed amber, 1.75:1 on the light themes. */
-.o-running { color: var(--fg-muted); }
 .o-unknown { color: var(--dim); }
 .arch-flow { background: var(--bg-soft); border-color: var(--line); }
 .arch-step { border-right-color: var(--line-soft); }
@@ -145,6 +199,13 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .heat-label { color: var(--dim); }
 .heat-label b { color: var(--fg-muted); }
 .h2h-empty, .h2h-row { background: var(--bg-soft); border-color: var(--line); }
+/* Was a fixed #6a6a6a: about 3.6:1 on every dark theme. */
+.h2h-empty { color: var(--dim); }
+/* Chart-key swatches that stand for canvas strokes: they must use the same
+   tokens the canvas does, or the key describes a colour that is not drawn. */
+.chart-key i.dash { background: repeating-linear-gradient(90deg, var(--chart-axis) 0 3px, transparent 3px 6px); }
+.chart-key i.ring { border-color: var(--chart-axis); }
+.o-running { color: var(--chart-running); }
 .h2h-name { color: var(--fg-muted); }
 .h2h-tally { color: var(--dim); }
 .h2h-tally b { color: var(--accent-2); }
@@ -160,12 +221,28 @@ h2 { color: var(--fg); font-family: var(--serif); }
    cards were designed against that background. */
 [data-theme="flow"] .card, [data-theme="filings"] .card, [data-theme="sand"] .card, [data-theme="constellation"] .card, [data-theme="dispersion"] .card {
     background: var(--card-veil);
-    backdrop-filter: blur(2px);
+    /* The separators. The grid draws them by showing its own background
+       through a 1px gap, but that background is OPAQUE, so the veil above
+       was only ever veiling a flat --line rectangle: the field never showed
+       through, and --dim text measured 4.37-4.48:1 on the tinted result. Each
+       card outlines itself into the gap instead and the grid goes clear. */
+    outline: 1px solid var(--line);
+}
+/* After the rule above, which otherwise replaced the focus ring with that
+   1px hairline: keyboard focus on a card was all but invisible. */
+[data-theme] .card:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+[data-theme="flow"] .grid, [data-theme="filings"] .grid, [data-theme="sand"] .grid,
+[data-theme="constellation"] .grid, [data-theme="dispersion"] .grid {
+    background: transparent;
 }
 
 /* The play area's frame. Snake and Tetris outline `main` with a hardcoded
    #2a2a2a, which is invisible against a light theme's board — so a themed
    board had no edge at all and bled into the page. */
+[data-theme] #board-human .board-main,
+[data-theme] #board-ai .board-main,
+/* The pre-rename selectors, kept for one round so a game page that has not
+   yet moved its board out of <main> keeps its frame. */
 [data-theme] #board-human main,
 [data-theme] #board-ai main { outline-color: var(--board-edge); }
 
@@ -207,10 +284,12 @@ h2 { color: var(--fg); font-family: var(--serif); }
    area — the human board looked broken next to a correctly themed AI board.
    Reuses the same scrim/ink pair as the game-over and waiting overlays, so all
    three invert together. */
+[data-theme] .board-main div.controls,
 [data-theme] main div.controls {
     background: rgba(var(--board-scrim), 0.72);
     color: var(--board-ink);
 }
+[data-theme] .board-main div.controls p,
 [data-theme] main div.controls p { color: var(--board-ink); }
 
 /* Theme picker */
@@ -225,9 +304,18 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .theme-swatch.on { border-color: var(--accent); }
 .theme-swatch i { display: block; height: 34px; }
 .theme-swatch b {
-    display: block; font-weight: 400; font-size: 0.58rem;
-    letter-spacing: 0.06em; text-transform: uppercase;
+    /* 11px and capitalised rather than 9-10px in capitals: CONSTELLATION in
+       capitals needed ~98px and its tile is ~87px on a phone, so the old fix
+       was to shrink it to 9px — below the site's 11px floor. Mixed case is
+       about 30% narrower and fits every tile at full size. */
+    display: block; font-weight: 400; font-size: 0.6875rem;
+    letter-spacing: 0.01em; text-transform: capitalize;
     padding: 0.4rem 0.2rem; color: var(--dim);
+    white-space: nowrap;
+}
+@media (max-width: 380px) {
+    .theme-row { gap: 3px; }
+    .theme-swatch b { letter-spacing: 0; padding: 0.4rem 0.1rem; }
 }
 .theme-swatch.on b { color: var(--fg); }
 
@@ -251,16 +339,19 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --panel-hi:    #16171d;
     --fg:          #ece7d4;
     --fg-muted:    #c3bfb0;
-    /* #807d73 rather than #7b786e: the original measured 4.43:1 against this
-       theme's #0b0c10 page, just under the 4.5 needed for small text. */
-    --dim:         #807d73;
+    /* #858278: #807d73 cleared the page (4.75) but not --panel-hi (4.34),
+       which is where the Watermelon bubble titles and the ledger notes sit. */
+    --dim:         #858278;
     --dimmer:      #55534c;
     --faint:       rgba(236, 231, 212, 0.14);
     --line:        #1c1d24;
     --line-soft:   #15161c;
     --accent:      #ece7d4;
-    --accent-2:    #b8b3a2;
-    --warn:        #8a857a;
+    /* A muted sage / terracotta pair, not two greys: the Inside page marks
+       improved and rejected runs with these, and at #b8b3a2 / #8a857a the
+       two read as one colour. 9.0:1 and 7.5:1 on --panel-hi. */
+    --accent-2:    #9cc29a;
+    --warn:        #d79a86;
     --chart-grid:  #171820;
     --chart-axis:  #7b786e;
     --chart-ink:   #ece7d4;
@@ -271,7 +362,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Filings — ink on warm paper. */
 [data-theme="filings"] {
-    --board-scrim: 255, 255, 255;
+    color-scheme: light;
+    /* The board's own colour, not pure white, or the overlays' edge shows as
+       a faint seam against the #fffefb board. */
+    --board-scrim: 255, 254, 251;
     --board-bg:    #fffefb;
     --board-ink:   #141414;
     --board-edge:  #dddbd3;
@@ -282,20 +376,32 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --panel-hi:    #eceae4;
     --fg:          #111111;
     --fg-muted:    #2b2b2b;
-    --dim:         #6d6c66;
+    /* #67665f, not #6d6c66: the old value was 4.38:1 on --panel-hi and 4.37
+       where the select cards' veil let the grid's line colour through. */
+    --dim:         #67665f;
     --dimmer:      #9c9b94;
     --faint:       #cfcdc5;
     --line:        #dddbd3;
     --line-soft:   #e8e6de;
     --accent:      #111111;
-    --accent-2:    #4a4a46;
-    --warn:        #8a8880;
+    /* Improved / rejected on the Inside page: a dark green and a brick red
+       rather than two near-identical greys. Both clear 5.3:1 on --panel-hi. */
+    --accent-2:    #2e6a3c;
+    --warn:        #9b3d2f;
     --chart-grid:  #e4e2da;
     --chart-axis:  #9c9b94;
     --chart-ink:   #111111;
     --chart-track: #e4e2da;
     --particle-rgb: 17, 17, 17;
     --bg-rgb:       244, 243, 239;
+    --chart-running: #8a6a1c;
+    --brain-pos:   40, 105, 215;
+    --brain-neg:   205, 60, 60;
+    --brain-fire:  15, 55, 165;
+    --brain-halo:  40, 105, 215;
+    --brain-in:    95, 125, 170;
+    --brain-mid:   128, 134, 144;
+    --brain-out:   80, 120, 195;
 }
 
 /* Sand — white grains on true black. */
@@ -314,8 +420,10 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --line:        #1c1c1c;
     --line-soft:   #141414;
     --accent:      #ffffff;
-    --accent-2:    #a8a8a8;
-    --warn:        #6f6f6f;
+    /* Muted green / red so improved and rejected differ in hue, not just by
+       a step of grey. 9.5:1 and 7.3:1 on --panel-hi. */
+    --accent-2:    #8cc79c;
+    --warn:        #dc8e8e;
     --chart-grid:  #171717;
     --chart-axis:  #565656;
     --chart-ink:   #ffffff;
@@ -334,14 +442,16 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --panel-hi:    #111a36;
     --fg:          #dfe8ff;
     --fg-muted:    #b3c1e4;
-    --dim:         #6f7ea6;
+    --dim:         #7584ab;   /* #6f7ea6 was 4.25:1 on --panel-hi */
     --dimmer:      #4c587a;
     --faint:       rgba(223, 232, 255, 0.14);
     --line:        #16203f;
     --line-soft:   #111930;
     --accent:      #9db9ff;
-    --accent-2:    #7f93c4;
-    --warn:        #6f7ea6;
+    /* Teal / rose against the navy, so improved and rejected are told apart
+       by hue. 8.7:1 and 7.5:1 on --panel-hi. */
+    --accent-2:    #7cc8a8;
+    --warn:        #e695a0;
     --chart-grid:  #141d3a;
     --chart-axis:  #6f7ea6;
     --chart-ink:   #9db9ff;
@@ -352,6 +462,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 
 /* Dispersion — black particles on white. */
 [data-theme="dispersion"] {
+    color-scheme: light;
     --board-scrim: 255, 255, 255;
     --board-bg:    #ffffff;
     --board-ink:   #000000;
@@ -369,14 +480,23 @@ h2 { color: var(--fg); font-family: var(--serif); }
     --line:        #e2e2e2;
     --line-soft:   #eeeeee;
     --accent:      #000000;
-    --accent-2:    #555555;
-    --warn:        #909090;
+    /* Dark green / brick red; both 5.8:1 or better on --panel-hi. */
+    --accent-2:    #2b6a3b;
+    --warn:        #a83a32;
     --chart-grid:  #ececec;
     --chart-axis:  #9a9a9a;
     --chart-ink:   #000000;
     --chart-track: #ececec;
     --particle-rgb: 0, 0, 0;
     --bg-rgb:       255, 255, 255;
+    --chart-running: #8a6a1c;
+    --brain-pos:   40, 105, 215;
+    --brain-neg:   205, 60, 60;
+    --brain-fire:  15, 55, 165;
+    --brain-halo:  40, 105, 215;
+    --brain-in:    95, 125, 170;
+    --brain-mid:   128, 134, 144;
+    --brain-out:   80, 120, 195;
 }
 
 /* Shared treatment for all five: one typeface, tight tracking, no texture.
@@ -426,24 +546,31 @@ h2 { color: var(--fg); font-family: var(--serif); }
     letter-spacing: 0.05em;
 }
 
-/* Game chrome follows the theme; the boards do not. */
-[data-theme="flow"] .insp, [data-theme="filings"] .insp, [data-theme="sand"] .insp,
-[data-theme="constellation"] .insp, [data-theme="dispersion"] .insp {
+/* Game chrome follows the theme; the boards do not.
+   On EVERY theme, Mesh included. These rules used to list only the five
+   motion themes, so on Mesh (the default, and the theme most visitors see)
+   the inspector, the checkpoint switcher and Watermelon's speed row fell back
+   to their own defaults: #666 labels at 3.4:1, and on Watermelon a row of
+   cream buttons built for a light page. Mesh's tokens are the original dark
+   palette, so this changes nothing else there. */
+[data-theme] .insp {
     --insp-fg: var(--fg-muted); --insp-dim: var(--dim); --insp-line: var(--line);
     --insp-panel: var(--panel); --insp-accent: var(--accent);
     --insp-cell-bg: var(--bg-soft); --insp-track: var(--line-soft);
+}
+/* Mesh has no --particle-rgb (its lattice is drawn by mesh.js, which does not
+   read one), so it keeps inspector.css's own blue for the heat-map cells. */
+[data-theme="flow"] .insp, [data-theme="filings"] .insp, [data-theme="sand"] .insp,
+[data-theme="constellation"] .insp, [data-theme="dispersion"] .insp {
     --insp-cell-rgb: var(--particle-rgb);
 }
-[data-theme="flow"] .insp-cue, [data-theme="filings"] .insp-cue,
-[data-theme="sand"] .insp-cue, [data-theme="constellation"] .insp-cue,
-[data-theme="dispersion"] .insp-cue {
+[data-theme] .insp-cue {
     --insp-cue-fg: var(--dim); --insp-cue-hover: var(--fg);
 }
 /* The checkpoint switcher, same treatment as the inspector. Its defaults in
    checkpoints.css are tuned for the dark games, so the light themes (Filings,
    Dispersion) would otherwise put pale grey text on white. */
-[data-theme="flow"] .ckpt, [data-theme="filings"] .ckpt, [data-theme="sand"] .ckpt,
-[data-theme="constellation"] .ckpt, [data-theme="dispersion"] .ckpt {
+[data-theme] .ckpt {
     --ckpt-fg: var(--fg-muted); --ckpt-dim: var(--dim); --ckpt-line: var(--line);
     --ckpt-panel: var(--panel); --ckpt-accent: var(--accent);
 }
@@ -453,16 +580,16 @@ h2 { color: var(--fg); font-family: var(--serif); }
 [data-theme="dispersion"] .ckpt-btn.is-active {
     background: var(--panel-hi);
 }
-[data-theme="flow"] .speed-controls button, [data-theme="filings"] .speed-controls button,
-[data-theme="sand"] .speed-controls button, [data-theme="constellation"] .speed-controls button,
-[data-theme="dispersion"] .speed-controls button {
+/* opacity: 1 because Watermelon dims its idle speed buttons to 0.6, which on
+   top of --dim put them at about 2.4:1 on every theme. */
+[data-theme] .speed-controls button {
     background: var(--panel); border-color: var(--line); color: var(--dim);
+    opacity: 1;
 }
-[data-theme="flow"] .speed-controls button.active,
-[data-theme="filings"] .speed-controls button.active,
-[data-theme="sand"] .speed-controls button.active,
-[data-theme="constellation"] .speed-controls button.active,
-[data-theme="dispersion"] .speed-controls button.active {
+[data-theme] .speed-controls button:hover {
+    color: var(--fg-muted); border-color: var(--dimmer);
+}
+[data-theme] .speed-controls button.active {
     background: var(--panel-hi); border-color: var(--accent); color: var(--fg);
 }
 /* --dim, not --faint. --faint is a hairline/border colour: on Filings it is

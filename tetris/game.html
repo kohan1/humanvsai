@@ -10,7 +10,44 @@
         <link rel="stylesheet" href="../shared/inspector.css" />
         <link rel="stylesheet" href="../shared/checkpoints.css" />
         <link rel="stylesheet" href="style.css" />
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <!-- ort.wasm.min.js, not ort.min.js: every session here is created
+             with executionProviders ["wasm"], and the full build fetches the
+             WebGPU/JSEP runtime anyway — a 27.8 MB .wasm against 14.0 MB for
+             the plain one, plus a 368 KB loader against 50 KB. The preload
+             starts that .wasm alongside the model download; onnxruntime only
+             asks for it once InferenceSession.create() has the model bytes,
+             so the two used to download one after the other. Keep the
+             version in step with ort.env.wasm.wasmPaths in game.js. -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
+        <link rel="modulepreload" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.mjs" />
+        <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" />
+        <script>
+        // The model itself, over HTTP only. Under file:// fetch() cannot read
+        // it (model-source.js uses the embedded base64 there), so a static
+        // <link> would just log an error. crossorigin matches fetch()'s default
+        // credentials mode, or the preload is not reused and downloads twice.
+        // It preloads the model version the visitor last chose (the checkpoint
+        // switcher records its file), so a returning visitor downloads one
+        // model, not the shipped one and then theirs; a choice with no file
+        // recorded yet preloads nothing rather than the wrong one.
+        // fetchpriority low: it is 9-34 MB and must not hold up the page's
+        // own scripts, which it delayed by ~1 s when they shared the link.
+        (function () {
+            if (location.protocol === "file:") return;
+            var f = "tetris_ai.onnx";
+            try {
+                var c = JSON.parse(localStorage.getItem("humanvsai.checkpoint") || "{}").tetris;
+                var cf = JSON.parse(localStorage.getItem("humanvsai.checkpointFile") || "{}").tetris;
+                if (/^(checkpoints\/)?[\w-]+\.onnx$/.test(cf || "")) f = cf;
+                else if (c) return;
+            } catch (e) { /* storage blocked: the shipped model */ }
+            var p = document.createElement("link");
+            p.rel = "preload"; p.as = "fetch"; p.crossOrigin = "anonymous";
+            p.setAttribute("fetchpriority", "low");
+            p.href = f;
+            document.head.appendChild(p);
+        }());
+        </script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>
         <script src="../shared/results.js" defer></script>
@@ -44,73 +81,88 @@
 
         <a class="back-nav" href="../select.html">← back</a>
 
-        <div class="screen">
+        <h1 class="sr-only">Tetris: you against a neural network</h1>
+
+        <!-- One <main> for the page; each board is a labelled section. Every
+             board used to be its own <main>, which gave the page two main
+             landmarks. -->
+        <main class="screen">
         <div id="arena">
 
             <!-- ── Human board ── -->
             <div class="board-wrap" id="board-human">
                 <div class="board-label">YOU</div>
-                <main>
-                    <canvas id="canvas-human" width="300" height="540"></canvas>
-                    <button id="restart-human" title="Restart">
-                        <img src="assets/restart.png" alt="Restart" />
+                <section class="board-main" aria-label="Your board">
+                    <canvas id="canvas-human" width="300" height="540" role="img" aria-label="Your board, score 0"></canvas>
+                    <button id="restart-human" title="Restart your game">
+                        <img src="assets/restart.png" alt="Restart your game" />
                     </button>
                     <div class="controls" hidden>
-                        <div class="row">
-                            <kbd>&uparrow;</kbd>
-                            <div class="spacer"></div>
-                            <kbd>W</kbd>
+                        <!-- The card holds the legend on its own backing, so
+                             it never prints straight over a restored board's
+                             pieces. -->
+                        <div class="controls-card">
+                            <div class="row">
+                                <kbd>&uparrow;</kbd>
+                                <div class="spacer"></div>
+                                <kbd>W</kbd>
+                            </div>
+                            <p>&circlearrowright; Rotate</p>
+                            <div class="row">
+                                <kbd>&leftarrow;</kbd>
+                                <kbd>&rightarrow;</kbd>
+                                <div class="spacer"></div>
+                                <kbd>A</kbd>
+                                <kbd>D</kbd>
+                            </div>
+                            <p>&leftarrow; Left / Right &rightarrow;</p>
+                            <div class="row">
+                                <kbd>&downarrow;</kbd>
+                                <div class="spacer"></div>
+                                <kbd>S</kbd>
+                            </div>
+                            <p>&downarrow; Soft drop</p>
+                            <kbd class="space">Space</kbd>
+                            <p>&dArr; Hard drop</p>
+                            <p class="controls-start"><span class="hint-keys">Press any key to start</span><span class="hint-touch">Tap to start &middot; tap rotates, swipe moves, swipe down drops</span></p>
                         </div>
-                        <p>&circlearrowright; Rotate</p>
-                        <div class="row">
-                            <kbd>&leftarrow;</kbd>
-                            <kbd>&rightarrow;</kbd>
-                            <div class="spacer"></div>
-                            <kbd>A</kbd>
-                            <kbd>D</kbd>
-                        </div>
-                        <p>&leftarrow; Left / Right &rightarrow;</p>
-                        <div class="row">
-                            <kbd>&downarrow;</kbd>
-                            <div class="spacer"></div>
-                            <kbd>S</kbd>
-                        </div>
-                        <p>&downarrow; Soft drop</p>
-                        <kbd class="space">Space</kbd>
-                        <p>&dArr; Hard drop</p>
-                        <p class="controls-start"><span class="hint-keys">Press any key to start</span><span class="hint-touch">Tap to start &middot; tap rotates, swipe moves, swipe down drops</span></p>
                     </div>
-                </main>
+                </section>
+                <p class="sr-only" id="live-human" aria-live="polite"></p>
             </div>
 
             <!-- ── VS divider ── -->
-            <div id="vs">VS</div>
+            <div id="vs" aria-hidden="true">VS</div>
 
             <!-- ── AI board ── -->
             <div class="board-wrap" id="board-ai">
                 <div class="board-label">AI</div>
-                <main>
-                    <canvas id="canvas-ai" width="300" height="540"></canvas>
-                    <button id="restart-ai" title="Restart">
-                        <img src="assets/restart.png" alt="Restart" />
+                <section class="board-main" aria-label="AI board">
+                    <canvas id="canvas-ai" width="300" height="540" role="img" aria-label="AI board, score 0"></canvas>
+                    <button id="restart-ai" title="Restart the AI">
+                        <img src="assets/restart.png" alt="Restart the AI" />
                     </button>
-                </main>
+                </section>
+                <p class="sr-only" id="live-ai" aria-live="polite"></p>
 
                 <!-- Speed multiplier for the AI. Scales both its think
-                     interval and its drop animation. -->
-                <div class="speed-controls" id="speed-ai" role="group" aria-label="AI speed">
-                    <button type="button" data-speed="0.25">0.25x</button>
-                    <button type="button" data-speed="0.5">0.5x</button>
-                    <button type="button" data-speed="0.75">0.75x</button>
-                    <button type="button" data-speed="1" class="active">1x</button>
-                    <button type="button" data-speed="1.5">1.5x</button>
-                    <button type="button" data-speed="1.75">1.75x</button>
-                    <button type="button" data-speed="2">2x</button>
+                     interval and its drop animation. Any speed but 1x means
+                     the match is not scored (shared/results.js). -->
+                <div class="speed-block">
+                    <div class="speed-title" id="speed-title-ai">AI speed</div>
+                    <div class="speed-controls" id="speed-ai" role="group" aria-labelledby="speed-title-ai">
+                        <button type="button" data-speed="0.25" aria-pressed="false">0.25x</button>
+                        <button type="button" data-speed="0.5" aria-pressed="false">0.5x</button>
+                        <button type="button" data-speed="0.75" aria-pressed="false">0.75x</button>
+                        <button type="button" data-speed="1" aria-pressed="true" class="active">1x</button>
+                        <button type="button" data-speed="1.5" aria-pressed="false">1.5x</button>
+                        <button type="button" data-speed="2" aria-pressed="false">2x</button>
+                    </div>
                 </div>
             </div>
 
         </div>
-        </div>
+        </main>
     <!-- The inspector lives below the fold; the scroll cue that
          points at it is created by inspector.js. -->
     <section class="insp-section">
@@ -120,7 +172,7 @@
         <script src="../shared/mesh.js" defer></script>
         <script>
         document.addEventListener('DOMContentLoaded', function () {
-            initMesh('mesh', { intensity: 0.55 });
+            initMesh('mesh', { intensity: 0.55, maxFps: 30 });
         });
         </script>
     </body>

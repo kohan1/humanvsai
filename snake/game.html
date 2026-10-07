@@ -10,7 +10,46 @@
         <link rel="stylesheet" href="../shared/inspector.css" />
         <link rel="stylesheet" href="../shared/checkpoints.css" />
         <link rel="stylesheet" href="style.css" />
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <!-- ort.wasm.min.js, not ort.min.js. The game only ever asks for the
+             "wasm" execution provider, and ort.min.js is the build that also
+             carries WebGL and WebGPU: 368 KB of script instead of 50 KB, and it
+             pulls the 27.8 MB jsep .wasm where this one pulls the 14.0 MB plain
+             one. Same version, same API, half the download.
+             The runtime's two files are preloaded below so they download in
+             parallel with the model instead of after it — they are otherwise
+             only requested once InferenceSession.create() runs, i.e. after the
+             34 MB model has fully arrived. Measured with both delayed: four
+             serial round-trips (script, model, .mjs, .wasm) became two. -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
+        <link rel="modulepreload" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.mjs" />
+        <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" />
+        <script>
+        // The model itself, over HTTP only. Under file:// fetch() cannot read
+        // it (model-source.js uses the embedded base64 there), so a static
+        // <link> would just log an error. crossorigin matches fetch()'s default
+        // credentials mode, or the preload is not reused and downloads twice.
+        // It preloads the model version the visitor last chose (the checkpoint
+        // switcher records its file), so a returning visitor downloads one
+        // model, not the shipped one and then theirs; a choice with no file
+        // recorded yet preloads nothing rather than the wrong one.
+        // fetchpriority low: it is 9-34 MB and must not hold up the page's
+        // own scripts, which it delayed by ~1 s when they shared the link.
+        (function () {
+            if (location.protocol === "file:") return;
+            var f = "snake_ai.onnx";
+            try {
+                var c = JSON.parse(localStorage.getItem("humanvsai.checkpoint") || "{}").snake;
+                var cf = JSON.parse(localStorage.getItem("humanvsai.checkpointFile") || "{}").snake;
+                if (/^(checkpoints\/)?[\w-]+\.onnx$/.test(cf || "")) f = cf;
+                else if (c) return;
+            } catch (e) { /* storage blocked: the shipped model */ }
+            var p = document.createElement("link");
+            p.rel = "preload"; p.as = "fetch"; p.crossOrigin = "anonymous";
+            p.setAttribute("fetchpriority", "low");
+            p.href = f;
+            document.head.appendChild(p);
+        }());
+        </script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>
         <script src="../shared/results.js" defer></script>
@@ -43,26 +82,31 @@
         <canvas id="mesh"></canvas>
 
         <a class="back-nav" href="../select.html">← back</a>
+        <h1 class="sr-only">Snake — Human vs AI</h1>
 
         <div class="screen">
+        <main>
         <div id="arena">
 
             <!-- ── Human board ── -->
             <div class="board-wrap" id="board-human">
                 <div class="board-label">YOU</div>
-                <main>
-                    <canvas id="canvas-human" width="480" height="480"></canvas>
-                    <button id="restart-human" title="Restart">
+                <section class="board-main" aria-label="Your board">
+                    <canvas id="canvas-human" width="480" height="480" role="img" aria-label="Your Snake board. Steer with the arrow keys or WASD."></canvas>
+                    <button id="restart-human" title="Restart your game" aria-label="Restart your game">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M23 4v6h-6"></path>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                         </svg>
                     </button>
-                    <div class="controls" hidden>
-                        <p><span class="hint-keys">&uparrow; &leftarrow; &downarrow; &rightarrow; or WASD to move</span><span class="hint-touch">Swipe on the board to steer</span></p>
-                        <p class="controls-start"><span class="hint-keys">Press an arrow key or WASD to start</span><span class="hint-touch">Swipe to start</span></p>
+                    <!-- One line, on a card below the spawn row. There used to be two
+                         lines that said the same thing ("…to move" / "…to start")
+                         on a scrim over the whole board, across the snake. -->
+                    <div class="controls">
+                        <p><span class="hint-keys">Press an arrow key or WASD to start</span><span class="hint-touch">Swipe on the board to start</span></p>
                     </div>
-                </main>
+                    <p class="sr-only" id="sr-human" aria-live="polite"></p>
+                </section>
             </div>
 
             <!-- ── VS divider ── -->
@@ -71,19 +115,35 @@
             <!-- ── AI board ── -->
             <div class="board-wrap" id="board-ai">
                 <div class="board-label">AI</div>
-                <main>
-                    <canvas id="canvas-ai" width="480" height="480"></canvas>
-                    <button id="restart-ai" title="Restart">
+                <section class="board-main" aria-label="AI board">
+                    <canvas id="canvas-ai" width="480" height="480" role="img" aria-label="The AI's Snake board."></canvas>
+                    <button id="restart-ai" title="Restart the AI" aria-label="Restart the AI">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M23 4v6h-6"></path>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                         </svg>
                     </button>
-                    <div class="ai-status" id="ai-status"></div>
-                </main>
+                    <div class="ai-status" id="ai-status" hidden><b></b><span></span></div>
+                    <p class="sr-only" id="sr-ai" aria-live="polite"></p>
+                </section>
+                <!-- AI speed, the same row as Tetris and Watermelon. Scales how
+                     many simulation steps the AI board takes per tick; any
+                     speed but 1x leaves the match unscored. -->
+                <div class="speed-block">
+                    <div class="speed-title" id="speed-title-ai">AI speed</div>
+                    <div class="speed-controls" id="speed-ai" role="group" aria-labelledby="speed-title-ai">
+                        <button type="button" data-speed="0.25" aria-pressed="false">0.25x</button>
+                        <button type="button" data-speed="0.5" aria-pressed="false">0.5x</button>
+                        <button type="button" data-speed="0.75" aria-pressed="false">0.75x</button>
+                        <button type="button" data-speed="1" aria-pressed="true" class="active">1x</button>
+                        <button type="button" data-speed="1.5" aria-pressed="false">1.5x</button>
+                        <button type="button" data-speed="2" aria-pressed="false">2x</button>
+                    </div>
+                </div>
             </div>
 
         </div>
+        </main>
         </div>
     <!-- The inspector lives below the fold; the scroll cue that
          points at it is created by inspector.js. -->
@@ -94,7 +154,7 @@
         <script src="../shared/mesh.js" defer></script>
         <script>
         document.addEventListener('DOMContentLoaded', function () {
-            initMesh('mesh', { intensity: 0.55 });
+            initMesh('mesh', { intensity: 0.55, maxFps: 30 });
         });
         </script>
     </body>

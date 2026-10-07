@@ -38,6 +38,82 @@ MAX_POINTS = 400
 # docstring. Keep this honest: only add a number that was actually measured.
 RUN_NOTES = {
     # ── Snake ────────────────────────────────────────────────────────────
+    # The first eight are reconstructed from CLAUDE.md's Snake history (bugs
+    # #2-#5 and #14-#17, and "Current status"). Scores appear only where a
+    # number was measured AND it is clear which run it belongs to; the rest
+    # stay blank. The switcher's rung scores (shared/checkpoints.js) are
+    # matched to runs by their exact step count, and quoted in the note
+    # rather than set as evalScore, because how much training sat behind
+    # those runs was not recorded, and the progression chart would plot them
+    # against their own step counter as if it were the total.
+    "snake/train_r2.log": dict(
+        game="snake", label="v1 · resume at a safe learning rate",
+        evalScore=37.50, outcome="improved",
+        note="The last run on the first design: a 16x16x3 grid flattened into "
+             "a plain MLP. It resumed run 1's model (36.58) at learning rate "
+             "5e-5 with target_kl 0.03 — PPO's default 3e-4 had earlier taken a "
+             "good cloned start from 21.59 to 7.37 in 3M steps — and reached "
+             "37.50 over 50 deterministic games (median 39, max 56). The "
+             "hand-written teacher it learned from scores 51.96. The teacher "
+             "decides on flood-fill reachable space, and nothing in this "
+             "observation let a flat network compute that; the v2 runs below "
+             "hand it over directly.",
+    ),
+    "snake/v2_pipeline_failed_bc.log": dict(
+        game="snake", label="v2 · cloning collapsed", outcome="rejected",
+        note="First run of the second design: a 1294-number observation with "
+             "the teacher's flood-fill signal in it, and a convolutional "
+             "network. The cloning step failed silently. The teacher goes "
+             "straight on 79% of moves, and predicting STRAIGHT for every input "
+             "was the cheapest way to lower the loss: it reported 78.7% "
+             "accuracy — exactly the class prior — and scored 0.00, because a "
+             "snake that never turns hits a wall. Fixed with class weights; "
+             "the pipeline now stops if cloning scores below a floor, and logs "
+             "accuracy per move rather than overall.",
+    ),
+    "snake/v2_pipeline_entropy_failure.log": dict(
+        game="snake", label="v2 · entropy bonus", outcome="rejected",
+        note="With cloning fixed the clone scored 47.43 against the teacher's "
+             "51.96 — then fine-tuning it with an entropy bonus "
+             "(ent_coef 0.01) took it to 17.50 within 2.5M steps. An entropy "
+             "bonus rewards acting randomly, and with three moves of which "
+             "usually two are fatal, random is dead. A run starting from a "
+             "competent policy now uses 0.0; only fresh runs keep the bonus.",
+    ),
+    "snake/train_v2b.log": dict(
+        game="snake", label="v2 · 262k-step test",
+        note="A 70-second run between the entropy failure and the full "
+             "pipeline. What it was testing was not written down, so it is "
+             "shown as found, without a verdict.",
+    ),
+    "snake/v2_pipeline.log": dict(
+        game="snake", label="v2 · full pipeline",
+        note="The first complete run of the second design with the fixes in: "
+             "class-weighted cloning, no entropy bonus on the fine-tune. Its "
+             "training-time score reached 67 by 30M steps — sampled play, "
+             "which runs several points below a deterministic evaluation. No "
+             "evaluation of its final model was recorded.",
+    ),
+    "snake/train_v5_gpu_done.log": dict(
+        game="snake", label="v2 · 40M on the GPU",
+        note="Its final model is the checkpoint switcher's second Snake "
+             "version — the only one with exactly this run's 40,009,728 steps "
+             "— and scores 105.70 over the switcher's 30 fixed games. No "
+             "install-time evaluation was recorded.",
+    ),
+    "snake/train_v6_done.log": dict(
+        game="snake", label="v2 · 30M",
+        note="No evaluation recorded. The switcher's weakest Snake version "
+             "(71.33 over 30 games) has exactly this run's 30,015,488 steps — "
+             "but so did the full-pipeline run, so which of the two it came "
+             "from cannot be told apart.",
+    ),
+    "snake/train_v7_done.log": dict(
+        game="snake", label="v2 · 6M",
+        note="Its final model is the switcher's third Snake version — the only "
+             "one with exactly 6,029,312 steps — and scores 129.17 over the "
+             "switcher's 30 fixed games.",
+    ),
     "snake/train_day1.log": dict(
         game="snake", label="resume · GPU", evalScore=135.78,
         outcome="improved",
@@ -73,7 +149,7 @@ RUN_NOTES = {
              "critic could no longer damage the policy.",
     ),
     "watermelon/train_v3_resume_done.log": dict(
-        game="watermelon", label="resume", evalScore=902.10,
+        game="watermelon", label="resume 1", evalScore=902.10,
         outcome="improved",
         parent="watermelon/pipeline_v2_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.902pt10.zip",
@@ -81,14 +157,14 @@ RUN_NOTES = {
              "by the model trained on the compressed fruit ladder.",
     ),
     "watermelon/train_v4_done.log": dict(
-        game="watermelon", label="resume", evalScore=872.00,
+        game="watermelon", label="resume 2", evalScore=872.00,
         outcome="rejected",
         parent="watermelon/train_v3_resume_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.872_rejected.zip",
         note="Below the shipped 902.10, so the install guard refused it.",
     ),
     "watermelon/train_day1_893.log": dict(
-        game="watermelon", label="resume", evalScore=893.03,
+        game="watermelon", label="resume 3", evalScore=893.03,
         outcome="rejected",
         parent="watermelon/train_v3_resume_done.log",
         checkpoint="watermelon/training/archive/models/watermelon_final.893_rejected.zip",
@@ -281,15 +357,24 @@ RUN_NOTES = {
     ),
     "watermelon/train_reward_v2.log": dict(
         game="watermelon", label="redesigned reward · GPU", evalScore=1014.47,
-        outcome="improved",
-        parent="watermelon/train_day2.log",
+        # Beat the model it started from, but 1032.43 already existed, so it
+        # was never installed or built on: not "improved".
+        outcome="superseded",
+        # It resumed the GPU run's RUN-END model (959.93), per "Resume from
+        # the run-end model" and the reward table in CLAUDE.md — not the
+        # CPU run's 936.70 it was previously filed under. startScore is what
+        # it actually started from, so its gain is measured against that
+        # rather than against the parent's best checkpoint.
+        parent="watermelon/train_day3_gpu.log",
+        startScore=959.93,
         checkpoint="watermelon/training/archive/models/watermelon_rewardv2.1014pt47.zip",
         note="The rebuilt reward added potential-based shaping for a low "
              "stack, a level surface and big fruit kept low — because 49% of "
              "drops score nothing and used to give no feedback at all. It "
-             "reached 1014.47, which beats the model it started from but is "
-             "BELOW the 1032.43 the old reward had already reached from a "
-             "lower starting point. The redesign did not pay off, and the "
+             "reached 1014.47 from the 959.93 model the previous run ended on, "
+             "so it beat its start — but it is BELOW the 1032.43 the old "
+             "reward had already reached from a lower starting point, and it "
+             "was never installed. The redesign did not pay off, and the "
              "reason is in the choice itself: potential-based shaping is "
              "provably unable to change which policy is optimal, so it can "
              "only reach the same ceiling faster. Raising the ceiling needs a "
@@ -633,11 +718,16 @@ def parse_tetris_tensorboard():
         "note": "Trained long before the other two and by far the longest run "
                 "on the project — a billion steps across 26 sessions. It left "
                 "only TensorBoard events, so there is no game-score curve "
-                "here, just reward. Its evaluation figures are in reward "
-                "units and are not comparable to Snake's or Watermelon's "
-                "scores.",
+                "here, just reward. The score is points per game, measured "
+                "afterwards by playing the exact model the site ships over 20 "
+                "fixed games with illegal moves masked out, as the browser "
+                "does: 106,774.5 on average, median 65,725. Tetris scores are "
+                "long-tailed — the best of those games scored 530,715 and the "
+                "worst 6,295.",
         "outcome": "shipped",
-        "evalScore": None,
+        # Measured by tools/build_checkpoints.py (shared/checkpoints.js, rung
+        # t3): the shipped .onnx, 20 fixed-seed games, action-masked.
+        "evalScore": 106774.5,
         "steps": int(series[-1]["t"]),
         "elapsed": int(elapsed),
         "endedAt": datetime.fromtimestamp(wall_last).isoformat(timespec="seconds"),
@@ -726,6 +816,11 @@ def main():
                 "series": tidy(downsample(series)),
                 "evals": evals,
             })
+            # The score of the model the run actually resumed, when that is
+            # not its parent's evalScore (a run-end model rather than the
+            # parent's best checkpoint). Only emitted when recorded.
+            if note.get("startScore") is not None:
+                runs[-1]["startScore"] = note["startScore"]
 
     tetris = parse_tetris_tensorboard()
     if tetris:
@@ -758,9 +853,10 @@ def main():
         # figure. Only meaningful when both this run and its parent were
         # measured the same way.
         parent = by_file.get(r.get("parent"))
-        if r.get("evalScore") and parent and parent.get("evalScore") and r["steps"]:
+        start = r.get("startScore") or (parent or {}).get("evalScore")
+        if r.get("evalScore") and parent and start and r["steps"]:
             r["gainPerMStep"] = round(
-                (r["evalScore"] - parent["evalScore"]) / (r["steps"] / 1e6), 3)
+                (r["evalScore"] - start) / (r["steps"] / 1e6), 3)
 
     architecture = {}
     for game, onnx_path in (
@@ -784,19 +880,25 @@ def main():
         "runs": runs,
         "architecture": architecture,
         "brain": {"tetris": brain} if brain else {},
-        # Measured with watermelon/training/bench_envs.py on 2026-07-27:
-        # Ryzen 7 3700X (8 physical / 16 logical), RTX 4060 Ti 16 GB.
+        # Measured with watermelon/training/bench_envs.py on 2026-07-27 with
+        # the 1332-float encoder, and re-measured on 2026-08-08 with the
+        # 2652-float one the shipped model reads (CLAUDE.md, "Watermelon
+        # end-to-end throughput"). Ryzen 7 3700X (8 physical / 16 logical),
+        # RTX 4060 Ti 16 GB.
         "benchmark": {
             "machine": "Ryzen 7 3700X · RTX 4060 Ti 16 GB",
             "game": "watermelon",
             "unit": "steps / second",
+            "shippedObs": 2652,
             "results": [
-                {"envs": 8,  "device": "cuda", "fps": 534},
-                {"envs": 12, "device": "cuda", "fps": 685},
-                {"envs": 16, "device": "cuda", "fps": 593},
-                {"envs": 20, "device": "cuda", "fps": 1079},
-                {"envs": 24, "device": "cuda", "fps": 1028},
-                {"envs": 16, "device": "cpu",  "fps": 217},
+                {"envs": 8,  "device": "cuda", "fps": 534,  "obs": 1332},
+                {"envs": 12, "device": "cuda", "fps": 685,  "obs": 1332},
+                {"envs": 16, "device": "cuda", "fps": 593,  "obs": 1332},
+                {"envs": 20, "device": "cuda", "fps": 1079, "obs": 1332},
+                {"envs": 24, "device": "cuda", "fps": 1028, "obs": 1332},
+                {"envs": 16, "device": "cpu",  "fps": 217,  "obs": 1332},
+                {"envs": 16, "device": "cuda", "fps": 449,  "obs": 2652},
+                {"envs": 20, "device": "cuda", "fps": 602,  "obs": 2652},
             ],
         },
     }

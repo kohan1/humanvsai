@@ -695,6 +695,96 @@ with a visible pane (a screenshot succeeding is the tell) before acting.
 
 ---
 
+## Theme + performance pass, 2026-10-07
+
+**Theme rules must use `[data-theme]`, never a list of theme names.** Several
+game-chrome rules in `themes.css` listed five themes and left out `mesh` — the
+DEFAULT — so the inspector, switcher and Watermelon speed row fell back to
+dark-only colours at ~3.4:1 on the theme most visitors see. A contrast audit
+of every rendered text node (6 pages x 6 themes) went from ~190 failures to 7.
+
+**Canvas colours come from game-local tokens, re-read on `themechange`.**
+`settings.js` now fires a `window` `themechange` event (`detail.theme`) and
+only when the theme really changes. Snake uses `--snake-*`, Tetris
+`--tetris-*` (light themes get deeper piece hues — neon yellow on white was
+1.3:1), Inside's charts `--brain-*`/`--chart-*`. Chart KEYS must read the same
+tokens as the canvas, or they drift (several showed colours the chart never
+drew). Snake's head is drawn in code now; `snake/images/head.png` and
+`redHead.png` are unused.
+
+**The background was the lag, not the games.** `mesh.js` issued ~936
+`stroke()` calls per frame, each with a fresh `rgba()` string: 3.5-5.9 ms of
+script and ~20 MB of garbage per frame-second, ~12x Snake's own loop. It now
+draws each edge once in ~63 alpha buckets (~0.9 ms); `backgrounds.js` buckets
+particles into 16 alpha paths. Game pages pass `maxFps: 30`; motion is paced by elapsed time
+so skipped frames cost nothing, and while the visitor is playing (8 s after
+any key/pointer, or `<html class=playing>`) the background drops to
+`busyFps` (15). Landing, picker and Inside are never throttled. Changing difficulty in one tab used to restart the
+background in every other tab via the cross-tab listener.
+
+**Use `ort.wasm.min.js`, not `ort.min.js`.** The latter pulls the 27.8 MB JSEP
+`.wasm` even when every session asks only for `["wasm"]`; the wasm-only build's
+is 14 MB. All three games now load it and `<link rel=preload>` the `.mjs`,
+`.wasm` and (http only) the model so they download in parallel, and boot
+without waiting for window `load`. `model-source.js` warms the runtime with a
+67-byte model while the real one downloads, and takes `onProgress` as its 4th
+argument. Decoding base64 via `fetch('data:...')` was tried and blocked the
+page 1.5-1.8 s — `Uint8Array.fromBase64` (with the `atob` loop as fallback) is
+the fast path. Halving downloads further: `tools/fp16_weights.py <game>` stores weights
+as fp16 with a Cast to fp32 (operators unchanged) and gates on playing the same
+seeded games; verified on stub models only (34->17 MB, 100% identical
+decisions) — run it on the real models before relying on it.
+
+**Inference runs in a Web Worker** (`shared/ort-worker.js`): `modelSource()`
+replaces `ort.InferenceSession.create` once with a worker-backed stand-in
+(same `run`/`inputNames`/`outputNames`/`release`), so no game code changed. It
+falls back to the main thread under file://, on a missing worker file, or on
+any worker failure; `modelSource.backend` says which. At 4x CPU throttle Snake
+went from 27-29 to 31-40 fps with less than half the long-task time.
+`deploy_pages.sh` aborts if the worker file is missing, because the fallback
+would otherwise hide it.
+
+**A returning visitor loads the model version they chose**, not the shipped
+one then theirs (68 MB and 30 s against the wrong opponent). The switcher
+writes `humanvsai.checkpointFile` = {game: file}; the preload block and
+`modelSource()` read it and fall back to the shipped model on failure.
+
+**Focus steals Space.** A clicked button keeps focus and Space then activates
+it: Tetris's speed buttons swallowed hard-drop. Pointer clicks on board
+controls now blur the button (keyboard activation keeps focus).
+
+**p5play cancels every touch on its canvas.** `watermelon/lib/physics.min.js`
+(~4122) calls `preventDefault()` on each canvas `touchstart`, so a page could
+never scroll from a board and `touch-action` alone cannot undo it. `game.js`
+stops `touchstart` in the CAPTURE phase on each board container (skipping
+buttons) and drops via pointer events: tap or sideways drag drops, a vertical
+swipe scrolls. p5play also gives both canvases `tabIndex=0`.
+
+**Head-to-head is a match, not a snapshot.** All three games: a match starts
+on the human's first input, the AI board resets with it, the AI's match score
+is its FIRST life (frozen if it dies first), and the result is recorded only
+if the model was loaded at match start. Restored-after-reload Watermelon games
+and AI restarts mid-match are not scored. The game-over card shows
+"You N · AI M — ...". Before this, results compared against whatever life the
+AI happened to be on, and Watermelon recorded "wins" against an AI that never
+loaded.
+
+**Inside's `RESTARTS` map must be updated whenever a game's rules change.**
+The fruit-size change made Watermelon a different game; plotting 4506 on the
+old ~1000 axis read as a 4x training gain. Runs after a restart get their own
+era (zone, scale, curve panel) and no trunk link across it. Do not re-run
+`build_training_data.py` on a fresh clone: logs are not in git and `endedAt`
+comes from log mtimes. `inside/distributions.json`'s Watermelon entry was
+measured on the pre-change model; the page says so until it is re-measured.
+
+**Testing in a cloud sandbox:** jsdelivr is blocked, so route
+`cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/*` to an npm copy in
+Playwright; route only `https=` through `--proxy-server` or localhost goes
+through the proxy and returns 405. Never leave a stub `.onnx` in a game
+folder — `deploy_pages.sh` would ship it.
+
+---
+
 ## Bugs already found and fixed — don't reintroduce these
 
 **Rendering**
@@ -880,7 +970,12 @@ with a visible pane (a screenshot succeeding is the tell) before acting.
     identical observation, because `Segment.xx` rounds. Phase 6 is chosen to
     leave the async WASM inference ~67 ms instead of ~17 ms.
     **General lesson: when the browser and the env disagree, port the browser's
-    mechanics into Python and bisect there.** Verifying the encoder is not
+    mechanics into Python and bisect there.**
+    **Late decisions now PAUSE the AI board at the cell boundary** (up to
+    1 s, `AI_HOLD_MAX_MS`) instead of being dropped or applied a cell late:
+    on a slow CPU the AI gets slower, never wrong. The browser also ends the
+    AI's game at `MAX_STEPS_WITHOUT_FOOD` like the env's truncation; without
+    it a looping AI left a head-to-head match waiting forever. Verifying the encoder is not
     enough — it was provably correct while the game was still unplayable.
 
 20. **The browser killed the snake on its own tail.** `checkDeath()` iterated
@@ -1254,6 +1349,11 @@ python embed_assets.py                    # → image_data.js
 python tools/build_checkpoints.py                  # all three games
 python tools/build_checkpoints.py snake --episodes 10   # one game, rougher
 python tools/probe_checkpoints.py         # which archived .zip files still load
+
+# Halve the shipped models (fp16 weights, fp32 compute). Plays seeded games with
+# both files and refuses unless decisions match on >=99.5% of steps and the mean
+# score holds. Then re-run embed_model.py for the file:// copy, and deploy.
+python tools/fp16_weights.py snake        # also: tetris, watermelon
 
 # After ANY training run — see "After every training run" at the top of this
 # file. The Inside page does not update itself.

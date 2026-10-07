@@ -20,6 +20,27 @@
 :root {
     font-size: 18px;
     font-family: Arial, Helvetica, sans-serif;
+
+    /* The pieces on the board, read by game.js through getComputedStyle.
+       Snake-prefixed because shared/themes.css loads after this file and
+       would silently replace any token it also defines. The dark-theme
+       values are the original colours; the light boards need their own,
+       because rgb(50,255,50) on near-white measured 1.3:1 and the snake
+       all but vanished. */
+    --snake-body: rgb(50, 255, 50);
+    --snake-dead: #ff0000;
+    --snake-food: #ff0000;
+    --snake-eye:  #ffffff;
+    --snake-pupil: #000000;
+
+    /* One board size, used by the board, its canvas, the column and the VS
+       offset, so they cannot disagree. Set per breakpoint below. */
+    --snake-board: 480px;
+}
+[data-theme="filings"], [data-theme="dispersion"] {
+    --snake-body: #179a3a;
+    --snake-dead: #d81e1e;
+    --snake-food: #e0261b;
 }
 
 html, body {
@@ -76,7 +97,7 @@ body {
        Tetris uses, and it needs revisiting if the board size or the label
        above it changes. */
     align-self: flex-start;
-    margin-top: calc(28px + 240px - 0.5 * 2rem * 1.15);
+    margin-top: calc(28px + var(--snake-board) / 2 - 0.5 * 2rem * 1.15);
     font-size: 2rem;
     font-weight: 700;
     color: #444;
@@ -85,6 +106,10 @@ body {
 }
 
 .board-wrap {
+    /* The column is exactly as wide as its board, so the model-version
+       control under the AI board (min(420px, 100%)) follows the board down
+       instead of holding the column wider than the human one. */
+    width: var(--snake-board);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -101,21 +126,23 @@ body {
 
 /* ── Board ──────────────────────────────────────────────────────────────── */
 
-main {
+/* Each board is a <section class="board-main">; the page's one <main> wraps
+   the whole arena. Both boards used to be a <main> each. */
+.board-main {
     position: relative;
-    width: 480px;
-    height: 480px;
+    width: var(--snake-board);
+    height: var(--snake-board);
     flex-shrink: 0;
     outline: 1px solid #2a2a2a;
 }
 
-main canvas {
-    width: 480px;
-    height: 480px;
+.board-main canvas {
+    width: 100%;
+    height: 100%;
     display: block;
 }
 
-main > button {
+.board-main > button {
     position: absolute;
     top: 30px;
     left: 30px;
@@ -136,98 +163,133 @@ main > button {
     color: var(--board-ink, #ccc);
 }
 
-main > button svg {
+.board-main > button svg {
     width: 26px;
     height: 26px;
     display: block;
 }
 
-main > button:hover {
+.board-main > button:hover {
     background-color: rgba(200, 200, 200, 0.2);
 }
 
-main > button:active {
+.board-main > button:active {
     background-color: rgba(200, 200, 200, 0.35);
 }
 
-/* ── Controls overlay ─────────────────────────────────────────────────────── */
+/* ── Board cards: start hint and AI status ─────────────────────────────────
+   Text on the board sits on its own card, centred below the spawn row (the
+   snakes start on row 8 of 16, the score sits in rows 1-3), so it never
+   prints across the snake or the food. Both used to be a scrim over the whole
+   board with the text centred on the snake's starting row.
+   The #board-* ids are for specificity: shared/themes.css loads after this
+   file and gives `[data-theme] .board-main div.controls` a full-board scrim. */
 
-main div.controls {
+#board-human .board-main div.controls,
+#board-ai .ai-status {
+    position: absolute;
+    left: 50%;
+    top: 71%;
+    transform: translate(-50%, -50%);
+    width: max-content;
+    max-width: calc(100% - 24px);
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    color: #ccc;
-    position: absolute;
-    top: 0;
-    left: 0;
-    font-size: 0.85rem;
-    width: 100%;
-    height: 100%;
+    gap: 0.25em;
+    padding: 0.55em 0.95em;
+    border-radius: 8px;
+    /* Scales with the board, so on a 215px phone board the card stays one
+       line per message and clear of the spawn row instead of wrapping up
+       into it. 15px at the full 480px board, never below 11px. */
+    font-size: clamp(11px, calc(var(--snake-board) / 32), 15px);
+    line-height: 1.25;
+    background: rgba(var(--board-scrim, 0, 0, 0), 0.82);
+    color: var(--board-ink, #fff);
+    text-align: center;
     pointer-events: none;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.7);
 }
 
-main div.controls[hidden] {
+#board-human .board-main div.controls[hidden] {
     display: flex !important;
     opacity: 0;
     /* Transparent was not enough: screen readers still read it. */
     visibility: hidden;
 }
 
-main div.controls p {
-    margin: 0.35em 0;
-    text-align: center;
-    color: #fff;
+#board-human .board-main div.controls p {
+    margin: 0;
+    color: var(--board-ink, #fff);
 }
 
-/* ── AI status overlay (model loading / error state) ─────────────────────── */
+#board-ai .ai-status b { font-size: 1em; font-weight: 700; }
+/* Never below 11px: 0.82em of the card's 11px floor came out at 9px on
+   phones. On a narrow board the detail wraps instead of shrinking. */
+#board-ai .ai-status span { font-size: max(11px, 0.82em); opacity: 0.75; }
+#board-ai .ai-status[hidden] { display: none !important; }
 
-.ai-status {
+/* Read by screen readers, not shown. */
+.sr-only {
     position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.7rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    pointer-events: none;
-    /* The theme's scrim, not a fixed black slab over the light boards. */
-    background: rgba(var(--board-scrim, 0, 0, 0), 0.7);
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
-.ai-status[hidden] { display: none !important; }
 
-/* ── Narrow screens ─────────────────────────────────────────────────────────
-   Without this the two 480px boards plus a 48px gap need ~1010px, and #arena
-   is a non-wrapping flex row that stays centred and overflows BOTH edges.
-   Measured at a 741px viewport: the human board ran from x=-366 to x=114, so
-   the player's own board was mostly off-screen — and because the overflow is
-   symmetric there is no horizontal scroll to reach it.
+/* ── Narrow and short screens ───────────────────────────────────────────────
+   Two 480px boards side by side need ~1180px: 2 x 480, two 48px gaps, the VS
+   text and .screen's side padding. This used to STACK the boards anywhere
+   below 1160px wide — so a 1100px laptop window or a landscape tablet put the
+   AI board entirely below the fold, and the point of the page (watching the
+   AI while you play) needed scrolling. It also never looked at height: a
+   1366x625 laptop viewport cut the bottom of both boards off.
 
-   Stack below 1040px, and scale the canvases down below 560px so a phone gets
-   two usable boards rather than one clipped one. */
-/* 1160, not 1040: the ~1010px estimate above left out the VS text, the second
-   gap and .screen's side padding, so 1041-1160px overflowed. */
-@media (max-width: 1160px) {
+   Now the boards SHRINK to fit, side by side, while the viewport is
+   landscape, and stack only in portrait — where a stacked pair is the larger
+   of the two layouts. The board's own coordinates are fixed at 480 (game.js
+   draws in that space and scales), so nothing about the game depends on the
+   size chosen here. */
+@media (max-width: 1180px), (max-height: 780px) {
+    :root {
+        /* 220px: two gaps, the VS text and the side padding. 175px: the label
+           row above the board, .screen's top and bottom padding, and a margin.
+           One declaration, svh only: a custom property is not validated when
+           parsed, so the usual "vh line, then svh line" fallback would keep
+           the svh value and then fail at use time, collapsing the board.
+           svh is older than the :has() the page already depends on. */
+        --snake-board: max(200px, min(480px, calc((100vw - 220px) / 2), calc(100svh - 175px)));
+    }
+}
+
+@media (max-aspect-ratio: 1/1) {
     #arena { flex-direction: column; align-items: center; gap: 18px; }
     #vs { align-self: center; margin-top: 0; font-size: 1.5rem; }
+    :root {
+        /* Both boards on one screen. 252px is everything in the column that
+           is not a board: the top padding below, two 28px label rows, the VS
+           and its two 18px gaps, and ~75px at the bottom for the fixed scroll
+           cue. The floor used to be 300px, which on a 360x740 phone pushed the
+           bottom of the AI board off the screen; 220px still leaves a
+           steerable board on the smallest phones. */
+        --snake-board: min(480px, calc(100vw - 2.4rem), max(220px, calc((100svh - 252px) / 2)));
+    }
+    /* The fixed back link sat on top of the YOU label once the boards
+       stacked; give it a row of its own. Same selector as inspector.css, which
+       this file follows, so it wins at equal specificity. */
+    body:has(.insp-section) .screen { padding-top: 3rem; }
 }
 
 @media (max-width: 560px) {
     body { padding-left: 0.6rem; padding-right: 0.6rem; }
-    /* The 480px board size is set on `main` AND on `main canvas`; both have to
-       give way or the fixed width wins and the board overflows again. The
-       canvas keeps its square aspect so the grid stays undistorted. */
-    main { width: min(88vw, calc(100vw - 3rem), 480px); height: auto; aspect-ratio: 1 / 1; }
-    main canvas { width: 100%; height: 100%; }
-    .board-wrap { width: 100%; }
 }
 
 /* Start hints: keyboard wording by default, touch wording on phones and
    tablets. Pure CSS, so the right text is there from first paint. */
-.controls-start { margin-top: 1em; font-size: 0.8em; opacity: 0.75; }
 .hint-touch { display: none; }
 @media (hover: none) and (pointer: coarse) {
     .hint-touch { display: inline; }
@@ -236,4 +298,57 @@ main div.controls p {
 
 /* A visible focus ring for keyboard users. The buttons set outline: none and
    had no replacement, so tabbing to Restart showed nothing at all. */
-main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+.board-main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+
+/* ── AI speed ───────────────────────────────────────────────────────────────
+   The same control as Tetris and Watermelon: a small-caps heading like the
+   model-version switcher's, then 0.25x-2x on one row, directly under the AI
+   board. Colours come from shared/themes.css ([data-theme] .speed-controls
+   button); these are the fallbacks and the geometry. */
+.speed-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+.speed-title {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim, #7d7d7d);
+}
+/* Six equal columns, never wrapping: at the smallest board (200px) each
+   button is ~30px wide, which still holds "0.25x" at 11px. */
+.speed-controls {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+    width: min(100%, 330px);
+}
+.speed-controls button {
+    /* 24px: the WCAG 2.2 minimum target size; 32px on touch, below. */
+    min-height: 24px;
+    min-width: 0;
+    padding: 3px 0;
+    font-family: inherit;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    cursor: pointer;
+    color: #888;
+    background: transparent;
+    border: 1px solid #2a2a2a;
+    border-radius: 3px;
+    transition: color 0.12s, border-color 0.12s, background-color 0.12s;
+}
+.speed-controls button:hover { color: #ddd; border-color: #444; }
+.speed-controls button.active {
+    color: #fff;
+    border-color: #777;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+.speed-controls button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+@media (hover: none) and (pointer: coarse) {
+    .speed-controls button { min-height: 32px; }
+}

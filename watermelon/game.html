@@ -17,18 +17,57 @@
         <script src="lib/planck.min.js" defer></script>
         <script src="lib/physics.min.js" defer></script>
 
-        <!-- Assets as base64 data URIs. Must not be deferred: game.js reads
-             WATERMELON_IMAGES at load. Without this, images fail to load
-             under file:// — see embed_assets.py for why. -->
+        <!-- Assets as base64 data URIs. game.js reads WATERMELON_IMAGES when it
+             runs, so this must come BEFORE it; deferred scripts execute in
+             document order, so both being deferred is fine. Without this,
+             images fail to load under file:// — see embed_assets.py. -->
         <script src="image_data.js" defer></script>
 
-        <!-- AI opponent. model_data.js embeds the model as base64 and must not
-             be deferred, because game.js reads WATERMELON_MODEL_B64 at load.
-             It is only needed under file://, where fetch() of a local file is
-             blocked — and it is a ~30 MB render-blocking script, so the
-             deployed site strips this tag and ships watermelon_ai.onnx for
-             loadAiModel() to fetch instead. See tools/deploy_pages.sh. -->
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <!-- AI opponent. The model is not in the markup: shared/model-source.js
+             fetches watermelon_ai.onnx over HTTP and injects the base64
+             model_data.js only under file://.
+
+             ort.wasm.min.js, not ort.min.js: the game only ever asks for the
+             "wasm" execution provider, and ort.min.js also carries WebGL and
+             WebGPU — 368 KB of script instead of 50 KB, and it pulls the
+             27.8 MB jsep .wasm where this one pulls the 14.0 MB plain one.
+             Same version, same API.
+
+             The runtime's two files and the model are preloaded so all three
+             download in parallel. Otherwise the .wasm is only requested once
+             InferenceSession.create() runs, i.e. after the model has arrived:
+             measured locally, the model finished at 0.63 s and the runtime
+             was then fetched serially until 1.69 s. -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
+        <link rel="modulepreload" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.mjs" />
+        <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" />
+        <script>
+        // The model itself, over HTTP only. Under file:// fetch() cannot read
+        // it (model-source.js uses the embedded base64 there), so a static
+        // <link> would just log an error. crossorigin matches fetch()'s default
+        // credentials mode, or the preload is not reused and downloads twice.
+        // It preloads the model version the visitor last chose (the checkpoint
+        // switcher records its file), so a returning visitor downloads one
+        // model, not the shipped one and then theirs; a choice with no file
+        // recorded yet preloads nothing rather than the wrong one.
+        // fetchpriority low: it is 9-34 MB and must not hold up the page's
+        // own scripts, which it delayed by ~1 s when they shared the link.
+        (function () {
+            if (location.protocol === "file:") return;
+            var f = "watermelon_ai.onnx";
+            try {
+                var c = JSON.parse(localStorage.getItem("humanvsai.checkpoint") || "{}").watermelon;
+                var cf = JSON.parse(localStorage.getItem("humanvsai.checkpointFile") || "{}").watermelon;
+                if (/^(checkpoints\/)?[\w-]+\.onnx$/.test(cf || "")) f = cf;
+                else if (c) return;
+            } catch (e) { /* storage blocked: the shipped model */ }
+            var p = document.createElement("link");
+            p.rel = "preload"; p.as = "fetch"; p.crossOrigin = "anonymous";
+            p.setAttribute("fetchpriority", "low");
+            p.href = f;
+            document.head.appendChild(p);
+        }());
+        </script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>
         <script src="../shared/results.js" defer></script>
@@ -61,47 +100,22 @@
         <canvas id="mesh"></canvas>
 
         <a class="back-nav" href="../select.html">← back</a>
+        <h1 class="sr-only">Watermelon game: you against a neural network</h1>
 
         <div class="screen">
+        <main>
         <div id="arena">
 
-            <!-- ── Human board ── -->
+            <!-- ── Human board ──
+                 Every piece of a board is a direct child of .board-body, in
+                 the order a keyboard reaches it, and style.css only PLACES
+                 them (a grid per layout). So tab order is the visual order in
+                 every layout: your Restart and Shake sit before your board,
+                 left of it on a wide screen and above it on a phone. -->
             <div class="board-wrap" id="board-human">
-                <div class="board-main">
-                    <div class="board-controls">
-                        <div class="highScore">
-                            <div class="highScoreTitle">High Score:</div>
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="23" height="23" viewBox="0 0 23 23" fill="none">
-                                <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
-                                <path
-                                    d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
-                                    fill="#675424" stroke="#675424" stroke-width="4.66704"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                                <path
-                                    d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
-                                    fill="#675424" stroke="white" stroke-width="2"
-                                    stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
-                            <span class="highScoreValue" id="highscore-human">0</span>
-                        </div>
-
-                        <button id="newgame-human">Restart Game</button>
-
-                        <div class="shakes">
-                            <span>Shakes: <span id="shakecount-human">0</span></span>
-                            <button disabled id="shake-human">Shake!</button>
-                            <span id="shakecountdown-human"></span>
-                        </div>
-                    </div>
-
-                    <!-- Label and bubbles live in the same column as the
-                         canvas so they centre on it, not on the whole board
-                         including the side column. -->
-                    <div class="board-column">
+                <div class="board-body">
+                    <div class="board-head">
                         <div class="board-label">YOU</div>
-
                         <div class="info-row">
                             <div class="bubble">
                                 <span class="bubble-title">Score</span>
@@ -112,15 +126,64 @@
                                 <img id="nextball-human" src="" alt="" />
                             </div>
                         </div>
-
-                        <main id="canvas-human">
-                            <div class="overlay gameover" id="gameover-human" hidden>
-                                <div class="overlay-title">Game Over</div>
-                                <div class="overlay-sub" id="gameover-score-human"></div>
-                                <button id="playagain-human">Play Again</button>
-                            </div>
-                        </main>
                     </div>
+
+                    <div class="board-controls">
+                        <div class="highScore">
+                            <div class="highScoreTitle">High Score:</div>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+                                width="23" height="23" viewBox="0 0 23 23" fill="none">
+                                <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
+                                <path
+                                    d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
+                                    class="crown-disc" fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                                <path
+                                    d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
+                                    class="crown-glyph" fill="#675424" stroke="white" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <span class="highScoreValue" id="highscore-human">0</span>
+                        </div>
+
+                        <button type="button" id="newgame-human">Restart Game</button>
+
+                        <div class="shakes">
+                            <span>Shakes: <span id="shakecount-human">0</span></span>
+                            <button type="button" disabled id="shake-human">Shake!</button>
+                            <span id="shakecountdown-human"></span>
+                        </div>
+                    </div>
+
+                    <section class="board-main" id="canvas-human" aria-label="Your board">
+                        <!-- Shown until the first drop of each game, and
+                             again after every restart. -->
+                        <div class="start-hint" id="starthint-human">
+                            <span class="hint-keys">Click, or press Space, to drop</span>
+                            <span class="hint-touch">Tap the board to drop</span>
+                        </div>
+                        <div class="overlay gameover" id="gameover-human" hidden>
+                            <div class="overlay-title">Game over</div>
+                            <div class="overlay-score" id="gameover-score-human"></div>
+                            <div class="overlay-result" id="result-human" hidden></div>
+                            <button type="button" id="playagain-human">Play Again</button>
+                            <div class="overlay-sub">
+                                <span class="hint-keys">Press Space or Enter to play again</span>
+                                <span class="hint-touch">Tap to play again</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Keyboard play. Not a control, so it can sit anywhere
+                         without touching the tab order; hidden on touch-only
+                         devices, where the start hint says "tap" instead. -->
+                    <p class="key-hint hint-keys">
+                        <span><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> aim</span><br />
+                        <span><kbd>Space</kbd> or <kbd>↓</kbd> drop</span><br />
+                        <span><kbd>E</kbd> shake</span>
+                    </p>
+                    <p class="sr-only" id="live-human" aria-live="polite"></p>
                 </div>
             </div>
 
@@ -128,13 +191,15 @@
             <div id="vs">VS</div>
 
             <!-- ── AI board ──
-                 Scaffold: renders the identical board and stays idle until a
-                 trained model is wired into the AI hook in game.js. -->
+                 The identical board, driven by the model in game.js. It waits
+                 for your first drop, so both games start together. Its canvas
+                 is not a tab stop, so the order here is speed, Restart, then
+                 the model note: under the board on a phone, and on a wide
+                 screen the speed row under it with the rest beside it. -->
             <div class="board-wrap" id="board-ai">
-                <div class="board-main">
-                    <div class="board-column">
+                <div class="board-body">
+                    <div class="board-head">
                         <div class="board-label">AI</div>
-
                         <div class="info-row">
                             <div class="bubble">
                                 <span class="bubble-title">Score</span>
@@ -145,56 +210,65 @@
                                 <img id="nextball-ai" src="" alt="" />
                             </div>
                         </div>
+                    </div>
 
-                        <main id="canvas-ai">
-                            <div class="overlay" id="status-ai">
-                                <div class="overlay-sub">Awaiting model</div>
-                            </div>
-                            <div class="overlay gameover" id="gameover-ai" hidden>
-                                <div class="overlay-title">Game Over</div>
-                                <div class="overlay-sub" id="gameover-score-ai"></div>
-                            </div>
-                        </main>
+                    <section class="board-main" id="canvas-ai" aria-label="AI board">
+                        <div class="overlay" id="status-ai">
+                            <div class="overlay-title">Loading AI…</div>
+                            <div class="overlay-sub">Downloading the model</div>
+                        </div>
+                        <div class="overlay gameover" id="gameover-ai" hidden>
+                            <div class="overlay-title">AI game over</div>
+                            <div class="overlay-score" id="gameover-score-ai"></div>
+                            <div class="overlay-sub">Restarting…</div>
+                        </div>
+                    </section>
 
-                        <!-- Speed multiplier for the AI, matching Tetris.
-                             Scales both the drop cooldown and how fast the
-                             cloud slides to its target. -->
-                        <div class="speed-controls" id="speed-ai" role="group" aria-label="AI speed">
-                            <button type="button" data-speed="0.25">0.25x</button>
-                            <button type="button" data-speed="0.5">0.5x</button>
-                            <button type="button" data-speed="0.75">0.75x</button>
-                            <button type="button" data-speed="1" class="active">1x</button>
-                            <button type="button" data-speed="1.5">1.5x</button>
-                            <button type="button" data-speed="1.75">1.75x</button>
-                            <button type="button" data-speed="2">2x</button>
+                    <!-- Speed multiplier for the AI, the same control on all
+                         three games: one row, directly under the AI board.
+                         Scales both the drop cooldown and how fast the cloud
+                         slides to its target. -->
+                    <div class="speed-block">
+                        <div class="speed-title" id="speed-title-ai">AI speed</div>
+                        <div class="speed-controls" id="speed-ai" role="group" aria-labelledby="speed-title-ai">
+                            <button type="button" data-speed="0.25" aria-pressed="false">0.25x</button>
+                            <button type="button" data-speed="0.5" aria-pressed="false">0.5x</button>
+                            <button type="button" data-speed="0.75" aria-pressed="false">0.75x</button>
+                            <button type="button" data-speed="1" aria-pressed="true" class="active">1x</button>
+                            <button type="button" data-speed="1.5" aria-pressed="false">1.5x</button>
+                            <button type="button" data-speed="2" aria-pressed="false">2x</button>
                         </div>
                     </div>
 
-                    <!-- Mirrors the human board's left column, so the two
-                         boards are symmetric about the VS divider. -->
                     <div class="board-controls">
-                    <div class="highScore">
-                        <div class="highScoreTitle">High Score:</div>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="23" height="23" viewBox="0 0 23 23" fill="none">
-                            <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
-                            <path
-                                d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
-                                fill="#675424" stroke="#675424" stroke-width="4.66704"
-                                stroke-linecap="round" stroke-linejoin="round" />
-                            <path
-                                d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
-                                fill="#675424" stroke="white" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                        <span class="highScoreValue" id="highscore-ai">0</span>
+                        <div class="highScore">
+                            <div class="highScoreTitle">High Score:</div>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+                                width="23" height="23" viewBox="0 0 23 23" fill="none">
+                                <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
+                                <path
+                                    d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
+                                    class="crown-disc" fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                                <path
+                                    d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
+                                    class="crown-glyph" fill="#675424" stroke="white" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <span class="highScoreValue" id="highscore-ai">0</span>
+                        </div>
+                        <button type="button" id="newgame-ai" aria-label="Restart the AI's game">Restart Game</button>
                     </div>
-                </div>
+
+                    <!-- The model-version switcher, mounted here by game.js. -->
+                    <div class="ckpt-slot" id="ckpt-ai"></div>
+                    <p class="sr-only" id="live-ai" aria-live="polite"></p>
                 </div>
             </div>
 
         </div>
+        </main>
         </div>
     <!-- The inspector lives below the fold; the scroll cue that
          points at it is created by inspector.js. -->
@@ -205,7 +279,7 @@
         <script src="../shared/mesh.js" defer></script>
         <script>
         document.addEventListener('DOMContentLoaded', function () {
-            initMesh('mesh', { intensity: 0.55 });
+            initMesh('mesh', { intensity: 0.55, maxFps: 30 });
         });
         </script>
     </body>

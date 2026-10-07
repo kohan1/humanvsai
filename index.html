@@ -6,7 +6,7 @@
         <meta name="description" content="Play Snake, Tetris and a Suika-style fruit game side by side against reinforcement-learning agents that run live in your browser." />
         <meta name="theme-color" content="#080808" />
         <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23080808'/%3E%3Ctext x='16' y='21' font-family='Arial' font-size='13' font-weight='700' fill='%23cfe4ff' text-anchor='middle'%3Evs%3C/text%3E%3C/svg%3E" />
-    <title>human vs ai</title>
+    <title>Human vs AI</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -36,7 +36,10 @@
             opacity: 0; transform: translateY(22px);
             animation: up 1.2s cubic-bezier(0.16,1,0.3,1) 0.15s forwards;
         }
-        .title .vs { color: #555; font-style: italic; font-weight: 300; margin: 0 0.14em; }
+        /* Real spaces around "vs", so the heading's accessible name is
+           "human vs ai" rather than "humanvsai"; the negative margin takes
+           back the space's width, leaving the original 0.14em gap. */
+        .title .vs { color: #555; font-style: italic; font-weight: 300; margin: 0 -0.11em; }
         .rule {
             width: 1px; height: 44px; background: #2a2a2a;
             margin: 2.6rem 0 2.2rem;
@@ -46,7 +49,7 @@
             display: inline-flex; align-items: center; gap: 0.55em;
             padding: 0.72em 2em; border: 1px solid #2a2a2a;
             background: transparent; color: #ccc; font-family: inherit;
-            font-size: 0.68rem; font-weight: 400; letter-spacing: 0.22em;
+            font-size: 0.76rem; font-weight: 400; letter-spacing: 0.2em;
             text-transform: uppercase; text-decoration: none; cursor: pointer;
             transition: border-color 0.2s, color 0.2s, background 0.2s;
             opacity: 0; animation: up 1.2s cubic-bezier(0.16,1,0.3,1) 0.6s forwards;
@@ -81,7 +84,7 @@
 <body>
     <canvas id="mesh"></canvas>
     <div class="stage">
-        <h1 class="title">human<span class="vs">vs</span>ai</h1>
+        <h1 class="title">human <span class="vs">vs</span> ai</h1>
         <div class="rule"></div>
         <a class="enter" href="select.html">enter <span class="arr">→</span></a>
     </div>
