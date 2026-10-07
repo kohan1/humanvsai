@@ -85,6 +85,7 @@
         <canvas id="mesh"></canvas>
 
         <a class="back-nav" href="../select.html">← back</a>
+        <h1 class="sr-only">Watermelon game: you against a neural network</h1>
 
         <div class="screen">
         <div id="arena">
@@ -118,6 +119,14 @@
                             <button disabled id="shake-human">Shake!</button>
                             <span id="shakecountdown-human"></span>
                         </div>
+
+                        <!-- Keyboard play. Hidden on touch-only devices, where
+                             the start hint on the board says "tap" instead. -->
+                        <p class="key-hint hint-keys">
+                            <span><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> aim</span><br />
+                            <span><kbd>Space</kbd> or <kbd>↓</kbd> drop</span><br />
+                            <span><kbd>E</kbd> shake</span>
+                        </p>
                     </div>
 
                     <!-- Label and bubbles live in the same column as the
@@ -138,12 +147,21 @@
                         </div>
 
                         <main id="canvas-human">
+                            <!-- Shown until the first drop of each game, and
+                                 again after every restart. -->
+                            <div class="start-hint" id="starthint-human">
+                                <span class="hint-keys">Click, or press Space, to drop</span>
+                                <span class="hint-touch">Tap the board to drop</span>
+                            </div>
                             <div class="overlay gameover" id="gameover-human" hidden>
                                 <div class="overlay-title">Game Over</div>
-                                <div class="overlay-sub" id="gameover-score-human"></div>
+                                <div class="overlay-score" id="gameover-score-human"></div>
+                                <div class="overlay-result" id="result-human" hidden></div>
                                 <button id="playagain-human">Play Again</button>
+                                <div class="overlay-sub hint-keys">or press Space</div>
                             </div>
                         </main>
+                        <p class="sr-only" id="live-human" aria-live="polite"></p>
                     </div>
                 </div>
             </div>
@@ -152,8 +170,8 @@
             <div id="vs">VS</div>
 
             <!-- ── AI board ──
-                 Scaffold: renders the identical board and stays idle until a
-                 trained model is wired into the AI hook in game.js. -->
+                 The identical board, driven by the model in game.js. It waits
+                 for your first drop, so both games start together. -->
             <div class="board-wrap" id="board-ai">
                 <div class="board-main">
                     <div class="board-column">
@@ -172,26 +190,15 @@
 
                         <main id="canvas-ai">
                             <div class="overlay" id="status-ai">
-                                <div class="overlay-sub">Awaiting model</div>
+                                <div class="overlay-title">Loading AI…</div>
+                                <div class="overlay-sub">Downloading the model</div>
                             </div>
                             <div class="overlay gameover" id="gameover-ai" hidden>
                                 <div class="overlay-title">Game Over</div>
-                                <div class="overlay-sub" id="gameover-score-ai"></div>
+                                <div class="overlay-score" id="gameover-score-ai"></div>
                             </div>
                         </main>
-
-                        <!-- Speed multiplier for the AI, matching Tetris.
-                             Scales both the drop cooldown and how fast the
-                             cloud slides to its target. -->
-                        <div class="speed-controls" id="speed-ai" role="group" aria-label="AI speed">
-                            <button type="button" data-speed="0.25">0.25x</button>
-                            <button type="button" data-speed="0.5">0.5x</button>
-                            <button type="button" data-speed="0.75">0.75x</button>
-                            <button type="button" data-speed="1" class="active">1x</button>
-                            <button type="button" data-speed="1.5">1.5x</button>
-                            <button type="button" data-speed="1.75">1.75x</button>
-                            <button type="button" data-speed="2">2x</button>
-                        </div>
+                        <p class="sr-only" id="live-ai" aria-live="polite"></p>
                     </div>
 
                     <!-- Mirrors the human board's left column, so the two
@@ -213,6 +220,26 @@
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                         <span class="highScoreValue" id="highscore-ai">0</span>
+                    </div>
+
+                    <button id="newgame-ai" aria-label="Restart the AI's game">Restart Game</button>
+
+                    <!-- Speed multiplier for the AI, matching Tetris. Scales
+                         both the drop cooldown and how fast the cloud slides
+                         to its target. In this side column rather than under
+                         the board: there it sat on the same row as the fixed
+                         "scroll down" cue, which reads as one cluttered line. -->
+                    <div class="speed-block">
+                        <div class="speed-title" id="speed-title-ai">AI speed</div>
+                        <div class="speed-controls" id="speed-ai" role="group" aria-labelledby="speed-title-ai">
+                            <button type="button" data-speed="0.25" aria-pressed="false">0.25x</button>
+                            <button type="button" data-speed="0.5" aria-pressed="false">0.5x</button>
+                            <button type="button" data-speed="0.75" aria-pressed="false">0.75x</button>
+                            <button type="button" data-speed="1" aria-pressed="true" class="active">1x</button>
+                            <button type="button" data-speed="1.5" aria-pressed="false">1.5x</button>
+                            <button type="button" data-speed="1.75" aria-pressed="false">1.75x</button>
+                            <button type="button" data-speed="2" aria-pressed="false">2x</button>
+                        </div>
                     </div>
                 </div>
                 </div>

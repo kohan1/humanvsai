@@ -13,22 +13,28 @@
 
    2. PERSISTENCE. The original stored state in a synced storage API that
       does not exist on a plain web page. Replaced with localStorage
-      behind the `store` helpers below. Only the human board persists —
-      `cfg.persist` gates it — so the AI board can never overwrite a real
-      score.
+      behind the `store` helpers below. Only the human BOARD persists —
+      `cfg.persist` gates it. Both boards keep a high score, each under its
+      own key (watermelon.<id>.highScore), so the AI's can never overwrite
+      yours; the AI's used to reset on every reload.
 
    Game-over no longer reloads the page. With two boards on one document a
    reload would reset both, so each board resets itself in place instead.
 
    ── Wiring an AI ──
-   The AI board is scaffolded but idle. To make it play, assign a policy
-   function to the returned controller:
+   The AI board steers its cloud by a policy function on the controller:
 
-       boards.ai.setPolicy((state) => 0.5);
+       boards.ai.setPolicy(() => 0.5);
 
-   It receives a state snapshot each frame and returns either a number in
-   0..1 (drop at that fraction of board width) or null to keep holding. See
-   `buildState()` for the snapshot's shape. Nothing else needs to change.
+   It returns either a number in 0..1 (aim at that fraction of board width)
+   or null to keep holding. Releasing is driven separately, by driveAI().
+
+   ── Head-to-head ──
+   A match starts with the human's first drop of a game. At that moment the
+   AI board resets and starts too — it never plays ahead of you. The AI's
+   match score is its FIRST life (frozen if it loses first; it keeps playing
+   for show). A result is recorded only if the model was loaded when the
+   match began. See "Match" near the bottom of this file.
    ────────────────────────────────────────────────────────────────────────── */
 
 (() => {
@@ -198,6 +204,9 @@
         const domShakeCountdown= el("shakecountdown");
         const domNewGame       = el("newgame");
         const domPlayAgain     = el("playagain");
+        const domStartHint     = el("starthint");
+        const domResult        = el("result");
+        const domLive          = el("live");
 
         const KEY_HIGH    = `watermelon.${cfg.id}.highScore`;
         const KEY_SAVED   = `watermelon.${cfg.id}.savedGame`;
@@ -241,10 +250,17 @@
             // timers per press, and that a restart could not cancel.
             let shakeFrames   = 0;
             const SHAKE_FRAMES = 120;   // 2 s at p5's 60 fps cap
-            // The human cloud follows the pointer, but p5 reports mouseX as 0
-            // until the pointer has actually moved, so on load the cloud slid
-            // straight into the left wall. Hold it centred until then.
-            let pointerSeen   = false;
+            // Where the human is aiming, in canvas px (clamped to the held
+            // fruit at use). Set by the mouse, a touch, or the arrow keys.
+            // Starts centred: p5 reports mouseX as 0 until the pointer has
+            // actually moved, which used to slide the cloud into the left wall.
+            let aimX          = CANVAS_W / 2;
+            // Human board: true from the first drop of a game. Until then the
+            // start hint shows, and the match has not begun.
+            let started       = false;
+            // This game was restored from a save after a reload (see Match).
+            let restored      = false;
+            let gameOverAt    = 0;    // performance.now() at game over
 
             // Decoded p5.Image objects, one set per instance.
             let FRUIT_IMG   = [];
@@ -366,6 +382,19 @@
                 ballsDropped = cfg.persist ? (store.read(KEY_DROPPED, 0) || 0) : 0;
                 renderScore();
 
+                // p5play makes every canvas a tab stop (tabIndex 0) with no
+                // name. The human's is a real control — keys work while it
+                // is focused, like anywhere else on the page — so it keeps
+                // the stop and gets a name; the AI's is only a picture.
+                const cv = cfg.container && cfg.container.querySelector("canvas");
+                if (cv) {
+                    cv.setAttribute("role", "img");
+                    cv.setAttribute("aria-label", cfg.interactive
+                        ? "Your board. Arrows or A and D to aim, Space to drop."
+                        : "The AI's board");
+                    cv.tabIndex = cfg.interactive ? 0 : -1;
+                }
+
                 if (cfg.persist && store.read(KEY_SAVED)) loadSavedGame();
                 else loading = false;
                 ready = true;
@@ -382,7 +411,9 @@
                 let targetX;
                 const heldTier = cloudBall ? cloudBall.tier : 0;
                 if (cfg.interactive) {
-                    targetX = clampDropX(pointerSeen ? p.mouseX : CANVAS_W / 2, heldTier);
+                    // Held arrow keys slide the aim; ~1 s wall to wall.
+                    if (keyDir) aimX = Math.max(0, Math.min(CANVAS_W, aimX + keyDir * KEY_AIM_PX));
+                    targetX = clampDropX(aimX, heldTier);
                 } else {
                     // The policy only reports a stored target, so no full state
                     // snapshot is built for it every frame any more.
@@ -438,30 +469,171 @@
 
             /* ── Input ────────────────────────────────────────────────────── */
 
-            p.mouseMoved = p.mouseDragged = () => { pointerSeen = true; };
+            // Touch is handled by the pointer listeners below, not by p5.
+            // With no touch handlers defined, p5 forwards touchend to
+            // mouseReleased, so ANY touch that ended on the page dropped a
+            // fruit — including the vertical swipe meant to scroll down to the
+            // AI board. Empty handlers switch that fallback off.
+            p.touchStarted = p.touchMoved = p.touchEnded = () => {};
+
+            // A tap is followed by emulated mouse events; those must not aim
+            // or drop a second time.
+            let lastTouchAt = -Infinity;
+            const fromTouch = (e) =>
+                performance.now() - lastTouchAt < 800 ||
+                !!(e && e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents);
+
+            p.mouseMoved = p.mouseDragged = (e) => {
+                if (!fromTouch(e)) aimX = p.mouseX;
+            };
 
             p.mouseReleased = (e) => {
-                if (!cfg.interactive) return;
+                if (!cfg.interactive || fromTouch(e)) return;
                 // p5 listens on the whole window, so a release on a control
                 // near the board (Play Again sits ON it; on narrow layouts the
                 // Restart/Shake row sits just under it) also arrived here.
                 if (e && e.target && e.target.closest &&
                     e.target.closest("button, a, input, select, label")) return;
-                pointerSeen = true;
                 // Bounds-check both axes: each instance reports pointer
                 // position relative to its own canvas, so this is what stops
                 // a click on the other board from dropping here.
                 if (p.mouseX <= -25 || p.mouseX >= CANVAS_W + 25) return;
                 if (p.mouseY <= -25 || p.mouseY >= CANVAS_H + 25) return;
-                // Drop where the pointer IS. On touch the cloud is still easing
-                // toward the tap when the finger lifts, so each fruit used to
-                // land where you had tapped the time before.
-                if (cloudBall && canDrop && !isGameOver) {
-                    cloud.x = clampDropX(p.mouseX, cloudBall.tier);
+                aimX = p.mouseX;
+                dropAtAim();
+            };
+
+            /* Touch: a TAP drops, a swipe does not.
+
+               The canvas is `touch-action: pan-y` (style.css), so a vertical
+               swipe scrolls the page and the browser cancels the pointer — on
+               a phone the board is nearly the full width of the screen, and
+               dropping on every swipe left almost nowhere to scroll from. A
+               mostly-sideways drag is the browser's to give us: it aims, and
+               lifting the finger drops, as it always has.
+
+               500 ms rather than a stricter 300: a deliberate tap on a phone
+               is often 250-400 ms, and a missed drop reads as a broken game. */
+            const TAP_SLOP_PX = 10, TAP_MAX_MS = 500;
+            let touch = null;
+
+            // p5play (lib/physics.min.js, ~line 4122) calls preventDefault()
+            // on every touchstart on the canvas, which switches off scrolling
+            // for any gesture that starts on a board — touch-action alone
+            // cannot undo that. Stopping the event in the capture phase on the
+            // board's container keeps it from ever reaching that listener.
+            // Nothing here needs touch events: aiming and dropping use the
+            // pointer events below, and p5's own touch handlers are no-ops.
+            // Both boards, so a swipe on the AI board scrolls too.
+            if (cfg.container) {
+                cfg.container.addEventListener("touchstart", (e) => {
+                    if (e.target.closest && e.target.closest("button, a")) return;
+                    e.stopPropagation();
+                }, { capture: true, passive: true });
+            }
+            const canvasX = (clientX) => {
+                const r = cfg.container.getBoundingClientRect();
+                return r.width ? (clientX - r.left) * CANVAS_W / r.width : CANVAS_W / 2;
+            };
+            if (cfg.interactive && cfg.container) {
+                const c = cfg.container;
+                c.addEventListener("pointerdown", (e) => {
+                    if (e.pointerType === "mouse") return;
+                    if (e.target.closest && e.target.closest("button, a")) return;
+                    touch = { id: e.pointerId, x0: e.clientX, y0: e.clientY,
+                              t0: performance.now(), aiming: false };
+                });
+                c.addEventListener("pointermove", (e) => {
+                    if (!touch || e.pointerId !== touch.id) return;
+                    const dx = e.clientX - touch.x0, dy = e.clientY - touch.y0;
+                    if (!touch.aiming && Math.abs(dx) > TAP_SLOP_PX && Math.abs(dx) > 2 * Math.abs(dy))
+                        touch.aiming = true;
+                    if (touch.aiming) aimX = canvasX(e.clientX);
+                });
+                c.addEventListener("pointerup", (e) => {
+                    if (!touch || e.pointerId !== touch.id) return;
+                    const t = touch;
+                    touch = null;
+                    lastTouchAt = performance.now();
+                    const dx = e.clientX - t.x0, dy = e.clientY - t.y0;
+                    const tap = Math.hypot(dx, dy) <= TAP_SLOP_PX &&
+                                lastTouchAt - t.t0 <= TAP_MAX_MS;
+                    if (!tap && !t.aiming) return;
+                    aimX = canvasX(e.clientX);
+                    dropAtAim();
+                });
+                c.addEventListener("pointercancel", () => {
+                    touch = null;
+                    lastTouchAt = performance.now();
+                });
+            }
+
+            // Drop where the player is aiming, not where the cloud has eased
+            // to so far: on touch the cloud is still travelling when the
+            // finger lifts, and each fruit used to land where you had tapped
+            // the time before.
+            function dropAtAim() {
+                if (cloudBall && canDrop && !isGameOver && !loading) {
+                    cloud.x = clampDropX(aimX, cloudBall.tier);
                     cloudBall.x = cloud.x;
                 }
                 drop();
-            };
+            }
+
+            /* Keyboard: ←/→ or A/D aim, Space, Enter or ↓ drop, E shakes
+               (polled in draw()). Space/Enter on Game Over plays again.
+
+               Keys that belong to a focused control stay with it, the same
+               split shared/keyscroll.js makes: buttons and links own Space and
+               Enter but have no use for arrows; text fields and selects own
+               everything. */
+            let keyDir = 0;
+            const held = { left: false, right: false };
+            const KEY_AIM_PX = 8;
+            const syncKeyDir = () => { keyDir = (held.right ? 1 : 0) - (held.left ? 1 : 0); };
+            if (cfg.interactive) {
+                const ownsAll = /^(input|select|textarea|option)$/i;
+                const ownsActivate = /^(button|a|summary)$/i;
+                window.addEventListener("keydown", (e) => {
+                    if (e.ctrlKey || e.metaKey || e.altKey) return;
+                    const t = e.target;
+                    if (t && (t.isContentEditable || ownsAll.test(t.tagName || ""))) return;
+                    const k = e.key;
+                    const left  = k === "ArrowLeft"  || k === "a" || k === "A";
+                    const right = k === "ArrowRight" || k === "d" || k === "D";
+                    const act   = k === " " || k === "Spacebar" || k === "Enter";
+                    if (left || right) {
+                        if (left) held.left = true; else held.right = true;
+                        syncKeyDir();
+                        return;
+                    }
+                    if (!act && k !== "ArrowDown") return;
+                    if (act && t && (ownsActivate.test(t.tagName || "") ||
+                                     (t.getAttribute && t.getAttribute("role") === "button"))) return;
+                    if (isGameOver) {
+                        // A fresh press only, and not straight away: a key
+                        // still held (or mashed) from the last drop must not
+                        // skip the Game Over screen.
+                        if (act && !e.repeat && performance.now() - gameOverAt >= 700) {
+                            e.preventDefault();
+                            reset();
+                        }
+                        return;
+                    }
+                    if (e.repeat) return;
+                    e.preventDefault();
+                    dropAtAim();
+                });
+                window.addEventListener("keyup", (e) => {
+                    const k = e.key;
+                    if (k === "ArrowLeft"  || k === "a" || k === "A") held.left = false;
+                    if (k === "ArrowRight" || k === "d" || k === "D") held.right = false;
+                    syncKeyDir();
+                });
+                // A key released while the window was not focused never sends
+                // keyup, which would leave the cloud sliding forever.
+                window.addEventListener("blur", () => { held.left = held.right = false; syncKeyDir(); });
+            }
 
             /* ── Core actions ─────────────────────────────────────────────── */
 
@@ -476,6 +648,13 @@
 
                 const ball = cloudBall;
                 cloudBall = undefined;
+
+                const first = !started;
+                if (first) {
+                    started = true;
+                    if (domStartHint) domStartHint.hidden = true;
+                }
+                if (cfg.onDrop) cfg.onDrop(first, restored);
 
                 if (ballsDropped % DROPS_PER_SHAKE === 0) {
                     numOfShakes++;
@@ -689,11 +868,14 @@
                     if (domShakeCount) domShakeCount.innerText = numOfShakes;
                     if (domShakeBtn) domShakeBtn.disabled = numOfShakes < 1;
                 }
+                // A game already under way, not a fresh one — see Match.
+                restored = (state.balls && state.balls.length > 0) || score > 0;
                 loading = false;
             }
 
+            // Both boards, each under its own key. Only the board itself is
+            // gated on cfg.persist.
             function saveHighScore(value) {
-                if (!cfg.persist) return;
                 store.write(KEY_HIGH, value);
             }
 
@@ -703,21 +885,26 @@
                 if (isGameOver || doShake || loading) return;
                 isGameOver = true;
                 canDrop = false;
+                gameOverAt = performance.now();
 
-                // Human board only, and gameOver() is already guarded against
-                // re-entry, so this fires once per match.
-                if (cfg.persist && typeof MatchResults !== "undefined") {
-                    let aiScore = 0;
-                    try { aiScore = getAI().getScore(); } catch (e) { /* AI not up yet */ }
-                    MatchResults.record("watermelon", score, aiScore, Date.now());
+                // gameOver() is guarded against re-entry, so this fires once
+                // per game. The human board's hook records the match and hands
+                // back the result line (or null when nothing was at stake).
+                const result = cfg.onGameOver ? cfg.onGameOver(score, restored) : null;
+                if (domResult) {
+                    domResult.textContent = result ? result.text : "";
+                    domResult.classList.toggle("is-note", !!(result && result.note));
+                    domResult.hidden = !result;
                 }
+                announce((cfg.interactive ? "Game over." : "The AI's game is over.") +
+                         ` Score ${score}.` + (result ? " " + result.text : ""), true);
 
                 store.clear(KEY_SAVED);
                 // Otherwise closing the tab on this screen left the old drop
                 // count behind, and the next fresh board opened on the late-game
                 // fruit mix from its very first drop.
                 if (cfg.persist) store.write(KEY_DROPPED, 0);
-                if (domGameOverScore) domGameOverScore.innerText = `Score ${score}`;
+                if (domGameOverScore) domGameOverScore.textContent = `Score ${score}`;
                 if (domGameOver) domGameOver.hidden = false;
 
                 // The AI board had no way back: no button and nothing to reset
@@ -745,6 +932,9 @@
                 doShake = false;
                 shakeFrames = 0;
                 isGameOver = false;
+                started = false;
+                restored = false;
+                if (domStartHint) domStartHint.hidden = false;
 
                 store.clear(KEY_SAVED);
                 if (cfg.persist) store.write(KEY_DROPPED, 0);
@@ -764,6 +954,7 @@
                 loading = false;
                 dropFrame = -Infinity;
                 canDrop = true;
+                if (cfg.onReset) cfg.onReset();
             }
 
             /* ── Rendering to the DOM ─────────────────────────────────────── */
@@ -771,6 +962,19 @@
             function renderScore() {
                 if (domScore) domScore.innerText = score;
                 if (domHighScore) domHighScore.innerText = highScore;
+                if (score > 0 && cfg.announceScore) announce(`Score ${score}`);
+            }
+
+            /* The visually hidden live line under each board. Scores change
+               on every merge, often several per second in a chain, so they
+               are coalesced and read at most once every couple of seconds;
+               game over replaces anything pending and is read at once. */
+            let liveTimer = null;
+            function announce(text, now) {
+                if (!domLive) return;
+                clearTimeout(liveTimer);
+                if (now) { domLive.textContent = text; return; }
+                liveTimer = setTimeout(() => { domLive.textContent = text; }, 2000);
             }
 
             function renderNextBall() {
@@ -819,7 +1023,10 @@
             // Restart immediately, no confirm dialog. reset() clears the saved
             // game but leaves the high score alone, so nothing is lost that a
             // prompt would need to protect.
-            if (domNewGame)    domNewGame.addEventListener("click", reset);
+            if (domNewGame)    domNewGame.addEventListener("click", () => {
+                if (cfg.onRestartClick) cfg.onRestartClick();
+                reset();
+            });
             if (domPlayAgain)  domPlayAgain.addEventListener("click", reset);
 
             // Expose the bits the controller needs.
@@ -829,6 +1036,8 @@
                 drop,
                 getState: buildState,
                 getScore: () => score,
+                isStarted: () => started,
+                isRestored: () => restored,
                 // Bumped by every reset, so async callers can tell whether the
                 // board they started on is still the one in play.
                 getGen: () => gen,
@@ -843,11 +1052,78 @@
 
     /* ── Boot both boards ─────────────────────────────────────────────────── */
 
+    /* ── Match ────────────────────────────────────────────────────────────
+       The same rules as Snake and Tetris:
+
+       - A match starts with the human's first drop of a game. The AI board
+         resets at that moment and starts with you; before it, the AI waits.
+         It used to start the instant its model loaded, often a minute ahead.
+       - The AI's match score is its FIRST life. If it loses before you, that
+         score is frozen; the board restarts and keeps playing for show.
+       - A result is recorded only if the model was loaded when the match
+         started. An AI that never loaded scored 0 and was recorded as a loss.
+       - A game RESTORED after a reload is not a match. Your board comes back
+         mid-game; the AI's does not, and there is no fair way to line a fresh
+         AI up against a head start. You finish the game, the AI plays
+         alongside for show, and nothing is recorded. The next game counts.
+       - Restarting the AI mid-match voids it, for the same reason. */
+    let aiRunning = false;       // the AI may drop fruit
+    const match = { live: false, ranked: false, aiScore: null, voided: false };
+
+    function startAiBoard() {
+        const ai = window.watermelonBoards.ai;
+        if (!ai || !ai.isReady()) return false;
+        ai.reset();
+        aiTargetFrac = null;
+        aiRunning = true;
+        if (aiStatusEl) aiStatusEl.hidden = true;
+        return true;
+    }
+
+    function aiAvailable() { return !!aiSession && !aiStopped; }
+
     const getHuman = createBoard({
         id: "human",
         container: document.getElementById("canvas-human"),
         interactive: true,
         persist: true,
+        announceScore: true,
+        onDrop(first, restored) {
+            if (first) {
+                const up = aiAvailable() && startAiBoard();
+                match.live = true;
+                match.ranked = up && !restored;
+                match.aiScore = null;
+                match.voided = false;
+                match.restored = restored;
+            } else if (!aiRunning && aiAvailable()) {
+                // The model arrived mid-game: the AI joins in, unranked.
+                startAiBoard();
+            }
+        },
+        onGameOver(score) {
+            const m = { ...match };
+            match.live = false;
+            if (!m.ranked) {
+                if (m.voided)   return { text: "Not scored: the AI was restarted", note: true };
+                if (m.restored) return { text: "Resumed game, not scored", note: true };
+                return null;
+            }
+            const ai = m.aiScore !== null ? m.aiScore : getAI().getScore();
+            if (typeof MatchResults !== "undefined") {
+                MatchResults.record("watermelon", score, ai, "watermelon-" + Date.now());
+            }
+            const verdict = score > ai ? "You win" : score < ai ? "AI wins" : "Draw";
+            return { text: `You ${score} · AI ${ai} — ${verdict}` };
+        },
+        onReset() {
+            // Back to waiting for the first drop. The AI pauses too, so its
+            // board is fresh when the next match starts.
+            match.live = false;
+            aiRunning = false;
+            aiTargetFrac = null;
+            showAiWaiting();
+        },
     });
 
     const getAI = createBoard({
@@ -855,6 +1131,16 @@
         container: document.getElementById("canvas-ai"),
         interactive: false,
         persist: false,
+        onGameOver(score) {
+            if (match.live && match.aiScore === null) match.aiScore = score;
+            return null;
+        },
+        onRestartClick() {
+            if (match.live && match.ranked && match.aiScore === null) {
+                match.ranked = false;
+                match.voided = true;
+            }
+        },
     });
 
     window.watermelonBoards = {
@@ -1042,15 +1328,29 @@
     let aiBusy = false;          // an inference is in flight
     let aiFailures = 0, aiStopped = false;
 
+    // The AI board's status card: loading, failed, waiting for you, stopped.
+    // The wording is shared with Snake and Tetris.
+    function setAiStatus(title, sub) {
+        if (!aiStatusEl) return;
+        const t = aiStatusEl.querySelector(".overlay-title");
+        const s = aiStatusEl.querySelector(".overlay-sub");
+        if (t) t.textContent = title;
+        if (s) s.textContent = sub;
+        aiStatusEl.hidden = false;
+    }
+
+    // Model loaded, waiting for the human's first drop. Not shown while the
+    // model is still loading or has failed: those cards say more.
+    function showAiWaiting() {
+        if (!aiAvailable()) return;
+        setAiStatus("AI ready", "It starts when you drop your first fruit");
+    }
+
     // After repeated inference failures, say so on the board and stop retrying.
     function stopAi() {
         aiStopped = true;
-        if (!aiStatusEl) return;
-        const title = aiStatusEl.querySelector(".overlay-title");
-        const sub = aiStatusEl.querySelector(".overlay-sub");
-        if (title) title.textContent = "AI stopped";
-        if (sub) sub.textContent = "It stopped responding. Refresh to try again.";
-        aiStatusEl.hidden = false;
+        aiRunning = false;
+        setAiStatus("AI stopped", "It stopped responding. Refresh to try again.");
     }
     let aiTargetFrac = null;     // where this drop is aimed, 0-1 of board width
     const AI_ALIGN_TOLERANCE = 6; // px; the cloud eases in, so wait for it
@@ -1080,38 +1380,35 @@
             // "Awaiting model". Passed fourth with dataUrl undefined, as Snake
             // does. The total is 0 without a usable Content-Length (e.g. a
             // compressed response), hence the MB form.
-            const sub = aiStatusEl && aiStatusEl.querySelector(".overlay-sub");
             const onProgress = (got, total) => {
-                if (!sub) return;
-                sub.textContent = total > 0
-                    ? "loading model… " + Math.min(99, Math.floor(100 * got / total)) + "%"
-                    : "loading model… " + (got / 1048576).toFixed(0) + " MB";
+                setAiStatus("Loading AI…", total > 0
+                    ? "Downloading the model · " + Math.min(99, Math.floor(100 * got / total)) + "%"
+                    : "Downloading the model · " + (got / 1048576).toFixed(0) + " MB");
             };
             const src = await modelSource("watermelon_ai.onnx", "WATERMELON_MODEL_B64",
                                           undefined, onProgress);
-            if (sub) sub.textContent = "starting model…";
+            setAiStatus("Loading AI…", "Starting the model…");
 
             aiSession = await ort.InferenceSession.create(src, {
                 executionProviders: ["wasm"],
             });
-            if (aiStatusEl) aiStatusEl.hidden = true;
             mountCheckpointSwitcher();
         } catch (err) {
             console.error("Failed to load Watermelon AI model:", err);
-            if (aiStatusEl) aiStatusEl.querySelector(".overlay-sub").textContent =
-                "model failed to load";
+            setAiStatus("Couldn't load the AI", "Check your connection and refresh");
         }
     }
 
-    /* Mounted under the AI board once the shipped model is live. Compact here:
-       this column already carries a score bubble, the board, and the speed
-       controls, and the "scroll down to see inside" cue sits just below — a
-       full-height control was what clipped it before. */
+    /* Mounted in the AI board's side column, with the speed controls, once
+       the shipped model is live. Under the board it shared a row with the
+       fixed "scroll down" cue, and on a laptop it fell below the fold; the
+       side column has room for the full (stacked) control. When the layout
+       narrows, that column wraps under the board and this takes a full row. */
     function mountCheckpointSwitcher() {
         if (typeof CheckpointSwitcher === "undefined") return;
-        const col = document.querySelector("#board-ai .board-column");
+        const col = document.querySelector("#board-ai .board-controls");
         if (!col) return;
-        const sw = CheckpointSwitcher.mount({
+        CheckpointSwitcher.mount({
             game: "watermelon",
             container: col,
             initial: aiSession,
@@ -1128,7 +1425,6 @@
                 }
             },
         });
-        if (sw) col.querySelector(".ckpt").classList.add("ckpt--compact");
     }
 
     async function chooseColumn(state) {
@@ -1168,7 +1464,7 @@
     // decision to release are driven from the loop below.
     function driveAI() {
         const ai = window.watermelonBoards.ai;
-        if (!aiSession || !ai || aiStopped || !ai.isReady()) return;
+        if (!aiSession || !aiRunning || !ai || aiStopped || !ai.isReady()) return;
 
         const state = ai.getState();
         if (state.isGameOver) { aiTargetFrac = null; return; }
@@ -1239,6 +1535,26 @@
             // Poll faster than the quickest cooldown (2x -> 500ms) so a drop
             // is never delayed by the polling interval itself.
             setInterval(driveAI, 100);          // think + release
+            // Not playing yet: it waits for your first drop (see Match). If
+            // you are already mid-game it joins on your next drop, unranked.
+            const human = window.watermelonBoards.human;
+            if (human && human.isStarted && human.isStarted()) {
+                setAiStatus("AI ready", "It joins on your next drop");
+            } else {
+                showAiWaiting();
+            }
         }
+    });
+
+    /* A mouse click leaves the button focused, and Space on a focused button
+       belongs to the button — so after Restart or a speed button, Space pressed
+       it again instead of dropping. Drop focus after a POINTER click; keyboard
+       activation (detail 0) keeps it, so tabbing through still works. Same
+       handler as Tetris and Snake. */
+    const arenaEl = document.getElementById("arena");
+    if (arenaEl) arenaEl.addEventListener("click", (e) => {
+        if (e.detail === 0) return;
+        const b = e.target.closest && e.target.closest("button");
+        if (b) b.blur();
     });
 })();
