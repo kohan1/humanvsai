@@ -695,6 +695,54 @@ with a visible pane (a screenshot succeeding is the tell) before acting.
 
 ---
 
+## Theme + performance pass, 2026-10-07
+
+**Theme rules must use `[data-theme]`, never a list of theme names.** Several
+game-chrome rules in `themes.css` listed five themes and left out `mesh` — the
+DEFAULT — so the inspector, switcher and Watermelon speed row fell back to
+dark-only colours at ~3.4:1 on the theme most visitors see. A contrast audit
+of every rendered text node (6 pages x 6 themes) went from ~190 failures to 7.
+
+**Canvas colours come from game-local tokens, re-read on `themechange`.**
+`settings.js` now fires a `window` `themechange` event (`detail.theme`) and
+only when the theme really changes. Snake uses `--snake-*`, Tetris
+`--tetris-*` (light themes get deeper piece hues — neon yellow on white was
+1.3:1), Inside's charts `--brain-*`/`--chart-*`. Chart KEYS must read the same
+tokens as the canvas, or they drift (several showed colours the chart never
+drew). Snake's head is drawn in code now; `snake/images/head.png` and
+`redHead.png` are unused.
+
+**The background was the lag, not the games.** `mesh.js` issued ~936
+`stroke()` calls per frame, each with a fresh `rgba()` string: 3.5-5.9 ms of
+script and ~20 MB of garbage per frame-second, ~12x Snake's own loop. It now
+draws each edge once in ~63 alpha buckets (~0.9 ms); `backgrounds.js` buckets
+particles into 16 alpha paths. Game pages pass `maxFps: 30` (paint cap; motion
+still steps every frame). Changing difficulty in one tab used to restart the
+background in every other tab via the cross-tab listener.
+
+**Use `ort.wasm.min.js`, not `ort.min.js`.** The latter pulls the 27.8 MB JSEP
+`.wasm` even when every session asks only for `["wasm"]`; the wasm-only build's
+is 14 MB. All three games now load it and `<link rel=preload>` the `.mjs`,
+`.wasm` and (http only) the model so they download in parallel, and boot
+without waiting for window `load`. `model-source.js` warms the runtime with a
+67-byte model while the real one downloads, and takes `onProgress` as its 4th
+argument. Decoding base64 via `fetch('data:...')` was tried and blocked the
+page 1.5-1.8 s — `Uint8Array.fromBase64` (with the `atob` loop as fallback) is
+the fast path. Halving downloads further needs fp16 weight export, which must
+go through `evaluate.py`/`build_checkpoints.py` before shipping.
+
+**Focus steals Space.** A clicked button keeps focus and Space then activates
+it: Tetris's speed buttons swallowed hard-drop. Pointer clicks on board
+controls now blur the button (keyboard activation keeps focus).
+
+**Testing in a cloud sandbox:** jsdelivr is blocked, so route
+`cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/*` to an npm copy in
+Playwright; route only `https=` through `--proxy-server` or localhost goes
+through the proxy and returns 405. Never leave a stub `.onnx` in a game
+folder — `deploy_pages.sh` would ship it.
+
+---
+
 ## Bugs already found and fixed — don't reintroduce these
 
 **Rendering**
