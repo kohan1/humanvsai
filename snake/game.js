@@ -16,7 +16,13 @@
     const restartAiBtn = document.getElementById("restart-ai");
     const aiStatusEl = document.getElementById("ai-status");
 
-    const scl = canvas.width / TILE_COUNT; // both boards render at the same scale
+    /* The board's coordinate space, fixed at 480 whatever size it is shown at.
+       The canvases' backing stores are sized separately (fitCanvas below) and
+       scaled onto this, so the cell size — and therefore STEPS_PER_CELL and
+       every observation the AI sees — never depends on the layout. scl used
+       to be canvas.width / TILE_COUNT, which tied game speed to the bitmap. */
+    const BOARD = 480;
+    const scl = BOARD / TILE_COUNT;        // both boards render at the same scale
     const STEPS_PER_CELL = scl / SPEED;    // frames to cross one cell — must be a whole number
 
     // Cardinal directions, clockwise, matching snake_env.py's DIRS exactly —
@@ -49,10 +55,12 @@
     }
 
     class Snake {
-        constructor(x, y, length, color) {
+        constructor(x, y, length) {
             this.x = x;
             this.y = y;
-            this.color = color;
+            // Colours come from the theme at draw time (--snake-body /
+            // --snake-dead in style.css); this only says which of the two.
+            this.red = false;
             this.body = [];
             // Preset to rightward rather than zero: movement is gated
             // externally by `matchStarted`, not by dir being non-zero, so
@@ -65,11 +73,6 @@
             this.newDir = { x: 1, y: 0 };
             this.pending = [];      // queued turns, consumed one per cell
             this.frameCount = 0;
-            this.greenFace = new Image();
-            this.greenFace.src = "images/head.png";
-            this.redFace = new Image();
-            this.redFace.src = "images/redHead.png";
-            this.face = this.greenFace;
             for (let n = 0; n < length; n++) {
                 this.body.push(new Segment((this.x - n) * scl, this.y * scl, { x: 1, y: 0 }));
             }
@@ -160,12 +163,35 @@
             this.frameCount++;
         }
 
+        /* One path, one fill. Separate fillRects leave faint seams between
+           segments once the canvas is scaled by a non-integer factor, because
+           each edge is antialiased on its own; a single path is antialiased
+           as one shape.
+
+           The head used to be images/head.png and redHead.png — the body
+           colour baked into a bitmap, so it could not follow a theme, and
+           its eyes always looked up whichever way the snake was going. It is
+           drawn here instead, eyes forward. Geometry matches the bitmap: 6px
+           eyes 7px ahead of centre and 7.5px either side, 4px pupils. */
         draw(ctx) {
-            this.body.forEach(seg => {
-                ctx.fillStyle = this.color;
-                ctx.fillRect(seg.x, seg.y, scl, scl);
-            });
-            ctx.drawImage(this.face, this.head.x, this.head.y, scl, scl);
+            ctx.fillStyle = themeVar(this.red ? "--snake-dead" : "--snake-body",
+                                     this.red ? "#ff0000" : "rgb(50, 255, 50)");
+            ctx.beginPath();
+            for (const seg of this.body) ctx.rect(seg.x, seg.y, scl, scl);
+            ctx.fill();
+
+            const h = this.head, fx = h.dir.x, fy = h.dir.y;
+            const sx = -fy, sy = fx;                     // perpendicular
+            const cx = h.x + scl / 2, cy = h.y + scl / 2;
+            for (const side of [-1, 1]) {
+                const ex = cx + fx * 7 + sx * 7.5 * side;
+                const ey = cy + fy * 7 + sy * 7.5 * side;
+                ctx.fillStyle = themeVar("--snake-eye", "#fff");
+                ctx.fillRect(ex - 3, ey - 3, 6, 6);
+                // Pupil one pixel forward and one inward, as in the bitmap.
+                ctx.fillStyle = themeVar("--snake-pupil", "#000");
+                ctx.fillRect(ex + fx - sx * side - 2, ey + fy - sy * side - 2, 4, 4);
+            }
         }
 
         appendNew() {
@@ -205,16 +231,11 @@
             }
             this.diedAt = performance.now();
 
-            const original = this.color;
-            this.color = "red";
-            this.face = this.redFace;
+            // Red, back to normal, red again: a short flash on death.
+            this.red = true;
             setTimeout(() => {
-                this.color = original;
-                this.face = this.greenFace;
-                setTimeout(() => {
-                    this.color = "red";
-                    this.face = this.redFace;
-                }, 200);
+                this.red = false;
+                setTimeout(() => { this.red = true; }, 200);
             }, 200);
         }
 
@@ -231,7 +252,6 @@
             this.yy = y;
             this.padding = padding;
             this.p = padding;
-            this.color = "red";
         }
         // Takes the relevant snake explicitly rather than reading a global —
         // both boards have their own snake and food, so this has to know
@@ -262,10 +282,12 @@
             this.yy = Math.floor(k / TILE_COUNT);
             this.p = scl / 2;
         }
+        // The grow-in animation advances once per simulation step, not per
+        // paint, so it runs at the same speed whatever the display rate.
+        step() { if (this.p > this.padding) this.p--; }
         draw(ctx) {
-            ctx.fillStyle = this.color;
+            ctx.fillStyle = themeVar("--snake-food", "#ff0000");
             ctx.fillRect(this.x + this.p, this.y + this.p, scl - 2 * this.p, scl - 2 * this.p);
-            if (this.p > this.padding) this.p--;
         }
         get x() { return this.xx * scl; }
         get y() { return this.yy * scl; }
@@ -291,7 +313,7 @@
        several getComputedStyle calls per tick at 90 Hz, to return the same
        strings; a runtime theme switch still repaints the play area. */
     let themeCache = {};
-    new MutationObserver(() => { themeCache = {}; })
+    new MutationObserver(() => { themeCache = {}; needsPaint = true; })
         .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     function themeVar(name, fallback) {
         if (!(name in themeCache)) {
@@ -303,39 +325,74 @@
     function boardInk() { return themeVar("--board-ink", "#fff"); }
     function boardScrim(a) { return "rgba(" + themeVar("--board-scrim", "0, 0, 0") + ", " + a + ")"; }
 
-    function drawGameOver(c, cvs, title, sub) {
+    function drawGameOver(c, title, sub) {
         c.fillStyle = boardScrim(0.62);
-        c.fillRect(0, 0, cvs.width, cvs.height);
+        c.fillRect(0, 0, BOARD, BOARD);
         c.fillStyle = boardInk();
         c.textAlign = "center";
         c.textBaseline = "middle";
         c.font = "bold " + scl + "px Arial";
-        c.fillText(title, cvs.width / 2, cvs.height / 2 - scl * 0.4);
+        c.fillText(title, BOARD / 2, BOARD / 2 - scl * 0.4);
         c.font = 0.45 * scl + "px Arial";
         c.globalAlpha = 0.75;
-        c.fillText(sub, cvs.width / 2, cvs.height / 2 + scl * 0.6);
+        c.fillText(sub, BOARD / 2, BOARD / 2 + scl * 0.6);
         c.globalAlpha = 1;
         c.textAlign = "start";
         c.textBaseline = "alphabetic";
     }
+
+    /* Background, score and pieces — shared by both boards. The score is
+       painted BEFORE the pieces, so a snake passing through the top rows
+       runs over the number instead of disappearing under it. */
+    function drawBoard(c, theSnake, theFood, theScore, theHigh) {
+        c.fillStyle = boardBg();
+        c.fillRect(0, 0, BOARD, BOARD);
+
+        c.fillStyle = boardInk();
+        c.textAlign = "center";
+        c.font = 1.5 * scl + "px Arial";
+        c.fillText(theScore, BOARD / 2, 2.5 * scl);
+        c.font = 0.5 * scl + "px Arial";
+        c.fillText("High score: " + theHigh, BOARD / 2, 3.5 * scl);
+        c.textAlign = "start";
+
+        theFood.draw(c);
+        theSnake.draw(c);
+    }
+
+    /* Size each canvas's backing store to the pixels it actually covers,
+       and draw in BOARD units through a transform. The bitmap used to be a
+       fixed 480x480, which is soft on every high-DPI screen and on phones,
+       where CSS shrinks the board and the browser resamples it.
+
+       Whole multiples of BOARD only: an integer transform keeps every cell
+       edge on a device pixel, and the browser's downscale from the next size
+       up stays sharp. Assigning width clears the canvas, so this only runs
+       when the size actually changes; the next frame repaints it. */
+    function fitCanvas(cvs, c) {
+        const css = cvs.clientWidth;
+        if (!css) return;                      // hidden: nothing to measure
+        const k = Math.max(1, Math.ceil(css * (window.devicePixelRatio || 1) / BOARD - 0.01));
+        if (cvs.width !== BOARD * k) {
+            cvs.width = cvs.height = BOARD * k;
+        }
+        c.setTransform(k, 0, 0, k, 0, 0);
+    }
+    function fitCanvases() {
+        fitCanvas(canvas, ctx);
+        fitCanvas(canvasAi, ctxAi);
+        needsPaint = true;
+    }
+    let needsPaint = true;
+
     // ── Human board ──────────────────────────────────────────────────────
     let food, score = 0, highScore;
 
-    function tick() {
-        ctx.fillStyle = boardBg();
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        food.draw(ctx);
+    // One simulation step. Painting is separate (drawHuman), so a frame that
+    // runs two steps to keep up with 90 Hz does not paint the board twice.
+    function stepHuman() {
+        food.step();
         if (matchStarted) snake.update();
-        snake.draw(ctx);
-
-        ctx.font = 1.5 * scl + "px Arial";
-        ctx.fillStyle = boardInk();
-        ctx.fillText(score, canvas.width / 2 - ctx.measureText(score).width / 2, 2.5 * scl);
-
-        ctx.font = 0.5 * scl + "px Arial";
-        const label = "High score: " + highScore;
-        ctx.fillText(label, canvas.width / 2 - ctx.measureText(label).width / 2, 3.5 * scl);
 
         if (snake.head.collides(food)) {
             food.generateNew(snake);
@@ -346,11 +403,15 @@
             highScore = score;
             saveHighScore(highScore);
         }
+    }
+
+    function drawHuman() {
+        drawBoard(ctx, snake, food, score, highScore);
 
         // Game over used to be only the snake turning red, with no
         // instruction, and any key at all reloaded the page.
         if (snake.isDead && performance.now() - (snake.diedAt || 0) > 500) {
-            drawGameOver(ctx, canvas, "GAME OVER",
+            drawGameOver(ctx, "GAME OVER",
                          TOUCH ? "Tap to play again" : "Press Enter or Space to play again");
         }
     }
@@ -507,7 +568,17 @@
 
             // Over HTTP this is the .onnx URL, which streams and is a third
             // smaller than the base64. See shared/model-source.js.
-            const src = await modelSource("snake_ai.onnx", "SNAKE_MODEL_B64");
+            // Progress, so a 34 MB download does not read as "stuck". Passed
+            // fourth, with dataUrl left undefined, so an older model-source.js
+            // that takes only three arguments simply ignores it. The total can
+            // be 0 (no Content-Length, or a compressed one), hence the MB form.
+            const onProgress = (got, total) => {
+                aiStatusEl.textContent = total > 0
+                    ? "loading model… " + Math.min(99, Math.floor(100 * got / total)) + "%"
+                    : "loading model… " + (got / 1048576).toFixed(0) + " MB";
+            };
+            const src = await modelSource("snake_ai.onnx", "SNAKE_MODEL_B64", undefined, onProgress);
+            aiStatusEl.textContent = "starting model…";
 
             aiSession = await ort.InferenceSession.create(src, { executionProviders: ["wasm"] });
             aiReady = true;
@@ -578,7 +649,9 @@
     let criticMatchesModel = true;
 
     function loadCritic() {
-        if (!criticMatchesModel) return Promise.resolve();
+        // No runtime (the CDN was unreachable): the panel shows no value
+        // readout rather than throwing out of the inspector's reveal hook.
+        if (!criticMatchesModel || typeof ort === "undefined") return Promise.resolve();
         if (criticSession || criticPending) return criticPending;
         criticPending = ort.InferenceSession
             .create("snake_critic.onnx", { executionProviders: ["wasm"] })
@@ -675,21 +748,9 @@
         aiSnake.turn(nd.x, nd.y);
     }
 
-    function tickAi() {
-        ctxAi.fillStyle = boardBg();
-        ctxAi.fillRect(0, 0, canvasAi.width, canvasAi.height);
-
-        aiFood.draw(ctxAi);
+    function stepAi() {
+        aiFood.step();
         if (matchStarted && aiReady) aiSnake.update();
-        aiSnake.draw(ctxAi);
-
-        ctxAi.font = 1.5 * scl + "px Arial";
-        ctxAi.fillStyle = boardInk();
-        ctxAi.fillText(aiScore, canvasAi.width / 2 - ctxAi.measureText(aiScore).width / 2, 2.5 * scl);
-
-        ctxAi.font = 0.5 * scl + "px Arial";
-        const aiLabel = "High score: " + aiHighScore;
-        ctxAi.fillText(aiLabel, canvasAi.width / 2 - ctxAi.measureText(aiLabel).width / 2, 3.5 * scl);
 
         if (aiSnake.head.collides(aiFood)) {
             aiFood.generateNew(aiSnake);
@@ -747,11 +808,13 @@
         }
 
         // The AI board restarts itself, as Tetris's and Watermelon's do.
-        if (aiSnake.isDead) {
-            if (!aiRestartTimer) aiRestartTimer = setTimeout(resetAi, 1500);
-            if (performance.now() - (aiSnake.diedAt || 0) > 500) {
-                drawGameOver(ctxAi, canvasAi, "AI DIED", "Restarting\u2026");
-            }
+        if (aiSnake.isDead && !aiRestartTimer) aiRestartTimer = setTimeout(resetAi, 1500);
+    }
+
+    function drawAi() {
+        drawBoard(ctxAi, aiSnake, aiFood, aiScore, aiHighScore);
+        if (aiSnake.isDead && performance.now() - (aiSnake.diedAt || 0) > 500) {
+            drawGameOver(ctxAi, "AI DIED", "Restarting\u2026");
         }
     }
 
@@ -771,47 +834,71 @@
        picked in the switcher, and ended the other board's game too. */
     function resetHuman() {
         food = new Food(6, Math.floor(TILE_COUNT / 2), 3);
-        window.snake = new Snake(4, Math.floor(TILE_COUNT / 2), START_LENGTH, "rgb(50, 255, 50)");
+        window.snake = new Snake(4, Math.floor(TILE_COUNT / 2), START_LENGTH);
         score = 0;
     }
     function resetAi() {
         clearTimeout(aiRestartTimer);
         aiRestartTimer = null;
         aiFood = new Food(6, Math.floor(TILE_COUNT / 2), 3);
-        aiSnake = new Snake(4, Math.floor(TILE_COUNT / 2), START_LENGTH, "rgb(50, 255, 50)");
+        aiSnake = new Snake(4, Math.floor(TILE_COUNT / 2), START_LENGTH);
         aiScore = 0;
         aiStepsSinceFood = 0;
         aiAteThisCell = false;
     }
 
-    window.addEventListener("load", () => {
-        resetHuman();
-        highScore = loadHighScore();
-        resetAi();
-        aiHighScore = loadHighScore(AI_HIGH_SCORE_KEY);
+    /* Boot as soon as this (deferred) script runs, not on window "load".
+       The model download used to start from the load handler, so it queued
+       behind every image, stylesheet and the background renderer for no
+       reason; the boards were blank until then as well. The DOM is complete
+       by the time a deferred script executes. */
+    resetHuman();
+    highScore = loadHighScore();
+    resetAi();
+    aiHighScore = loadHighScore(AI_HIGH_SCORE_KEY);
 
-        if (controlsOverlay) controlsOverlay.hidden = false;
+    if (controlsOverlay) controlsOverlay.hidden = false;
 
-        loadModel();
+    loadModel();
 
-        /* A fixed 90 Hz simulation driven by requestAnimationFrame instead of
-           setInterval. The step is unchanged, so speed and the AI's decision
-           timing are exactly as before. Paints now land on display frames
-           rather than drifting against them (which juddered on 60 Hz screens),
-           and the loop stops in background tabs. Catch-up is capped so coming
-           back to the tab cannot fast-forward the game. */
-        const STEP_MS = 1000 / 90;
-        let acc = 0, last = performance.now();
-        function frame(now) {
-            acc += Math.min(250, now - last);
-            last = now;
-            let steps = 0;
-            while (acc >= STEP_MS && steps < 8) { tick(); tickAi(); acc -= STEP_MS; steps++; }
-            if (steps === 8) acc = 0;
-            requestAnimationFrame(frame);
+    fitCanvases();
+    if (typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(fitCanvases).observe(canvas);
+    }
+    // Page zoom and moving to another monitor change devicePixelRatio
+    // without necessarily resizing the canvas in CSS pixels.
+    window.addEventListener("resize", fitCanvases);
+    // Belt and braces: if anything was read before every stylesheet applied,
+    // drop it and repaint once the page has fully loaded.
+    window.addEventListener("load", () => { themeCache = {}; fitCanvases(); });
+
+    /* A fixed 90 Hz simulation driven by requestAnimationFrame instead of
+       setInterval. The step is unchanged, so speed and the AI's decision
+       timing are exactly as before. Paints now land on display frames
+       rather than drifting against them (which juddered on 60 Hz screens),
+       and the loop stops in background tabs. Catch-up is capped so coming
+       back to the tab cannot fast-forward the game.
+
+       Steps and paints are separate. Each step used to repaint both boards,
+       so a 60 Hz display (1.5 steps per frame) painted a third more than it
+       showed, and a catch-up frame painted up to eight times. Now a frame
+       paints once, after however many steps it ran. */
+    const STEP_MS = 1000 / 90;
+    let acc = 0, last = performance.now();
+    function frame(now) {
+        acc += Math.min(250, now - last);
+        last = now;
+        let steps = 0;
+        while (acc >= STEP_MS && steps < 8) { stepHuman(); stepAi(); acc -= STEP_MS; steps++; }
+        if (steps === 8) acc = 0;
+        if (steps || needsPaint) {
+            drawHuman();
+            drawAi();
+            needsPaint = false;
         }
         requestAnimationFrame(frame);
-    });
+    }
+    requestAnimationFrame(frame);
 
     const KEY_MAP = {
         arrowup: [0, -1], w: [0, -1],
@@ -838,6 +925,12 @@
         const key = e.key.toLowerCase();
 
         if (window.snake.isDead) {
+            // A focused control owns Enter and Space (see shared/keyscroll.js).
+            // After picking a model version the rung button keeps focus, and
+            // Space used to restart the game AND be swallowed by
+            // preventDefault, so the button a keyboard user was on did nothing.
+            const t = e.target;
+            if (t && t.closest && t.closest("button, a, input, select, textarea, [contenteditable]")) return;
             // A deliberate Enter or Space. This used to be ANY key — including
             // held-key repeats, Tab and modifiers — and it reloaded the page.
             if ((key === "enter" || key === " ") && canRestartHuman()) {

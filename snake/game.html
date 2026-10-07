@@ -10,7 +10,31 @@
         <link rel="stylesheet" href="../shared/inspector.css" />
         <link rel="stylesheet" href="../shared/checkpoints.css" />
         <link rel="stylesheet" href="style.css" />
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.js" defer></script>
+        <!-- ort.wasm.min.js, not ort.min.js. The game only ever asks for the
+             "wasm" execution provider, and ort.min.js is the build that also
+             carries WebGL and WebGPU: 368 KB of script instead of 50 KB, and it
+             pulls the 27.8 MB jsep .wasm where this one pulls the 14.0 MB plain
+             one. Same version, same API, half the download.
+             The runtime's two files are preloaded below so they download in
+             parallel with the model instead of after it — they are otherwise
+             only requested once InferenceSession.create() runs, i.e. after the
+             34 MB model has fully arrived. Measured with both delayed: four
+             serial round-trips (script, model, .mjs, .wasm) became two. -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
+        <link rel="modulepreload" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.mjs" />
+        <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" />
+        <script>
+        // The model itself, over HTTP only. Under file:// fetch() cannot read
+        // it (model-source.js uses the embedded base64 there), so a static
+        // <link> would just log an error. crossorigin matches fetch()'s default
+        // credentials mode, or the preload is not reused and downloads twice.
+        if (location.protocol !== "file:") {
+            var _p = document.createElement("link");
+            _p.rel = "preload"; _p.as = "fetch"; _p.crossOrigin = "anonymous";
+            _p.href = "snake_ai.onnx";
+            document.head.appendChild(_p);
+        }
+        </script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>
         <script src="../shared/results.js" defer></script>

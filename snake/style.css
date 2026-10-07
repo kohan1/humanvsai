@@ -20,6 +20,27 @@
 :root {
     font-size: 18px;
     font-family: Arial, Helvetica, sans-serif;
+
+    /* The pieces on the board, read by game.js through getComputedStyle.
+       Snake-prefixed because shared/themes.css loads after this file and
+       would silently replace any token it also defines. The dark-theme
+       values are the original colours; the light boards need their own,
+       because rgb(50,255,50) on near-white measured 1.3:1 and the snake
+       all but vanished. */
+    --snake-body: rgb(50, 255, 50);
+    --snake-dead: #ff0000;
+    --snake-food: #ff0000;
+    --snake-eye:  #ffffff;
+    --snake-pupil: #000000;
+
+    /* One board size, used by the board, its canvas, the column and the VS
+       offset, so they cannot disagree. Set per breakpoint below. */
+    --snake-board: 480px;
+}
+[data-theme="filings"], [data-theme="dispersion"] {
+    --snake-body: #179a3a;
+    --snake-dead: #d81e1e;
+    --snake-food: #e0261b;
 }
 
 html, body {
@@ -76,7 +97,7 @@ body {
        Tetris uses, and it needs revisiting if the board size or the label
        above it changes. */
     align-self: flex-start;
-    margin-top: calc(28px + 240px - 0.5 * 2rem * 1.15);
+    margin-top: calc(28px + var(--snake-board) / 2 - 0.5 * 2rem * 1.15);
     font-size: 2rem;
     font-weight: 700;
     color: #444;
@@ -85,6 +106,10 @@ body {
 }
 
 .board-wrap {
+    /* The column is exactly as wide as its board, so the model-version
+       control under the AI board (min(420px, 100%)) follows the board down
+       instead of holding the column wider than the human one. */
+    width: var(--snake-board);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -103,15 +128,15 @@ body {
 
 main {
     position: relative;
-    width: 480px;
-    height: 480px;
+    width: var(--snake-board);
+    height: var(--snake-board);
     flex-shrink: 0;
     outline: 1px solid #2a2a2a;
 }
 
 main canvas {
-    width: 480px;
-    height: 480px;
+    width: 100%;
+    height: 100%;
     display: block;
 }
 
@@ -199,30 +224,44 @@ main div.controls p {
 }
 .ai-status[hidden] { display: none !important; }
 
-/* ── Narrow screens ─────────────────────────────────────────────────────────
-   Without this the two 480px boards plus a 48px gap need ~1010px, and #arena
-   is a non-wrapping flex row that stays centred and overflows BOTH edges.
-   Measured at a 741px viewport: the human board ran from x=-366 to x=114, so
-   the player's own board was mostly off-screen — and because the overflow is
-   symmetric there is no horizontal scroll to reach it.
+/* ── Narrow and short screens ───────────────────────────────────────────────
+   Two 480px boards side by side need ~1180px: 2 x 480, two 48px gaps, the VS
+   text and .screen's side padding. This used to STACK the boards anywhere
+   below 1160px wide — so a 1100px laptop window or a landscape tablet put the
+   AI board entirely below the fold, and the point of the page (watching the
+   AI while you play) needed scrolling. It also never looked at height: a
+   1366x625 laptop viewport cut the bottom of both boards off.
 
-   Stack below 1040px, and scale the canvases down below 560px so a phone gets
-   two usable boards rather than one clipped one. */
-/* 1160, not 1040: the ~1010px estimate above left out the VS text, the second
-   gap and .screen's side padding, so 1041-1160px overflowed. */
-@media (max-width: 1160px) {
+   Now the boards SHRINK to fit, side by side, while the viewport is
+   landscape, and stack only in portrait — where a stacked pair is the larger
+   of the two layouts. The board's own coordinates are fixed at 480 (game.js
+   draws in that space and scales), so nothing about the game depends on the
+   size chosen here. */
+@media (max-width: 1180px), (max-height: 780px) {
+    :root {
+        /* 220px: two gaps, the VS text and the side padding. 175px: the label
+           row above the board, .screen's top and bottom padding, and a margin.
+           One declaration, svh only: a custom property is not validated when
+           parsed, so the usual "vh line, then svh line" fallback would keep
+           the svh value and then fail at use time, collapsing the board.
+           svh is older than the :has() the page already depends on. */
+        --snake-board: max(200px, min(480px, calc((100vw - 220px) / 2), calc(100svh - 175px)));
+    }
+}
+
+@media (max-aspect-ratio: 1/1) {
     #arena { flex-direction: column; align-items: center; gap: 18px; }
     #vs { align-self: center; margin-top: 0; font-size: 1.5rem; }
+    :root {
+        /* Both boards on one screen where the height allows it, but never
+           smaller than ~300px for the board the player is actually steering:
+           below that a phone gets a usable board and scrolls to the AI. */
+        --snake-board: min(480px, calc(100vw - 2.4rem), max(300px, calc((100svh - 260px) / 2)));
+    }
 }
 
 @media (max-width: 560px) {
     body { padding-left: 0.6rem; padding-right: 0.6rem; }
-    /* The 480px board size is set on `main` AND on `main canvas`; both have to
-       give way or the fixed width wins and the board overflows again. The
-       canvas keeps its square aspect so the grid stays undistorted. */
-    main { width: min(88vw, calc(100vw - 3rem), 480px); height: auto; aspect-ratio: 1 / 1; }
-    main canvas { width: 100%; height: 100%; }
-    .board-wrap { width: 100%; }
 }
 
 /* Start hints: keyboard wording by default, touch wording on phones and
