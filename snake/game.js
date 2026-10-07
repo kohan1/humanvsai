@@ -57,15 +57,22 @@
     let matchStarted = false;
     let aiActive = false;
 
-    /* The head-to-head. A match begins on the human's first input; at that
-       moment the AI board resets and starts with them, and the AI's score for
-       the match is its FIRST life in it — frozen if the AI dies first, since
-       it then carries on for show. Null when nothing is being counted: before
-       the first input, or when the model was not loaded when the human began.
-       The record used to compare against whatever life the AI happened to be
-       on when the human died, on a board that was never reset. */
-    let match = null;              // { aiScore, aiLive }
-    let lastResult = "";           // "You 12 · AI 31 — AI wins", for the game-over card
+    /* The head-to-head, run by MatchResults.begin() in shared/results.js so
+       the rules are the same in all three games. A match begins on the
+       human's first input; at that moment the AI board resets and starts with
+       them, and only the AI's FIRST life in it is fed to the match. A human
+       who dies first has not won: the match waits until the AI passes them or
+       dies. This used to freeze the AI's unfinished score at the human's
+       death, so crashing in the first second beat the AI 1-0, and the AI's
+       restart button locked in a win the same way.
+
+       Null when nothing is being counted: before the first input, or when the
+       model was not loaded when the human began. Kept after the human's game
+       ends, so the game-over card can show match.line() — live, while the AI
+       is still playing — until the next game starts. */
+    let match = null;
+    let aiInMatch = false;         // the AI's current life is the match's first one
+    let aiSpeed = 1;               // the AI SPEED control; see stepAi's accumulator
 
     // Game over shows after the death flash; a restart key is honoured only a
     // little later, so the key that was being mashed at the moment of death
@@ -257,22 +264,18 @@
             // update() returns early once isDead, so this fires exactly once.
             // The identity checks are needed because both snakes share this
             // class.
-            if (this === aiSnake && match) match.aiLive = false;   // freeze its match score
+            if (this === aiSnake && match && aiInMatch) {
+                aiInMatch = false;               // later lives are for show only
+                match.aiDied(aiScore);
+            }
             if (this === window.snake) {
                 // Only a real match counts: not a human run that began before
                 // the AI had a model to play with (match is null then).
-                if (match) {
-                    const ai = match.aiScore;
-                    lastResult = "You " + score + " · AI " + ai + " — " +
-                        (score > ai ? "You win" : score < ai ? "AI wins" : "Draw");
-                    if (typeof MatchResults !== "undefined") {
-                        MatchResults.record("snake", score, ai, Date.now());
-                    }
-                    match = null;
-                }
+                if (match) match.humanDied(score);
+                const line = matchLine();
                 announce(srHuman, "Game over. Score " + score + "." +
-                    (lastResult ? " " + lastResult.replace("—", "-") + "." : "") +
-                    (TOUCH ? " Tap the board to play again." : " Press Enter or Space to play again."));
+                    (line ? " " + line.replace("—", "-") + "." : "") +
+                    (TOUCH ? " Tap the board to play again." : " Press Space or Enter to play again."));
             } else if (this === aiSnake) {
                 announce(srAi, "The AI died with " + aiScore + ".");
             }
@@ -391,14 +394,28 @@
        pieces, so the snake passing through the top rows visibly runs over it
        rather than the number fighting the snake at full ink. The game-over
        card repaints it at full ink above its scrim. */
+    /* Ink at partial alpha over white fades much faster than over black: the
+       watermark's 0.5 measured 3.51:1 on Filings and 4.00:1 on Dispersion,
+       where the same 0.5 on the dark boards gives 5.3:1. On a phone the score
+       renders at ~23 CSS px, under the large-text size, so it needs 4.5:1.
+       The light boards' watermark is held at 0.62 (5.1:1 on Filings, 6.2:1
+       on Dispersion) and the small line above that, measured from the
+       canvas's own pixels. */
+    function lightBoard() {
+        const t = document.documentElement.getAttribute("data-theme");
+        return t === "filings" || t === "dispersion";
+    }
+
     function drawScore(c, theScore, theHigh, alpha) {
+        const light = lightBoard();
+        if (light) alpha = Math.max(alpha, 0.62);
         c.fillStyle = boardInk();
         c.textAlign = "center";
         c.textBaseline = "alphabetic";
         c.globalAlpha = alpha;
         c.font = 1.5 * scl + "px Arial";
         c.fillText(theScore, BOARD / 2, 2.5 * scl);
-        c.globalAlpha = Math.min(1, alpha + 0.1);
+        c.globalAlpha = Math.min(1, alpha + (light ? 0.15 : 0.1));
         c.font = fontUnits(c, 0.5 * scl, 11) + "px Arial";
         c.fillText("High score: " + theHigh, BOARD / 2, 3.5 * scl);
         c.globalAlpha = 1;
@@ -409,7 +426,12 @@
        message on its own card. The text used to sit straight on the scrim, so
        the food and snake showed through it ("Enter" printed over a red
        square), and the final score was left faded under the scrim. `lines`
-       is [{ text, size, minCss, bold, alpha }], top to bottom. */
+       is [{ text, size, minCss, bold, alpha }], top to bottom.
+
+       A line wider than the card WRAPS at spaces rather than shrinking: the
+       match line ("You 12 · AI 3 — AI still playing, needs 10 to win") is
+       held at its 12 CSS px floor, which on a 220px phone board is ~26 board
+       units and would otherwise run off both edges. */
     function drawGameOver(c, theScore, theHigh, lines) {
         c.fillStyle = boardScrim(0.62);
         c.fillRect(0, 0, BOARD, BOARD);
@@ -417,15 +439,33 @@
 
         c.textAlign = "center";
         c.textBaseline = "middle";
+        const pad = 0.7 * scl;
+        const maxText = BOARD - 16 - 2 * pad;
         let width = 0, height = 0;
-        const sized = lines.map(l => {
+        const sized = [];
+        for (const l of lines) {
             const px = fontUnits(c, l.size, l.minCss);
             c.font = (l.bold ? "bold " : "") + px + "px Arial";
-            width = Math.max(width, c.measureText(l.text).width);
-            height += px * 1.45;
-            return Object.assign({ px }, l);
-        });
-        const pad = 0.7 * scl;
+            // Break after the dash first, so the scores stay on one row and
+            // the verdict on the next, then at spaces if a part still overflows.
+            const parts = c.measureText(l.text).width > maxText && l.text.includes(" — ")
+                ? l.text.replace(" — ", " —\n").split("\n") : [l.text];
+            const rows = [];
+            for (const part of parts) {
+                let row = "";
+                for (const word of part.split(" ")) {
+                    const next = row ? row + " " + word : word;
+                    if (row && c.measureText(next).width > maxText) { rows.push(row); row = word; }
+                    else row = next;
+                }
+                rows.push(row);
+            }
+            for (const text of rows) {
+                width = Math.max(width, c.measureText(text).width);
+                height += px * 1.45;
+                sized.push(Object.assign({}, l, { px, text }));
+            }
+        }
         const w = Math.min(BOARD - 16, width + 2 * pad), h = height + pad;
         // 0.92 rather than the 0.82 of the cards over a live board: this one
         // sits on the scrim, and at 0.82 a red food square still showed
@@ -510,9 +550,12 @@
         if (snake.isDead && performance.now() - (snake.diedAt || 0) > GAME_OVER_SHOW_MS) {
             const lines = [{ text: "GAME OVER", size: scl, minCss: 20, bold: true }];
             // The match result, at full ink like the score. Absent when the
-            // AI never loaded, or was not loaded when this game began.
-            if (lastResult) lines.push({ text: lastResult, size: 0.55 * scl, minCss: 12 });
-            lines.push({ text: TOUCH ? "Tap to play again" : "Press Enter or Space to play again",
+            // AI never loaded, or was not loaded when this game began. Read
+            // every paint, so "AI still playing, needs N" counts down live
+            // and turns into the result the moment the match settles.
+            const line = matchLine();
+            if (line) lines.push({ text: line, size: 0.55 * scl, minCss: 12 });
+            lines.push({ text: TOUCH ? "Tap to play again" : "Press Space or Enter to play again",
                          size: 0.45 * scl, minCss: 11, alpha: 0.75 });
             drawGameOver(ctx, score, highScore, lines);
         }
@@ -676,8 +719,10 @@
     function updateAiStatus() {
         if (aiLoadFailed) setAiStatus("Couldn't load the AI", "Check your connection and refresh");
         else if (!aiReady) setAiStatus("Loading AI…", aiLoadDetail);
-        // Loaded, holding for the player's first move, which starts both boards.
-        else if (!aiActive) setAiStatus("Ready", TOUCH ? "Starts when you swipe" : "Starts when you press a key");
+        // Loaded, holding for the player's first move (an arrow, WASD, a
+        // swipe or a tap), which starts both boards. "Press a key" promised
+        // more than that: Space and Enter are not moves and start nothing.
+        else if (!aiActive) setAiStatus("AI ready", "Starts with your first move");
         else setAiStatus(null);
     }
 
@@ -876,15 +921,52 @@
         aiSnake.turn(nd.x, nd.y);
     }
 
+    /* A decision that has not landed by the boundary it was made for.
+
+       update() commits a turn at the boundary frame, (cell + 1) *
+       STEPS_PER_CELL. This used to drop a decision that resolved after that
+       frame, so on a slow machine (measured at a 4x CPU throttle) inference
+       overran the window and the AI simply went straight, into walls.
+       Applying it late instead would turn a cell late: exactly bug #19 in
+       CLAUDE.md, which scored 2.92 against 66.92.
+
+       So the AI board HOLDS at that boundary until its decision arrives, then
+       carries on. Every turn still lands on the cell the observation
+       described, the same sequence the env plays; a slow machine sees a
+       slower AI, not a worse one. The hold is capped, so a hung runtime
+       cannot freeze the board: past AI_HOLD_MAX_MS the decision is given up
+       and the snake goes straight, as before. Holds and drops are counted
+       and logged at debug level, every AI_SLOW_LOG_EVERY of them. */
+    let aiPending = null;          // { snake, deadline, since } while a decision is in flight
+    const AI_HOLD_MAX_MS = 1000;
+    const AI_SLOW_LOG_EVERY = 25;
+    const aiSlow = { held: 0, dropped: 0 };
+    function noteSlow(kind) {
+        aiSlow[kind]++;
+        if ((aiSlow.held + aiSlow.dropped) % AI_SLOW_LOG_EVERY === 1) {
+            console.debug("Snake AI: inference missed its window — held at the boundary " +
+                aiSlow.held + "x, gave up " + aiSlow.dropped + "x so far.");
+        }
+    }
+    function aiHolding() {
+        if (!aiPending || aiPending.snake !== aiSnake || aiSnake.frameCount < aiPending.deadline) return false;
+        if (performance.now() - aiPending.since < AI_HOLD_MAX_MS) {
+            if (!aiPending.held) { aiPending.held = true; noteSlow("held"); }
+            return true;
+        }
+        if (!aiPending.dropped) { aiPending.dropped = true; noteSlow("dropped"); }
+        return false;
+    }
+
     function stepAi() {
         aiFood.step();
-        if (aiActive && aiReady) aiSnake.update();
+        if (aiActive && aiReady && !aiHolding()) aiSnake.update();
 
         if (aiSnake.head.collides(aiFood)) {
             aiFood.generateNew(aiSnake);
             aiSnake.appendNew();
             aiScore++;
-            if (match && match.aiLive) match.aiScore = aiScore;
+            if (match && aiInMatch) match.aiScore(aiScore);
             aiStepsSinceFood = 0;
             aiAteThisCell = true;
         }
@@ -923,17 +1005,27 @@
             else aiStepsSinceFood++;
 
             // A decision belongs to THIS cell. update() commits a turn at the
-            // boundary frame, (cell + 1) * STEPS_PER_CELL; if inference resolves
-            // after that, the observation is stale and the turn would land a
-            // cell late, so it is dropped and the next cell decides afresh.
-            const decidedFor = aiSnake;
-            const deadline = (Math.floor(aiSnake.frameCount / STEPS_PER_CELL) + 1) * STEPS_PER_CELL;
+            // boundary frame, (cell + 1) * STEPS_PER_CELL, and aiHolding()
+            // keeps the snake at that frame until the decision is in. Only one
+            // that outlived the hold cap arrives past it, and that one is
+            // dropped: its observation is stale and the turn would land a cell
+            // late. A decision for a snake that has since been reset is
+            // dropped too.
+            const pending = aiPending = {
+                snake: aiSnake,
+                deadline: (Math.floor(aiSnake.frameCount / STEPS_PER_CELL) + 1) * STEPS_PER_CELL,
+                since: performance.now(),
+            };
+            const settle = () => {
+                if (aiPending === pending) aiPending = null;
+                aiInferencePending = false;
+            };
             runAiInference()
                 .then(action => {
-                    if (decidedFor === aiSnake && aiSnake.frameCount <= deadline) applyAiAction(action);
-                    aiInferencePending = false;
+                    if (pending.snake === aiSnake && aiSnake.frameCount <= pending.deadline) applyAiAction(action);
+                    settle();
                 })
-                .catch(err => { console.error("AI inference failed:", err); aiInferencePending = false; });
+                .catch(err => { console.error("AI inference failed:", err); settle(); });
         }
 
         // The AI board restarts itself, as Tetris's and Watermelon's do.
@@ -944,7 +1036,7 @@
         drawBoard(ctxAi, aiSnake, aiFood, aiScore, aiHighScore);
         if (aiSnake.isDead && performance.now() - (aiSnake.diedAt || 0) > GAME_OVER_SHOW_MS) {
             drawGameOver(ctxAi, aiScore, aiHighScore, [
-                { text: "AI DIED", size: scl, minCss: 20, bold: true },
+                { text: "AI GAME OVER", size: scl, minCss: 20, bold: true },
                 { text: "Restarting\u2026", size: 0.45 * scl, minCss: 11, alpha: 0.75 },
             ]);
         }
@@ -968,12 +1060,12 @@
         food = new Food(6, Math.floor(TILE_COUNT / 2), 3);
         window.snake = new Snake(4, Math.floor(TILE_COUNT / 2), START_LENGTH);
         score = 0;
-        // Every restart waits for the first input, like the first game. An
-        // unfinished match is abandoned unrecorded; the AI keeps playing for
-        // show and is reset when the player starts again.
+        // Every restart waits for the first input, like the first game. A
+        // match still in play is abandoned unrecorded. One that is WAITING on
+        // the AI is left to settle (and record) while the board waits; the
+        // next game's first input cancels it if it still has not.
         matchStarted = false;
-        match = null;
-        lastResult = "";
+        if (match && match.state === "playing") match.cancel("you restarted");
         if (controlsOverlay) controlsOverlay.hidden = false;
     }
     function resetAi() {
@@ -984,8 +1076,9 @@
         aiScore = 0;
         aiStepsSinceFood = 0;
         aiAteThisCell = false;
-        // A restarted AI life is not the match's first life any more.
-        if (match) match.aiLive = false;
+        // Any new AI life is not the match's first life; startMatch() sets
+        // this back after the reset that begins a match.
+        aiInMatch = false;
     }
 
     /* Boot as soon as this (deferred) script runs, not on window "load".
@@ -1023,12 +1116,21 @@
        showed, and a catch-up frame painted up to eight times. Now a frame
        paints once, after however many steps it ran. */
     const STEP_MS = 1000 / 90;
-    let acc = 0, last = performance.now();
+    let acc = 0, aiAcc = 0, last = performance.now();
     function frame(now) {
         acc += Math.min(250, now - last);
         last = now;
         let steps = 0;
-        while (acc >= STEP_MS && steps < 8) { stepHuman(); stepAi(); acc -= STEP_MS; steps++; }
+        while (acc >= STEP_MS && steps < 8) {
+            stepHuman();
+            // AI SPEED: the AI board takes aiSpeed of its own steps per tick
+            // (0.25x: one every fourth tick; 2x: two a tick), so its snake,
+            // its food animation and its decision phase all scale together.
+            aiAcc += aiSpeed;
+            while (aiAcc >= 1) { stepAi(); aiAcc -= 1; }
+            acc -= STEP_MS;
+            steps++;
+        }
         if (steps === 8) acc = 0;
         if (steps || needsPaint) {
             drawHuman();
@@ -1053,13 +1155,32 @@
         if (matchStarted) return;
         matchStarted = true;
         if (controlsOverlay) controlsOverlay.hidden = true;
+        // The previous match, if it is still waiting on the AI's first life:
+        // the board that life is on is about to be reset.
+        if (match) match.cancel("a new game started");
+        match = null;
         if (aiReady) {
             resetAi();
             aiActive = true;
-            match = { aiScore: 0, aiLive: true };
+            aiInMatch = true;
+            if (typeof MatchResults !== "undefined") {
+                const m = match = MatchResults.begin("snake", { speed: aiSpeed });
+                // A match that settles after the card is up (the AI passing
+                // the player, or dying) is announced; the card itself re-reads
+                // match.line() every paint.
+                m.onChange(() => {
+                    // diedAt is set after die()'s own announcement, so a match
+                    // that settles AT the human's death is not read out twice.
+                    if (m === match && window.snake.isDead && window.snake.diedAt &&
+                        m.state !== "waiting") {
+                        announce(srHuman, m.line().replace("—", "-") + ".");
+                    }
+                });
+            }
         }
         updateAiStatus();
     }
+    function matchLine() { return match ? match.line() : ""; }
 
     // Not during the death flash, or the final score is never seen.
     function canRestartHuman() {
@@ -1124,10 +1245,48 @@
     canvas.addEventListener("pointercancel", () => { swipeFrom = null; });
     canvasAi.addEventListener("pointerup", e => { if (e.pointerType !== "mouse") startMatch(); });
 
-    // Restart in place, then hand the keyboard back to the board so Space does
-    // not press Restart again.
-    if (restartBtn) restartBtn.addEventListener("click", e => { resetHuman(); e.currentTarget.blur(); });
-    if (restartAiBtn) restartAiBtn.addEventListener("click", e => { resetAi(); e.currentTarget.blur(); });
+    /* Restart in place. Focus is left alone: a pointer click is blurred by
+       the delegated handler below, and a keyboard user who pressed Enter on
+       Restart stays on it rather than being dropped to the top of the page.
+       Space and Enter on a focused button never reach the game (see the
+       keydown handler), so it cannot double as a restart key there.
+
+       Restarting the AI mid-match voids the match: the AI's restart used to
+       end its first life early and freeze that score, so one click locked in
+       a win. */
+    if (restartBtn) restartBtn.addEventListener("click", resetHuman);
+    if (restartAiBtn) restartAiBtn.addEventListener("click", () => {
+        if (match) match.cancel("the AI was restarted");
+        resetAi();
+    });
+
+    /* AI SPEED, the same row as Tetris's and Watermelon's. Any speed but 1x
+       voids the match in progress (MatchResults.speed), because the result
+       would then be about the speed rather than the model.
+
+       2x is offered although inference may not keep up with it: at 2x the
+       ~44 ms between the decision phase and the boundary halves to ~22 ms,
+       which a slow machine misses. That costs speed, not play: aiHolding()
+       keeps the snake at the boundary until the decision lands, so the AI
+       runs as fast as inference allows and every turn still lands on time. */
+    const speedBox = document.getElementById("speed-ai");
+    if (speedBox) {
+        speedBox.addEventListener("click", e => {
+            const btn = e.target.closest("button[data-speed]");
+            if (!btn) return;
+            const v = parseFloat(btn.getAttribute("data-speed"));
+            if (!(v > 0) || v === aiSpeed) return;
+            aiSpeed = v;
+            aiAcc = 0;
+            for (const b of speedBox.querySelectorAll("button[data-speed]")) {
+                const on = b === btn;
+                b.classList.toggle("active", on);
+                b.setAttribute("aria-pressed", on ? "true" : "false");
+            }
+            if (match) match.speed(v);
+            announce(srAi, "AI speed " + btn.textContent + ".");
+        });
+    }
 
     /* A mouse click leaves the button focused, and a focused control owns
        Space and Enter (see the keydown handler and shared/keyscroll.js) — so

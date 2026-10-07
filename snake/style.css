@@ -126,7 +126,9 @@ body {
 
 /* ── Board ──────────────────────────────────────────────────────────────── */
 
-main {
+/* Each board is a <section class="board-main">; the page's one <main> wraps
+   the whole arena. Both boards used to be a <main> each. */
+.board-main {
     position: relative;
     width: var(--snake-board);
     height: var(--snake-board);
@@ -134,13 +136,13 @@ main {
     outline: 1px solid #2a2a2a;
 }
 
-main canvas {
+.board-main canvas {
     width: 100%;
     height: 100%;
     display: block;
 }
 
-main > button {
+.board-main > button {
     position: absolute;
     top: 30px;
     left: 30px;
@@ -161,17 +163,17 @@ main > button {
     color: var(--board-ink, #ccc);
 }
 
-main > button svg {
+.board-main > button svg {
     width: 26px;
     height: 26px;
     display: block;
 }
 
-main > button:hover {
+.board-main > button:hover {
     background-color: rgba(200, 200, 200, 0.2);
 }
 
-main > button:active {
+.board-main > button:active {
     background-color: rgba(200, 200, 200, 0.35);
 }
 
@@ -181,9 +183,9 @@ main > button:active {
    prints across the snake or the food. Both used to be a scrim over the whole
    board with the text centred on the snake's starting row.
    The #board-* ids are for specificity: shared/themes.css loads after this
-   file and gives `[data-theme] main div.controls` a full-board scrim. */
+   file and gives `[data-theme] .board-main div.controls` a full-board scrim. */
 
-#board-human main div.controls,
+#board-human .board-main div.controls,
 #board-ai .ai-status {
     position: absolute;
     left: 50%;
@@ -208,20 +210,22 @@ main > button:active {
     pointer-events: none;
 }
 
-#board-human main div.controls[hidden] {
+#board-human .board-main div.controls[hidden] {
     display: flex !important;
     opacity: 0;
     /* Transparent was not enough: screen readers still read it. */
     visibility: hidden;
 }
 
-#board-human main div.controls p {
+#board-human .board-main div.controls p {
     margin: 0;
     color: var(--board-ink, #fff);
 }
 
 #board-ai .ai-status b { font-size: 1em; font-weight: 700; }
-#board-ai .ai-status span { font-size: 0.82em; opacity: 0.75; }
+/* Never below 11px: 0.82em of the card's 11px floor came out at 9px on
+   phones. On a narrow board the detail wraps instead of shrinking. */
+#board-ai .ai-status span { font-size: max(11px, 0.82em); opacity: 0.75; }
 #board-ai .ai-status[hidden] { display: none !important; }
 
 /* Read by screen readers, not shown. */
@@ -294,4 +298,57 @@ main > button:active {
 
 /* A visible focus ring for keyboard users. The buttons set outline: none and
    had no replacement, so tabbing to Restart showed nothing at all. */
-main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+.board-main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+
+/* ── AI speed ───────────────────────────────────────────────────────────────
+   The same control as Tetris and Watermelon: a small-caps heading like the
+   model-version switcher's, then 0.25x-2x on one row, directly under the AI
+   board. Colours come from shared/themes.css ([data-theme] .speed-controls
+   button); these are the fallbacks and the geometry. */
+.speed-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+.speed-title {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim, #7d7d7d);
+}
+/* Six equal columns, never wrapping: at the smallest board (200px) each
+   button is ~30px wide, which still holds "0.25x" at 11px. */
+.speed-controls {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+    width: min(100%, 330px);
+}
+.speed-controls button {
+    /* 24px: the WCAG 2.2 minimum target size; 32px on touch, below. */
+    min-height: 24px;
+    min-width: 0;
+    padding: 3px 0;
+    font-family: inherit;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    cursor: pointer;
+    color: #888;
+    background: transparent;
+    border: 1px solid #2a2a2a;
+    border-radius: 3px;
+    transition: color 0.12s, border-color 0.12s, background-color 0.12s;
+}
+.speed-controls button:hover { color: #ddd; border-color: #444; }
+.speed-controls button.active {
+    color: #fff;
+    border-color: #777;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+.speed-controls button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
+@media (hover: none) and (pointer: coarse) {
+    .speed-controls button { min-height: 32px; }
+}

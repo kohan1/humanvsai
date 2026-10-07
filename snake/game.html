@@ -70,14 +70,15 @@
         <h1 class="sr-only">Snake — Human vs AI</h1>
 
         <div class="screen">
+        <main>
         <div id="arena">
 
             <!-- ── Human board ── -->
             <div class="board-wrap" id="board-human">
                 <div class="board-label">YOU</div>
-                <main>
+                <section class="board-main" aria-label="Your board">
                     <canvas id="canvas-human" width="480" height="480" role="img" aria-label="Your Snake board. Steer with the arrow keys or WASD."></canvas>
-                    <button id="restart-human" title="Restart">
+                    <button id="restart-human" title="Restart your game" aria-label="Restart your game">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M23 4v6h-6"></path>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
@@ -90,7 +91,7 @@
                         <p><span class="hint-keys">Press an arrow key or WASD to start</span><span class="hint-touch">Swipe on the board to start</span></p>
                     </div>
                     <p class="sr-only" id="sr-human" aria-live="polite"></p>
-                </main>
+                </section>
             </div>
 
             <!-- ── VS divider ── -->
@@ -99,9 +100,9 @@
             <!-- ── AI board ── -->
             <div class="board-wrap" id="board-ai">
                 <div class="board-label">AI</div>
-                <main>
+                <section class="board-main" aria-label="AI board">
                     <canvas id="canvas-ai" width="480" height="480" role="img" aria-label="The AI's Snake board."></canvas>
-                    <button id="restart-ai" title="Restart">
+                    <button id="restart-ai" title="Restart the AI" aria-label="Restart the AI">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M23 4v6h-6"></path>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
@@ -109,10 +110,25 @@
                     </button>
                     <div class="ai-status" id="ai-status" hidden><b></b><span></span></div>
                     <p class="sr-only" id="sr-ai" aria-live="polite"></p>
-                </main>
+                </section>
+                <!-- AI speed, the same row as Tetris and Watermelon. Scales how
+                     many simulation steps the AI board takes per tick; any
+                     speed but 1x leaves the match unscored. -->
+                <div class="speed-block">
+                    <div class="speed-title" id="speed-title-ai">AI speed</div>
+                    <div class="speed-controls" id="speed-ai" role="group" aria-labelledby="speed-title-ai">
+                        <button type="button" data-speed="0.25" aria-pressed="false">0.25x</button>
+                        <button type="button" data-speed="0.5" aria-pressed="false">0.5x</button>
+                        <button type="button" data-speed="0.75" aria-pressed="false">0.75x</button>
+                        <button type="button" data-speed="1" aria-pressed="true" class="active">1x</button>
+                        <button type="button" data-speed="1.5" aria-pressed="false">1.5x</button>
+                        <button type="button" data-speed="2" aria-pressed="false">2x</button>
+                    </div>
+                </div>
             </div>
 
         </div>
+        </main>
         </div>
     <!-- The inspector lives below the fold; the scroll cue that
          points at it is created by inspector.js. -->
