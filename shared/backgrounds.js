@@ -140,10 +140,14 @@ function bgHarness(cvs, setup, opts) {
     window.addEventListener('resize', resize);
     resize();
 
-    const MIN_DT = opts && opts.maxFps ? 1000 / opts.maxFps - 2 : 0;
+    // bgPaceMs lives in mesh.js (it also paces the lattice); fall back to the
+    // plain cap if that file did not load.
+    const pace = () => typeof bgPaceMs === 'function' ? bgPaceMs(opts)
+        : (opts && opts.maxFps ? 1000 / opts.maxFps - 2 : 0);
     let last = -Infinity;
     function frame(now) {
-        const paint = !MIN_DT || now - last >= MIN_DT;
+        const minDt = pace();
+        const paint = !minDt || now - last >= minDt;
         if (paint) last = now;
         api.draw(now, paint);
         // Only painted frames spend the reduced-motion budget — see mesh.js.
@@ -505,23 +509,23 @@ function initConstellation(cvs, opts) {
  *
  * The target positions are sampled from the heading rendered to an offscreen
  * canvas, so it adapts to whatever each page's title actually says instead of
- * being hardcoded. A page with no visible heading — or a screen too narrow to
- * fit the echo — gets a drifting field instead of rendering nothing. */
+ * being hardcoded. They outline the heading's own letters, in register with
+ * them (see sampleTargets). A page with no visible heading — or a screen
+ * narrower than NARROW — gets a drifting field instead of rendering nothing. */
 function initDispersion(cvs, opts) {
     const o = opts || {};
     const INTENSITY = o.intensity === undefined ? 1 : o.intensity;
     const PUSH = 130;
     const SPRING = 0.045;
     const DAMP = 0.9;
-    const GAP = 8;              // clearance kept from the text above and below
-    const MIN_ECHO = 1.6;       // smallest ghost/heading size ratio worth drawing
+    const GAP = 6;              // clearance kept from the text above and below
     const NARROW = 600;         // below this width, no ghost at all
 
     return bgHarness(cvs, (ctx, st) => {
         let parts = [];
         let el = null;          // the heading being traced, if any
         let ax = 0, ay = 0;     // where the ghost is anchored right now
-        let half = 0;           // half the ghost's ink height
+        let half = 0;           // how far the halo reaches above/below its centre
         let fade = 1, cleared = false;
 
         /* A heading that is actually on the page. The game pages keep an h1
@@ -557,77 +561,143 @@ function initDispersion(cvs, opts) {
                 let s = dir < 0 ? n.previousElementSibling : n.nextElementSibling;
                 while (s) {
                     const r = s.getBoundingClientRect();
-                    if (r.height > 0 && r.width > 0) return r;
+                    /* Out-of-flow boxes are not "the text above": on
+                       index.html the previous sibling is this very canvas,
+                       fixed over the whole viewport, and treating it as a
+                       neighbour left no room at all, so the landing page
+                       never got its ghost. */
+                    const pos = getComputedStyle(s).position;
+                    if (r.height > 0 && r.width > 0 && s.tagName !== 'CANVAS' &&
+                        pos !== 'fixed' && pos !== 'absolute') return r;
                     s = dir < 0 ? s.previousElementSibling : s.nextElementSibling;
                 }
             }
             return null;
         }
 
-        /* Sample the ghost as offsets from its own centre, so it can follow
-           the heading when the page scrolls instead of staying pinned to
-           where the heading was at load.
+        /* Sample the ghost as offsets from the heading's centre, so it can
+           follow the heading when the page scrolls instead of staying pinned
+           to where the heading was at load.
 
-           SIZE. Bigger than the heading, so the title reads as sitting inside
-           an echo of itself: at the heading's own size the particles land
-           under the solid letters and vanish, and at ~1.3x they read as a
-           misregistered print. But it is bounded on every side — its height
-           by the text above and below the heading, its width by the viewport
-           minus gutters — because a fixed 150px trace crossed select.html's
-           eyebrow and ran off both edges of a phone. When those bounds leave
-           no room for a clearly bigger echo, there is no ghost. */
+           REGISTRATION. The ghost used to be a separate wordmark ~1.9x the
+           heading's size, in a different font, centred on it — so the real
+           title landed on different letters of the ghost ("human vs ai" over
+           the ghost's "man vs"), which read as a misprint, and on inside.html
+           it ran past the content margin. Now every glyph is drawn exactly
+           where the browser drew it: each character's own box comes from a
+           Range, and it is rendered in that text's computed font, size,
+           weight, style and case. The particles then form a HALO — a ring
+           RING px wide, starting INSET px outside each letter's edge — so the
+           echo hugs the real letters instead of hiding under them (particles
+           at the heading's own size and position would just vanish beneath
+           the solid ink). A cursor still scatters them; they spring back to
+           the outline.
+
+           It stays clear of the text above and below (select.html's eyebrow
+           and card grid): any halo point that would cross a neighbour is
+           dropped rather than the whole ghost. */
+        function glyphBoxes(h) {
+            const out = [];
+            const walker = document.createTreeWalker(h, NodeFilter.SHOW_TEXT);
+            const range = document.createRange();
+            for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                const cs = getComputedStyle(n.parentElement);
+                if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+                const font = [cs.fontStyle, cs.fontVariant === 'small-caps' ? 'small-caps' : '',
+                              cs.fontWeight, cs.fontSize, cs.fontFamily].filter(Boolean).join(' ');
+                const tt = cs.textTransform;
+                const txt = n.textContent;
+                for (let i = 0; i < txt.length; i++) {
+                    let ch = txt[i];
+                    if (/\s/.test(ch)) continue;
+                    range.setStart(n, i); range.setEnd(n, i + 1);
+                    const r = range.getBoundingClientRect();
+                    if (!r.width || !r.height) continue;
+                    if (tt === 'uppercase') ch = ch.toUpperCase();
+                    else if (tt === 'lowercase') ch = ch.toLowerCase();
+                    out.push({ ch, font, r });
+                }
+            }
+            return out;
+        }
+
         function sampleTargets() {
             el = st.W >= NARROW ? findHeading() : null;
             if (!el) return [];
-            const text = el.textContent.trim().replace(/\s+/g, ' ').slice(0, 22);
-            if (!text) return [];
+            const glyphs = glyphBoxes(el);
+            if (!glyphs.length) return [];
 
             const box = textBox(el);
-            const cy = box.top + box.height / 2;
-            const headSize = parseFloat(getComputedStyle(el).fontSize) || 0;
+            const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+            const headSize = parseFloat(getComputedStyle(el).fontSize) || 40;
+            const INSET = Math.max(2, Math.round(headSize * 0.05));
+            const RING = Math.max(3, Math.round(headSize * 0.05));
+            const PAD = INSET + RING + 2;
 
-            const FONT = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+            // An offscreen canvas covering the glyphs' union box plus the halo.
+            let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
+            for (const g of glyphs) {
+                L = Math.min(L, g.r.left); T = Math.min(T, g.r.top);
+                R = Math.max(R, g.r.right); B = Math.max(B, g.r.bottom);
+            }
+            const ox = Math.floor(L) - PAD, oy = Math.floor(T) - PAD;
+            const w = Math.ceil(R) + PAD - ox, h = Math.ceil(B) + PAD - oy;
+            if (!(w > 0 && h > 0) || w * h > 4e6) return [];
             const off = document.createElement('canvas');
+            off.width = w; off.height = h;
             const g = off.getContext('2d');
-            const S0 = 100;
-            g.font = '600 ' + S0 + 'px ' + FONT;
-            const m0 = g.measureText(text);
-            const inkW0 = (m0.actualBoundingBoxLeft || 0) + (m0.actualBoundingBoxRight || m0.width);
-            const inkH0 = (m0.actualBoundingBoxAscent || S0 * 0.72) + (m0.actualBoundingBoxDescent || 0);
-            if (!(inkW0 > 0 && inkH0 > 0)) return [];
+            g.textBaseline = 'alphabetic';
+            g.lineJoin = 'round';
+
+            /* Each character at its own box. The baseline sits where the
+               browser puts it inside an inline box: the font's ascent below
+               the top of the content area, which is centred in the box. */
+            const draw = (stroke) => {
+                for (const q of glyphs) {
+                    g.font = q.font;
+                    const m = g.measureText(q.ch);
+                    const asc = m.fontBoundingBoxAscent || parseFloat(q.font) * 0.8;
+                    const desc = m.fontBoundingBoxDescent || parseFloat(q.font) * 0.2;
+                    const x = q.r.left - ox;
+                    const y = q.r.top - oy + (q.r.height - asc - desc) / 2 + asc;
+                    if (stroke) g.strokeText(q.ch, x, y);
+                    g.fillText(q.ch, x, y);
+                }
+            };
+            // The letters grown by INSET + RING...
+            g.fillStyle = g.strokeStyle = '#fff';
+            g.lineWidth = 2 * (INSET + RING);
+            draw(true);
+            // ...minus the letters grown by INSET, leaves the ring.
+            g.globalCompositeOperation = 'destination-out';
+            g.lineWidth = 2 * INSET;
+            draw(true);
+            g.globalCompositeOperation = 'source-over';
 
             const above = neighbour(el, -1), below = neighbour(el, 1);
-            const top = above ? above.bottom + GAP : 0;
-            const bottom = below ? below.top - GAP : st.H;
-            const room = 2 * Math.max(0, Math.min(cy - top, bottom - cy));
-            const maxW = Math.min(st.W - 64, 1100);
-            const size = Math.min(150, S0 * maxW / inkW0, S0 * room / inkH0);
-            if (headSize && size < headSize * MIN_ECHO) return [];
-
-            g.font = '600 ' + size + 'px ' + FONT;
-            const m = g.measureText(text);
-            const left = m.actualBoundingBoxLeft || 0;
-            const asc = m.actualBoundingBoxAscent || size * 0.72;
-            const w = off.width = Math.ceil(left + (m.actualBoundingBoxRight || m.width)) + 4;
-            const h = off.height = Math.ceil(asc + (m.actualBoundingBoxDescent || 0)) + 4;
-            g.font = '600 ' + size + 'px ' + FONT;     // resizing reset it
-            g.fillStyle = '#fff';
-            g.textBaseline = 'alphabetic';
-            g.fillText(text, left + 2, asc + 2);
+            const minY = above ? above.bottom + GAP : -Infinity;
+            const maxY = below ? below.top - GAP : Infinity;
+            const minX = 8, maxX = st.W - 8;
 
             const data = g.getImageData(0, 0, w, h).data;
-            /* Denser for a smaller ghost: at ~80px a stroke is only ~9px wide,
-               and the default 4px step left it two dots across. */
-            const base = size < 110 ? 3 : 4;
-            const step = Math.max(2, Math.round(base / Math.max(0.5, INTENSITY)));
+            /* The sampling step must stay finer than the ring, or a thin
+               ring aliases into a dotted rectangle (inside.html's low
+               intensity used to stretch it to 6px over a 4px ring). Intensity
+               already scales the particles' alpha. */
+            const step = RING >= 6 ? 3 : 2;
             const pts = [];
+            let top = Infinity, bottom = -Infinity;
             for (let y = 0; y < h; y += step) {
                 for (let x = 0; x < w; x += step) {
-                    if (data[(y * w + x) * 4 + 3] > 128) pts.push({ x: x - w / 2, y: y - h / 2 });
+                    if (data[(y * w + x) * 4 + 3] <= 128) continue;
+                    const px = ox + x, py = oy + y;
+                    if (py < minY || py > maxY || px < minX || px > maxX) continue;
+                    pts.push({ x: px - cx, y: py - cy });
+                    top = Math.min(top, py); bottom = Math.max(bottom, py);
                 }
             }
-            half = h / 2;
-            ax = box.left + box.width / 2;
+            half = pts.length ? Math.max(cy - top, bottom - cy) : 0;
+            ax = cx;
             ay = cy;
             return pts;
         }
@@ -654,7 +724,15 @@ function initDispersion(cvs, opts) {
             return !el || (ay + half > 0 && ay - half < st.H);
         }
 
-        return {
+        /* The glyphs are measured from the live layout, so a web font that
+           arrives after the first sample would leave the halo tracing the
+           fallback font's letters. Re-sample once fonts settle. */
+        let gone = false;
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => { if (!gone && el) api.resize(); });
+        }
+
+        const api = {
             resize() {
                 const pts = sampleTargets();
                 if (!pts.length) {
@@ -672,7 +750,7 @@ function initDispersion(cvs, opts) {
                     vx: 0, vy: 0,
                 }));
             },
-            destroy() { window.removeEventListener('scroll', track); },
+            destroy() { gone = true; window.removeEventListener('scroll', track); },
             draw(now, paint) {
                 // Also catches the heading moving WITHOUT a scroll — a web
                 // font arriving, or content loading in above it.
@@ -716,5 +794,6 @@ function initDispersion(cvs, opts) {
                 bgFlush(ctx, buckets, rgb, maxA, false);
             },
         };
+        return api;
     }, o);
 }

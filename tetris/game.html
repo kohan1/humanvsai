@@ -18,8 +18,36 @@
              asks for it once InferenceSession.create() has the model bytes,
              so the two used to download one after the other. Keep the
              version in step with ort.env.wasm.wasmPaths in game.js. -->
-        <link rel="preload" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" as="fetch" crossorigin />
         <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
+        <link rel="modulepreload" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.mjs" />
+        <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" />
+        <script>
+        // The model itself, over HTTP only. Under file:// fetch() cannot read
+        // it (model-source.js uses the embedded base64 there), so a static
+        // <link> would just log an error. crossorigin matches fetch()'s default
+        // credentials mode, or the preload is not reused and downloads twice.
+        // It preloads the model version the visitor last chose (the checkpoint
+        // switcher records its file), so a returning visitor downloads one
+        // model, not the shipped one and then theirs; a choice with no file
+        // recorded yet preloads nothing rather than the wrong one.
+        // fetchpriority low: it is 9-34 MB and must not hold up the page's
+        // own scripts, which it delayed by ~1 s when they shared the link.
+        (function () {
+            if (location.protocol === "file:") return;
+            var f = "tetris_ai.onnx";
+            try {
+                var c = JSON.parse(localStorage.getItem("humanvsai.checkpoint") || "{}").tetris;
+                var cf = JSON.parse(localStorage.getItem("humanvsai.checkpointFile") || "{}").tetris;
+                if (/^(checkpoints\/)?[\w-]+\.onnx$/.test(cf || "")) f = cf;
+                else if (c) return;
+            } catch (e) { /* storage blocked: the shipped model */ }
+            var p = document.createElement("link");
+            p.rel = "preload"; p.as = "fetch"; p.crossOrigin = "anonymous";
+            p.setAttribute("fetchpriority", "low");
+            p.href = f;
+            document.head.appendChild(p);
+        }());
+        </script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>
         <script src="../shared/results.js" defer></script>

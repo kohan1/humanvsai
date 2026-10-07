@@ -28,12 +28,27 @@
         // it (model-source.js uses the embedded base64 there), so a static
         // <link> would just log an error. crossorigin matches fetch()'s default
         // credentials mode, or the preload is not reused and downloads twice.
-        if (location.protocol !== "file:") {
-            var _p = document.createElement("link");
-            _p.rel = "preload"; _p.as = "fetch"; _p.crossOrigin = "anonymous";
-            _p.href = "snake_ai.onnx";
-            document.head.appendChild(_p);
-        }
+        // It preloads the model version the visitor last chose (the checkpoint
+        // switcher records its file), so a returning visitor downloads one
+        // model, not the shipped one and then theirs; a choice with no file
+        // recorded yet preloads nothing rather than the wrong one.
+        // fetchpriority low: it is 9-34 MB and must not hold up the page's
+        // own scripts, which it delayed by ~1 s when they shared the link.
+        (function () {
+            if (location.protocol === "file:") return;
+            var f = "snake_ai.onnx";
+            try {
+                var c = JSON.parse(localStorage.getItem("humanvsai.checkpoint") || "{}").snake;
+                var cf = JSON.parse(localStorage.getItem("humanvsai.checkpointFile") || "{}").snake;
+                if (/^(checkpoints\/)?[\w-]+\.onnx$/.test(cf || "")) f = cf;
+                else if (c) return;
+            } catch (e) { /* storage blocked: the shipped model */ }
+            var p = document.createElement("link");
+            p.rel = "preload"; p.as = "fetch"; p.crossOrigin = "anonymous";
+            p.setAttribute("fetchpriority", "low");
+            p.href = f;
+            document.head.appendChild(p);
+        }());
         </script>
         <script src="../shared/model-source.js" defer></script>
         <script src="../shared/settings.js" defer></script>

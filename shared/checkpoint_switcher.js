@@ -41,12 +41,23 @@
         } catch (e) { return null; }
     }
 
-    function writeChoice(game, id) {
+    /* The chosen rung's FILE goes under a second key, for the model preload
+     * in each game.html: that runs in <head>, before this manifest has
+     * loaded, and needs a URL rather than an id. model-source.js keeps it in
+     * step too, for choices saved before it existed. */
+    var FILE_KEY = 'humanvsai.checkpointFile';
+
+    function writeChoice(game, id, file) {
         try {
             var raw = localStorage.getItem(KEY);
             var all = raw ? JSON.parse(raw) : {};
             all[game] = id;
             localStorage.setItem(KEY, JSON.stringify(all));
+            if (file) {
+                var files = JSON.parse(localStorage.getItem(FILE_KEY) || '{}') || {};
+                files[game] = file;
+                localStorage.setItem(FILE_KEY, JSON.stringify(files));
+            }
         } catch (e) { /* private browsing — the choice just will not persist */ }
     }
 
@@ -259,7 +270,7 @@
 
             if (sessions[id]) {
                 active = id;
-                writeChoice(game, id);
+                writeChoice(game, id, r.file);
                 paint(id);
                 await opts.onSession(sessions[id], r);
                 retire(previous);
@@ -281,7 +292,7 @@
                     executionProviders: ['wasm'],
                 });
                 active = id;
-                writeChoice(game, id);
+                writeChoice(game, id, r.file);
                 paint(id);
                 await opts.onSession(sessions[id], r);
                 retire(previous);
@@ -299,13 +310,33 @@
 
         (opts.container || document.body).append(root);
 
-        /* Start on the shipped model, then restore a remembered choice — but
-         * asynchronously, so a remembered weak rung never delays first paint
-         * with a 34 MB fetch. */
-        active = top.id;
-        paint(top.id);
+        /* Start on whichever rung the page actually loaded. model-source.js
+         * honours a remembered choice BEFORE downloading anything, so a
+         * returning visitor who picked an earlier version gets that one model
+         * and nothing else — this used to start on the shipped model and then
+         * switch, which downloaded both (68 MB on Snake) and spent the second
+         * download playing the wrong opponent.
+         *
+         * outcome() is null only when model-source did not choose (file://,
+         * where a rung cannot be fetched, or an older model-source.js); then
+         * the remembered choice is restored afterwards, as before. When it
+         * tried the saved rung and had to fall back, say so instead of
+         * retrying the same failing download. */
+        var ms = global.modelSource && global.modelSource.outcome &&
+                 global.modelSource.outcome(game);
+        var start = ms && ms.got && buttons[ms.got] ? ms.got : top.id;
+        if (start !== top.id) {
+            delete sessions[top.id];
+            sessions[start] = opts.initial;
+        }
+        active = start;
+        paint(start, ms && ms.wanted !== ms.got
+            ? 'your saved version failed to load — playing the shipped model' : null);
+        var startRung = rungs.filter(function (x) { return x.id === start; })[0];
+        // Lets the game drop state tied to the shipped model (its critic).
+        if (start !== top.id && opts.initial) opts.onSession(opts.initial, startRung);
         var saved = readChoice(game);
-        if (saved && saved !== top.id && buttons[saved]) {
+        if (!ms && saved && saved !== top.id && buttons[saved]) {
             setTimeout(function () { select(saved); }, 0);
         }
 

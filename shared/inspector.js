@@ -247,25 +247,74 @@ function createInspector(config) {
        breakpoints in inspector.css only approximate this: each game's column
        is a different height and wraps at different widths, so Watermelon still
        collided at 801-950px tall. Testing the actual boxes is exact and cheap
-       (a few dozen leaf elements, only on resize). */
+       (a few dozen leaf elements).
+
+       WHEN it runs matters as much as how. Checking only on resize/load/first
+       frame missed everything that arrives later: Tetris's checkpoint note is
+       mounted once the model has loaded, and Watermelon's canvases are created
+       by p5 after `load`, so at 1440x900 and 1536x864 the cue sat on the note
+       and on the bottom 26px of both boards. So the check also re-runs from a
+       ResizeObserver and a MutationObserver on the arena, coalesced to one
+       per animation frame.
+
+       And "not overlapping" is not enough: text 2px under a board still reads
+       as touching it. The cue needs CLEARANCE px of empty space all round. */
     const arena = document.getElementById('arena');
+    const CLEARANCE = 12;
     const checkOverlap = () => {
         if (!arena) return;
         cue.classList.remove('is-blocked');
         const c = cue.getBoundingClientRect();
         if (!c.height) return;                 // hidden by a media query
+        const top = c.top - CLEARANCE, bottom = c.bottom + CLEARANCE;
+        const left = c.left - CLEARANCE, right = c.right + CLEARANCE;
         let hit = false;
         for (const el of arena.querySelectorAll('*')) {
             if (el.firstElementChild && el.tagName !== 'BUTTON') continue;
             const r = el.getBoundingClientRect();
-            if (r.width && r.height && r.bottom > c.top && r.top < c.bottom &&
-                r.right > c.left && r.left < c.right) { hit = true; break; }
+            if (r.width && r.height && r.bottom > top && r.top < bottom &&
+                r.right > left && r.left < right) { hit = true; break; }
         }
         cue.classList.toggle('is-blocked', hit);
     };
-    window.addEventListener('resize', checkOverlap);
-    window.addEventListener('load', checkOverlap);
-    requestAnimationFrame(checkOverlap);
+    let overlapQueued = false;
+    const queueOverlap = () => {
+        // Once the reader has scrolled the cue is gone for good; stop paying
+        // for layout reads. (scrollY can return to 0, hence re-checked on scroll.)
+        if (overlapQueued || window.scrollY > 60) return;
+        overlapQueued = true;
+        requestAnimationFrame(() => { overlapQueued = false; checkOverlap(); });
+    };
+    window.addEventListener('resize', queueOverlap);
+    window.addEventListener('load', queueOverlap);
+    // The arena moves under the fixed cue for the first 60px of scroll.
+    window.addEventListener('scroll', queueOverlap, { passive: true });
+    if (arena) {
+        if ('ResizeObserver' in window) {
+            /* The arena itself, plus its boards: a board can grow (a note
+               wrapping, a canvas arriving) without the centred arena changing
+               size, and a layout change that MOVES boxes without resizing any
+               of them always resizes one of these. */
+            const ro = new ResizeObserver(queueOverlap);
+            const watch = () => {
+                ro.observe(arena);
+                for (const el of arena.children) ro.observe(el);
+                for (const el of arena.querySelectorAll('canvas, .ckpt, .board-controls'))
+                    ro.observe(el);
+            };
+            watch();
+            if ('MutationObserver' in window) {
+                new MutationObserver((records) => {
+                    // childList: new boxes (canvases, the switcher) — also
+                    // worth resize-watching. Attributes: shown/hidden overlays.
+                    if (records.some(r => r.type === 'childList')) watch();
+                    queueOverlap();
+                }).observe(arena, { childList: true, subtree: true,
+                                    attributes: true, attributeFilter: ['class', 'hidden'] });
+            }
+        }
+    }
+    queueOverlap();
 
     /* Only paint while the panel is actually on screen. rootMargin gives it a
        screen of warning so it is already populated by the time it scrolls in,

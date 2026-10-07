@@ -716,8 +716,10 @@ drew). Snake's head is drawn in code now; `snake/images/head.png` and
 `stroke()` calls per frame, each with a fresh `rgba()` string: 3.5-5.9 ms of
 script and ~20 MB of garbage per frame-second, ~12x Snake's own loop. It now
 draws each edge once in ~63 alpha buckets (~0.9 ms); `backgrounds.js` buckets
-particles into 16 alpha paths. Game pages pass `maxFps: 30` (paint cap; motion
-still steps every frame). Changing difficulty in one tab used to restart the
+particles into 16 alpha paths. Game pages pass `maxFps: 30`; motion is paced by elapsed time
+so skipped frames cost nothing, and while the visitor is playing (8 s after
+any key/pointer, or `<html class=playing>`) the background drops to
+`busyFps` (15). Landing, picker and Inside are never throttled. Changing difficulty in one tab used to restart the
 background in every other tab via the cross-tab listener.
 
 **Use `ort.wasm.min.js`, not `ort.min.js`.** The latter pulls the 27.8 MB JSEP
@@ -732,6 +734,20 @@ the fast path. Halving downloads further: `tools/fp16_weights.py <game>` stores 
 as fp16 with a Cast to fp32 (operators unchanged) and gates on playing the same
 seeded games; verified on stub models only (34->17 MB, 100% identical
 decisions) — run it on the real models before relying on it.
+
+**Inference runs in a Web Worker** (`shared/ort-worker.js`): `modelSource()`
+replaces `ort.InferenceSession.create` once with a worker-backed stand-in
+(same `run`/`inputNames`/`outputNames`/`release`), so no game code changed. It
+falls back to the main thread under file://, on a missing worker file, or on
+any worker failure; `modelSource.backend` says which. At 4x CPU throttle Snake
+went from 27-29 to 31-40 fps with less than half the long-task time.
+`deploy_pages.sh` aborts if the worker file is missing, because the fallback
+would otherwise hide it.
+
+**A returning visitor loads the model version they chose**, not the shipped
+one then theirs (68 MB and 30 s against the wrong opponent). The switcher
+writes `humanvsai.checkpointFile` = {game: file}; the preload block and
+`modelSource()` read it and fall back to the shipped model on failure.
 
 **Focus steals Space.** A clicked button keeps focus and Space then activates
 it: Tetris's speed buttons swallowed hard-drop. Pointer clicks on board

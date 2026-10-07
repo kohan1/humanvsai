@@ -124,6 +124,10 @@ done
 for f in snake/snake_ai.onnx tetris/tetris_ai.onnx watermelon/watermelon_ai.onnx; do
     [ -s "$STAGE/$f" ] || { echo "ABORT: $f missing or empty in the staged site"; exit 1; }
 done
+# model-source.js runs inference in this worker and falls back to the main
+# thread without it — silently, so a missing file would only show up as the
+# games getting janky again. Check for it instead.
+[ -s "$STAGE/shared/ort-worker.js" ] || { echo "ABORT: shared/ort-worker.js missing in the staged site"; exit 1; }
 if grep -rq '<script src="model_data\.js"' "$STAGE"/*/game.html; then
     echo "ABORT: a deployed game.html still loads model_data.js as a script"
     exit 1

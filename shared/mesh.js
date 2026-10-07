@@ -11,9 +11,10 @@
  * 1; inside.html sits behind dense charts and runs lower, so the data stays
  * legible.
  *
- * opts.maxFps caps how often the background PAINTS (motion keeps its speed).
+ * opts.maxFps caps the background's frame rate (motion keeps its speed).
  * The game pages should pass 30: there the background shares the main thread
- * with physics, rendering and WASM inference, and is behind the boards.
+ * with physics, rendering and WASM inference, and is behind the boards. While
+ * a game is being played it drops further, to opts.busyFps — see bgPaceMs.
  */
 /* Which background a theme draws. Each one reacts to the cursor, because that
  * is the whole point — the page should feel like a surface being disturbed,
@@ -28,6 +29,33 @@
  * re-dispatches when that changes, so switching theme swaps the renderer
  * without a reload.
  */
+/* How long to leave between background frames, in ms (0 = every frame).
+ *
+ * opts.maxFps is the cap a page asks for (the game pages pass 30). On top of
+ * that, while someone is actually PLAYING the background drops to
+ * opts.busyFps (default 15): the boards cover the middle of the screen, the
+ * player is looking at them, and the background shares the main thread with
+ * the game loop, the physics and the AI. "Playing" is detected rather than
+ * reported, so no game has to call anything: a key or a press anywhere in the
+ * last BUSY_MS, or a `playing` class on <html> if a page ever wants to say so
+ * itself. Pages without maxFps (landing, picker, Inside) are never throttled.
+ * Every renderer's motion is paced by the clock or integrated per frame, so
+ * the frame rate changes how smooth the background is, never how fast. */
+const BG_BUSY_MS = 8000;
+let bgLastInput = -Infinity;
+(function () {
+    const note = () => { bgLastInput = performance.now(); };
+    window.addEventListener('keydown', note, true);
+    window.addEventListener('pointerdown', note, true);
+})();
+function bgPaceMs(o) {
+    if (!o || !o.maxFps) return 0;
+    const busy = performance.now() - bgLastInput < BG_BUSY_MS ||
+                 document.documentElement.classList.contains('playing');
+    const fps = busy ? Math.min(o.maxFps, o.busyFps || 15) : o.maxFps;
+    return 1000 / fps - 2;
+}
+
 function initMesh(canvasId, opts) {
     const cvs = document.getElementById(canvasId);
     if (!cvs) return;
@@ -263,9 +291,13 @@ function initLattice(cvs, opts) {
         return (w1 * 0.45 + w2 * 0.35 + w3 * 0.2) * WAVE_AMP;
     }
 
-    function update() {
-        driftT += 0.00028;
-        waveT  += 0.0062;
+    /* k is how many 60 Hz frames' worth of motion to advance. Paced by the
+     * clock rather than by calls, so capping the frame rate (or a 120 Hz
+     * screen) changes how often the mesh is stepped, not how fast it moves. */
+    function update(k) {
+        driftT += 0.00028 * k;
+        waveT  += 0.0062 * k;
+        const ease = 1 - Math.pow(1 - RETURN_SPEED, k);
         for (let i = 0; i < pts.length; i++) {
             const p = pts[i];
             const wob = waveDisplacement(p.bx, p.by);
@@ -278,8 +310,8 @@ function initLattice(cvs, opts) {
                 const s = (1 - dist / CURSOR_RADIUS) * REPEL_FORCE * CURSOR_RADIUS;
                 rx = (dx / dist) * s; ry = (dy / dist) * s;
             }
-            p.cx += (tx + rx - p.cx) * RETURN_SPEED;
-            p.cy += (ty + ry - p.cy) * RETURN_SPEED;
+            p.cx += (tx + rx - p.cx) * ease;
+            p.cy += (ty + ry - p.cy) * ease;
             p.wob = wob;
         }
     }
@@ -363,23 +395,29 @@ function initLattice(cvs, opts) {
         nodePaths = new Array(NQ + 1);
     }
 
-    /* opts.maxFps caps the PAINT rate. The motion is slow drift, so 30 fps
-     * is indistinguishable from 60 behind a game, and halves the cost on the
-     * thread the game's physics and inference share. Unset means every frame.
-     * update() still runs every frame: it advances a fixed amount per call,
-     * so skipping it would slow the wave down instead of thinning frames. */
-    const MIN_DT = o.maxFps ? 1000 / o.maxFps - 2 : 0;
+    /* opts.maxFps caps the frame rate — motion AND paint. The motion is slow
+     * drift, so 30 fps is indistinguishable from 60 behind a game, and halves
+     * the cost on the thread the game's physics and inference share. Unset
+     * means every frame. A skipped frame now does nothing at all: update()
+     * used to run on every frame regardless, because it advanced a fixed
+     * amount per call, so the capped pages still paid for the wave on
+     * frames they never drew. It is time-scaled now (see update), so the
+     * speed is unchanged. bgPaceMs() also slows it further while a game is
+     * being played. */
     let lastDraw = -Infinity;
 
     function draw(now) {
-        update();
-        if (MIN_DT && now - lastDraw < MIN_DT) {
+        const minDt = bgPaceMs(o);
+        if (minDt && now - lastDraw < minDt) {
             /* A skipped frame costs nothing from the reduced-motion budget:
                that budget counts frames the visitor SEES, and charging the
                skipped ones too halved it on every page that sets maxFps. */
             raf = budget > 0 ? requestAnimationFrame(draw) : 0;
             return;
         }
+        // Clamped, so a frame after a hidden tab or a long stall resumes
+        // the drift instead of jumping it.
+        update(lastDraw < 0 ? 1 : Math.min(4, Math.max(0, (now - lastDraw) / (1000 / 60))));
         lastDraw = now;
         ctx.clearRect(0, 0, W, H);
         for (let r = 0; r < gridRows; r++) {
