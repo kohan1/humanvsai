@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="Play a Suika-style fruit-merging game against a neural network trained with reinforcement learning." />
+        <meta name="theme-color" content="#080808" />
+        <title>Watermelon Game — Human vs AI</title>
+        <link rel="shortcut icon" href="assets/watermelon.png" />
+        <link rel="stylesheet" href="../shared/inspector.css?v=f4c9a47" />
+        <link rel="stylesheet" href="../shared/checkpoints.css?v=f4c9a47" />
+        <link rel="stylesheet" href="style.css?v=f4c9a47" />
+
+        <!-- Physics stack. Order matters: planck must load before the
+             physics wrapper, and both before the game. -->
+        <script src="lib/p5.min.js?v=f4c9a47" defer></script>
+        <script src="lib/planck.min.js?v=f4c9a47" defer></script>
+        <script src="lib/physics.min.js?v=f4c9a47" defer></script>
+
+        <!-- Assets as base64 data URIs. game.js reads WATERMELON_IMAGES when it
+             runs, so this must come BEFORE it; deferred scripts execute in
+             document order, so both being deferred is fine. Without this,
+             images fail to load under file:// — see embed_assets.py. -->
+        <script src="image_data.js?v=f4c9a47" defer></script>
+
+        <!-- AI opponent. The model is not in the markup: shared/model-source.js
+             fetches watermelon_ai.onnx over HTTP and injects the base64
+             model_data.js only under file://.
+
+             ort.wasm.min.js, not ort.min.js: the game only ever asks for the
+             "wasm" execution provider, and ort.min.js also carries WebGL and
+             WebGPU — 368 KB of script instead of 50 KB, and it pulls the
+             27.8 MB jsep .wasm where this one pulls the 14.0 MB plain one.
+             Same version, same API.
+
+             The runtime's two files and the model are preloaded so all three
+             download in parallel. Otherwise the .wasm is only requested once
+             InferenceSession.create() runs, i.e. after the model has arrived:
+             measured locally, the model finished at 0.63 s and the runtime
+             was then fetched serially until 1.69 s. -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.wasm.min.js" defer></script>
+        <link rel="modulepreload" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.mjs" />
+        <link rel="preload" as="fetch" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort-wasm-simd-threaded.wasm" />
+        <script>
+        // The model itself, over HTTP only. Under file:// fetch() cannot read
+        // it (model-source.js uses the embedded base64 there), so a static
+        // <link> would just log an error. crossorigin matches fetch()'s default
+        // credentials mode, or the preload is not reused and downloads twice.
+        // It preloads the model version the visitor last chose (the checkpoint
+        // switcher records its file), so a returning visitor downloads one
+        // model, not the shipped one and then theirs; a choice with no file
+        // recorded yet preloads nothing rather than the wrong one.
+        // fetchpriority low: it is 9-34 MB and must not hold up the page's
+        // own scripts, which it delayed by ~1 s when they shared the link.
+        (function () {
+            if (location.protocol === "file:") return;
+            var f = "watermelon_ai.onnx";
+            try {
+                var c = JSON.parse(localStorage.getItem("humanvsai.checkpoint") || "{}").watermelon;
+                var cf = JSON.parse(localStorage.getItem("humanvsai.checkpointFile") || "{}").watermelon;
+                if (/^(checkpoints\/)?[\w-]+\.onnx$/.test(cf || "")) f = cf;
+                else if (c) return;
+            } catch (e) { /* storage blocked: the shipped model */ }
+            var p = document.createElement("link");
+            p.rel = "preload"; p.as = "fetch"; p.crossOrigin = "anonymous";
+            p.setAttribute("fetchpriority", "low");
+            p.href = f;
+            document.head.appendChild(p);
+        }());
+        </script>
+        <script src="../shared/model-source.js?v=f4c9a47" defer></script>
+        <script src="../shared/settings.js?v=f4c9a47" defer></script>
+        <script src="../shared/results.js?v=f4c9a47" defer></script>
+        <script src="../shared/inspector.js?v=f4c9a47" defer></script>
+        <script src="../shared/checkpoints.js?v=f4c9a47" defer></script>
+        <script src="../shared/checkpoint_switcher.js?v=f4c9a47" defer></script>
+        <script src="../shared/keyscroll.js?v=f4c9a47" defer></script>
+        <script src="../shared/confirm-exit.js?v=f4c9a47" defer></script>
+        <script src="game.js?v=f4c9a47" defer></script>
+        <link rel="stylesheet" href="../shared/themes.css?v=f4c9a47" />
+        <script>
+        // Applied before first paint so a themed page never flashes
+        // the default palette while the scripts load.
+        try {
+            var _s = JSON.parse(localStorage.getItem("humanvsai.settings") || "{}");
+            document.documentElement.setAttribute("data-theme", _s.theme || "mesh");
+        } catch (e) { document.documentElement.setAttribute("data-theme", "mesh"); }
+        </script>
+        <style>
+        /* The theme's background renderer. z-index -1, not 0: a fixed element
+           at z-index 0 paints ABOVE static content, which is why index.html
+           and select.html have to give every foreground element an explicit
+           z-index. A negative value paints above the page background and below
+           everything else, so no game markup had to be restacked. */
+        #mesh { position: fixed; inset: 0; width: 100%; height: 100%;
+                z-index: -1; pointer-events: none; }
+        </style>
+    </head>
+    <body>
+        <canvas id="mesh"></canvas>
+
+        <a class="back-nav" href="../select.html">← back</a>
+        <h1 class="sr-only">Watermelon game: you against a neural network</h1>
+
+        <div class="screen">
+        <main>
+        <div id="arena">
+
+            <!-- ── Human board ──
+                 Every piece of a board is a direct child of .board-body, in
+                 the order a keyboard reaches it, and style.css only PLACES
+                 them (a grid per layout). So tab order is the visual order in
+                 every layout: your Restart and Shake sit before your board,
+                 left of it on a wide screen and above it on a phone. -->
+            <div class="board-wrap" id="board-human">
+                <div class="board-body">
+                    <div class="board-head">
+                        <div class="board-label">YOU</div>
+                        <div class="info-row">
+                            <div class="bubble">
+                                <span class="bubble-title">Score</span>
+                                <span id="score-human">0</span>
+                            </div>
+                            <div class="bubble next">
+                                <span class="bubble-title">Next</span>
+                                <img id="nextball-human" src="" alt="" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="board-controls">
+                        <div class="highScore">
+                            <div class="highScoreTitle">High Score:</div>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+                                width="23" height="23" viewBox="0 0 23 23" fill="none">
+                                <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
+                                <path
+                                    d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
+                                    class="crown-disc" fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                                <path
+                                    d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
+                                    class="crown-glyph" fill="#675424" stroke="white" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <span class="highScoreValue" id="highscore-human">0</span>
+                        </div>
+
+                        <button type="button" id="newgame-human">Restart Game</button>
+
+                        <div class="shakes">
+                            <span>Shakes: <span id="shakecount-human">0</span></span>
+                            <button type="button" disabled id="shake-human" aria-describedby="shake-note-human">Shake!</button>
+                            <span id="shakecountdown-human"></span>
+                            <span class="shake-note" id="shake-note-human">Earn a shake every 25 drops. The AI never shakes.</span>
+                        </div>
+                    </div>
+
+                    <section class="board-main" id="canvas-human" aria-label="Your board">
+                        <!-- Shown until the first drop of each game, and
+                             again after every restart. -->
+                        <div class="start-hint" id="starthint-human">
+                            <span class="hint-keys">Click, or press Space, to drop</span>
+                            <span class="hint-touch">Tap the board to drop</span>
+                        </div>
+                        <div class="overlay gameover" id="gameover-human" hidden>
+                            <div class="overlay-title">Game over</div>
+                            <div class="overlay-score" id="gameover-score-human"></div>
+                            <div class="overlay-result" id="result-human" hidden></div>
+                            <button type="button" id="playagain-human">Play Again</button>
+                            <div class="overlay-sub">
+                                <span class="hint-keys">Press Space or Enter to play again</span>
+                                <span class="hint-touch">Tap to play again</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Keyboard play. Not a control, so it can sit anywhere
+                         without touching the tab order; hidden on touch-only
+                         devices, where the start hint says "tap" instead. -->
+                    <p class="key-hint hint-keys">
+                        <span><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> aim</span><br />
+                        <span><kbd>Space</kbd> or <kbd>↓</kbd> drop</span><br />
+                        <span><kbd>E</kbd> shake</span>
+                    </p>
+                    <p class="sr-only" id="live-human" aria-live="polite"></p>
+                </div>
+            </div>
+
+            <!-- ── VS divider ── -->
+            <div id="vs">VS</div>
+
+            <!-- ── AI board ──
+                 The identical board, driven by the model in game.js. It waits
+                 for your first drop, so both games start together. Its canvas
+                 is not a tab stop, so the order here is speed, Restart, then
+                 the model note: under the board on a phone, and on a wide
+                 screen the speed row under it with the rest beside it. -->
+            <div class="board-wrap" id="board-ai">
+                <div class="board-body">
+                    <div class="board-head">
+                        <div class="board-label">AI</div>
+                        <div class="info-row">
+                            <div class="bubble">
+                                <span class="bubble-title">Score</span>
+                                <span id="score-ai">0</span>
+                            </div>
+                            <div class="bubble next">
+                                <span class="bubble-title">Next</span>
+                                <img id="nextball-ai" src="" alt="" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <section class="board-main" id="canvas-ai" aria-label="AI board">
+                        <div class="overlay" id="status-ai">
+                            <div class="overlay-title">Loading AI…</div>
+                            <div class="overlay-sub">Downloading the model</div>
+                        </div>
+                        <div class="overlay gameover" id="gameover-ai" hidden>
+                            <div class="overlay-title">AI game over</div>
+                            <div class="overlay-score" id="gameover-score-ai"></div>
+                            <div class="overlay-sub">Restarting…</div>
+                        </div>
+                        <!-- "To beat: N" once the AI's first life in the match
+                             is over, or how your last match went (game.js). -->
+                        <div class="ai-target" id="target-ai" hidden></div>
+                    </section>
+
+                    <!-- Speed multiplier for the AI, the same control on all
+                         three games: one row, directly under the AI board.
+                         Scales both the drop cooldown and how fast the cloud
+                         slides to its target. -->
+                    <div class="speed-block">
+                        <div class="speed-title" id="speed-title-ai">AI speed</div>
+                        <div class="speed-controls" id="speed-ai" role="group" aria-labelledby="speed-title-ai">
+                            <button type="button" data-speed="0.25" aria-pressed="false">0.25x</button>
+                            <button type="button" data-speed="0.5" aria-pressed="false">0.5x</button>
+                            <button type="button" data-speed="0.75" aria-pressed="false">0.75x</button>
+                            <button type="button" data-speed="1" aria-pressed="true" class="active">1x</button>
+                            <button type="button" data-speed="1.5" aria-pressed="false">1.5x</button>
+                            <button type="button" data-speed="2" aria-pressed="false">2x</button>
+                        </div>
+                    </div>
+
+                    <div class="board-controls">
+                        <div class="highScore">
+                            <div class="highScoreTitle">High Score:</div>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true"
+                                width="23" height="23" viewBox="0 0 23 23" fill="none">
+                                <path d="M1 1H22V22H1V1Z" fill="white" fill-opacity="0.01" />
+                                <path
+                                    d="M11.5 20.25C16.3325 20.25 20.25 16.3325 20.25 11.5C20.25 6.66751 16.3325 2.75 11.5 2.75C6.66751 2.75 2.75 6.66751 2.75 11.5C2.75 16.3325 6.66751 20.25 11.5 20.25Z"
+                                    class="crown-disc" fill="#675424" stroke="#675424" stroke-width="4.66704"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                                <path
+                                    d="M6.6875 13.6875V9.3125L9.3125 10.625L11.5 7.5625L13.6875 10.625L16.3125 9.3125V13.6875H6.6875Z"
+                                    class="crown-glyph" fill="#675424" stroke="white" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <span class="highScoreValue" id="highscore-ai">0</span>
+                        </div>
+                        <button type="button" id="newgame-ai" aria-label="Restart the AI's game">Restart Game</button>
+                    </div>
+
+                    <!-- The model-version switcher, mounted here by game.js. -->
+                    <div class="ckpt-slot" id="ckpt-ai"></div>
+                    <p class="sr-only" id="live-ai" aria-live="polite"></p>
+                </div>
+            </div>
+
+        </div>
+        </main>
+        </div>
+    <!-- The inspector lives below the fold; the scroll cue that
+         points at it is created by inspector.js. -->
+    <section class="insp-section">
+        <div id="insp-mount-ai"></div>
+    </section>
+        <script src="../shared/backgrounds.js?v=f4c9a47" defer></script>
+        <script src="../shared/mesh.js?v=f4c9a47" defer></script>
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            initMesh('mesh', { intensity: 0.55, maxFps: 60 });
+        });
+        </script>
+    </body>
+</html>
