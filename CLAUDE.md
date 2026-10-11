@@ -736,8 +736,14 @@ argument. Decoding base64 via `fetch('data:...')` was tried and blocked the
 page 1.5-1.8 s — `Uint8Array.fromBase64` (with the `atob` loop as fallback) is
 the fast path. Halving downloads further: `tools/fp16_weights.py <game>` stores weights
 as fp16 with a Cast to fp32 (operators unchanged) and gates on playing the same
-seeded games; verified on stub models only (34->17 MB, 100% identical
-decisions) — run it on the real models before relying on it.
+seeded games. Run on the REAL models 2026-10-11: shipped Snake 34->17 MB
+(99.99% same moves, 30-game mean 149.47 -> 150.8) and Watermelon
+22.7->11.3 MB (4505.5 -> 4473.43) PASSED and are deployed;
+`checkpoints.js` carries their new bytes and scores. Snake rungs s2/s3 were
+REFUSED (99.99% same moves, yet 100->96 and 139->127: one flipped move
+cascades through a long Snake game), so agreement alone is not enough —
+keep the score gate. Tetris's shipped model passed on only 3 games and
+saves 3.5 MB, so it stays fp32.
 
 **Inference runs in a Web Worker** (`shared/ort-worker.js`): `modelSource()`
 replaces `ort.InferenceSession.create` once with a worker-backed stand-in

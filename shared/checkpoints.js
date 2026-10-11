@@ -62,12 +62,12 @@ const CHECKPOINTS = {
         "id": "s4",
         "file": "snake_ai.onnx",
         "steps": 55000032,
-        "bytes": 35660336,
+        "bytes": 17838792,
         "shipped": true,
-        "score": 149.47,
+        "score": 150.8,
         "median": 157.0,
         "min": 102.0,
-        "max": 174.0,
+        "max": 176.0,
         "episodes": 30,
         "capped": 0
       }
@@ -80,12 +80,12 @@ const CHECKPOINTS = {
         "id": "w1",
         "file": "watermelon_ai.onnx",
         "steps": 0,
-        "bytes": 23773797,
+        "bytes": 11894169,
         "shipped": true,
-        "score": 4505.5,
+        "score": 4473.43,
         "median": 4310.0,
         "min": 2927.0,
-        "max": 8591.0,
+        "max": 7976.0,
         "episodes": 30,
         "capped": 0
       }
