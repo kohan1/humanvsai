@@ -180,6 +180,14 @@
         var active = null;
         var busy = false;
 
+        /* Under file:// the page cannot fetch a sibling .onnx (opaque origin,
+         * see model-source.js), and only the shipped model is embedded in
+         * model_data.js. An earlier rung could never load: clicking one said
+         * "failed to load" and logged three errors. So those rungs are shown,
+         * so the ladder still reads, but disabled, with the reason beside them. */
+        var local = location.protocol === 'file:';
+        var LOCAL_NOTE = 'Earlier versions need the site served over http.';
+
         if (!single) rungs.forEach(function (r) {
             var b = document.createElement('button');
             b.type = 'button';
@@ -190,6 +198,10 @@
                 ? 'The model the site ships — already loaded'
                 : 'Averages ' + fmtScore(r.score) + ' · ' + fmtBytes(r.bytes)
                   + ' to download';
+            if (local && !r.shipped) {
+                b.disabled = true;
+                b.title = 'Averages ' + fmtScore(r.score) + ' · ' + LOCAL_NOTE;
+            }
             b.addEventListener('click', function (e) {
                 /* A pointer click leaves focus on the rung, and the game's
                    Space/Enter would then press it again instead of reaching
@@ -215,7 +227,8 @@
              * lineage. For Snake and Watermelon they do not, and a WEAKER
              * checkpoint can honestly carry a larger number — see the note in
              * tools/build_checkpoints.py. */
-            if (g.stepsMeaning === 'lineage') bits.push(fmtSteps(r.steps) + ' steps');
+            // Non-breaking, so a wrap never strands "steps" from its number.
+            if (g.stepsMeaning === 'lineage') bits.push(fmtSteps(r.steps) + '\u00a0steps');
             if (r.capped) bits.push('some games hit the length cap');
             return bits.join(' · ') + (extra ? ' — ' + extra : '');
         }
@@ -237,6 +250,12 @@
              * truncating, even in the compact variant, because a tooltip is
              * unreachable on touch. */
             note.textContent = describe(r, extra);
+            if (local && !single) {
+                var why = document.createElement('span');
+                why.className = 'ckpt-local';
+                why.textContent = LOCAL_NOTE;
+                note.append(why);
+            }
             var d = difficulty();
             note.title = d ? 'Difficulty: ' + d.label + ' — ' + d.hint +
                              '. Change it on the game-select screen.' : '';
@@ -267,6 +286,7 @@
             var previous = active;
             var r = rungs.filter(function (x) { return x.id === id; })[0];
             if (!r) return;
+            if (local && !r.shipped && !sessions[id]) return;
 
             if (sessions[id]) {
                 active = id;
@@ -336,7 +356,7 @@
         // Lets the game drop state tied to the shipped model (its critic).
         if (start !== top.id && opts.initial) opts.onSession(opts.initial, startRung);
         var saved = readChoice(game);
-        if (!ms && saved && saved !== top.id && buttons[saved]) {
+        if (!ms && !local && saved && saved !== top.id && buttons[saved]) {
             setTimeout(function () { select(saved); }, 0);
         }
 

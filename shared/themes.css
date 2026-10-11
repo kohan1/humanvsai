@@ -212,6 +212,7 @@ h2 { color: var(--fg); font-family: var(--serif); }
 .h2h-tally i { color: var(--warn); }
 .h2h-bar { background: var(--faint); }
 .h2h-bar span { background: var(--fg); }
+.h2h-other { color: var(--dim); }
 
 /* Cards sit ON TOP of the particle field, and an opaque background punches a
    rectangle out of it. On Dispersion the card background is the same #ffffff

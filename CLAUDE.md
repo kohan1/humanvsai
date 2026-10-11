@@ -58,6 +58,10 @@ stopped, or is abandoned — do all four of these before moving on:**
    Watermelon have had a `train_100m.log`, and keying on the filename alone
    attached Snake's score to Watermelon's run.
 3. **Record what actually happened**, including `outcome="rejected"` and why.
+   If the run started from FRESH weights (re-cloned, or an observation change
+   that reshapes the first layer), set `continues=False` even though it has a
+   `parent=`: the parent link is lineage, and without the flag the page adds
+   the parent's steps to its total training.
    Only put a number in `evalScore` that was really measured with
    `evaluate.py` — a run with no entry is emitted with its real curve and no
    outcome label, which is the honest default. Never guess one.

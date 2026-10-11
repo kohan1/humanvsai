@@ -282,7 +282,12 @@
                         var back = m && m.model ? new Uint8Array(m.model)
                                  : (payload.byteLength ? new Uint8Array(payload) : null);
                         if (!back) throw new Error((m && m.error) || "worker failed");
-                        return original.call(self, back, options);
+                        // This session now runs on the main thread; say so,
+                        // or anything reading backend reports the worker.
+                        return original.call(self, back, options).then(function (s) {
+                            window.modelSource.backend = "main";
+                            return s;
+                        });
                     });
             });
         };
@@ -422,4 +427,14 @@
        visitor had asked for — for the checkpoint switcher to start on. Null
        when modelSource() has not run for that game (or ran under file://). */
     window.modelSource.outcome = function (game) { return outcome[game] || null; };
+
+    /* One line a game can show under "failed to load", saying what to do
+       about it. Under file:// the usual cause is that model_data.js was never
+       generated (it is machine-local, see embed_model.py); over http it is the
+       network. */
+    window.modelSource.failHint = function () {
+        return location.protocol === "file:"
+            ? "Open the site over http, or run embed_model.py"
+            : "Check your connection and refresh";
+    };
 }());
