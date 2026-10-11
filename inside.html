@@ -747,6 +747,15 @@
                         the same model scores 1042.4 over 60, which is the bar the later
                         60-game runs had to beat.
                     </p>
+                    <p class="block-note">
+                        The site now serves Snake and Watermelon at half the download size:
+                        the same networks with their weights stored at half precision. They
+                        were only swapped in after playing the same seeded games as the
+                        originals and making the same move on 99.99% of turns. Over the
+                        picker's 30 games the half-size Snake averages 150.8 (the original
+                        149.47) and Watermelon 4,473 (the original 4,506). The scores on this
+                        page are the originals'.
+                    </p>
                 </div>
             </div>
             <div class="ledger" id="ledger" role="table" aria-label="Every training run"></div>
