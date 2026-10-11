@@ -787,6 +787,14 @@ era (zone, scale, curve panel) and no trunk link across it. Do not re-run
 comes from log mtimes. `inside/distributions.json`'s Watermelon entry was
 measured on the pre-change model; the page says so until it is re-measured.
 
+**Deploying from a cloud sandbox works** (done 2026-10-11): the trained models
+are on the live `gh-pages` branch, so `git show origin/gh-pages:<path>` restores
+them into the gitignored paths and `deploy_pages.sh` runs as normal. Two
+gotchas: the proxy refuses `gh api .../pages/builds`, so the script's wait
+loop would spin for 10 minutes — run it with `gh` off PATH and confirm the
+"pages build and deployment" run in Actions instead; and fetch gh-pages with a
+`+` refspec, since it is force-pushed every deploy.
+
 **Testing in a cloud sandbox:** jsdelivr is blocked, so route
 `cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/*` to an npm copy in
 Playwright; route only `https=` through `--proxy-server` or localhost goes
