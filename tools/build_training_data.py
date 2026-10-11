@@ -36,6 +36,13 @@ MAX_POINTS = 400
 # Evaluation scores and outcomes, measured with evaluate.py. Keyed by log
 # filename. Anything absent is reported without an outcome — see the module
 # docstring. Keep this honest: only add a number that was actually measured.
+#
+# `parent` is the run that came before in the story. Usually that means the
+# run resumed its weights, and its steps are added to the parent's for the
+# "total training" axis. When it does NOT — a fresh behavioural clone, or an
+# observation change that made the old weights unloadable — set
+# continues=False: the run is then counted from 0 and no per-step gain is
+# computed against the parent's score.
 RUN_NOTES = {
     # ── Snake ────────────────────────────────────────────────────────────
     # The first eight are reconstructed from CLAUDE.md's Snake history (bugs
@@ -240,6 +247,8 @@ RUN_NOTES = {
         game="watermelon", label="survival · cloned start · merge bonus",
         evalScore=1034.00, outcome="rejected",
         parent="watermelon/train_survival_bc.log",
+        # Started from a fresh clone (85.7), not the previous run's weights.
+        continues=False,
         checkpoint="watermelon/training/archive/models/watermelon_survivalhint.106pt8drops.zip",
         note="The best Watermelon run yet by every internal measure, and it "
              "still tied rather than beat the model already shipped. Over 40M "
@@ -262,6 +271,9 @@ RUN_NOTES = {
         game="watermelon", label="4-channel merge map", evalScore=1002.40,
         outcome="rejected",
         parent="watermelon/train_survival_hint.log",
+        # The observation went from 2 to 4 channels, so the old weights could
+        # not load: it was re-cloned from the heuristic.
+        continues=False,
         checkpoint="watermelon/training/archive/models/watermelon_mergemap.104pt6drops.zip",
         note="The observation was rebuilt to answer 'where can I merge?' "
              "directly: two extra grid channels marking every fruit matching "
@@ -294,6 +306,8 @@ RUN_NOTES = {
         # sizes changed - and are not comparable with the ~1000s before it.
         evalScore=4505.50, outcome="shipped",
         parent="watermelon/train_mergemap.log",
+        # Cloned afresh on the new fruit sizes; nothing was inherited.
+        continues=False,
         checkpoint="watermelon/training/watermelon_final.zip",
         note="Five runs had now landed within a few percent of 107 drops across "
              "two objectives, four reward designs and two observations. None of "
@@ -821,6 +835,9 @@ def main():
             # parent's best checkpoint). Only emitted when recorded.
             if note.get("startScore") is not None:
                 runs[-1]["startScore"] = note["startScore"]
+            # Only emitted when False: the parent is lineage, not weights.
+            if note.get("continues") is False:
+                runs[-1]["continues"] = False
 
     tetris = parse_tetris_tensorboard()
     if tetris:
@@ -837,12 +854,16 @@ def main():
     # Cumulative steps along each lineage. A resume inherits everything its
     # parent had already trained, so the progression track can plot skill
     # against total experience rather than against one run's own counter.
+    # A run that started from fresh weights (continues=False) inherits nothing,
+    # whatever its parent link says.
     by_file = {r["key"]: r for r in runs}
     def cumulative(run, seen=None):
         seen = seen or set()
         if run["key"] in seen:           # a mis-typed parent must not hang here
             return run["steps"]
         seen.add(run["key"])
+        if run.get("continues") is False:
+            return run["steps"]
         parent = by_file.get(run.get("parent"))
         return run["steps"] + (cumulative(parent, seen) if parent else 0)
     for r in runs:
@@ -853,6 +874,8 @@ def main():
         # figure. Only meaningful when both this run and its parent were
         # measured the same way.
         parent = by_file.get(r.get("parent"))
+        if r.get("continues") is False:
+            parent = None                # it did not start from that model
         start = r.get("startScore") or (parent or {}).get("evalScore")
         if r.get("evalScore") and parent and start and r["steps"]:
             r["gainPerMStep"] = round(

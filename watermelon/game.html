@@ -151,8 +151,9 @@
 
                         <div class="shakes">
                             <span>Shakes: <span id="shakecount-human">0</span></span>
-                            <button type="button" disabled id="shake-human">Shake!</button>
+                            <button type="button" disabled id="shake-human" aria-describedby="shake-note-human">Shake!</button>
                             <span id="shakecountdown-human"></span>
+                            <span class="shake-note" id="shake-note-human">Earn a shake every 25 drops. The AI never shakes.</span>
                         </div>
                     </div>
 
@@ -222,6 +223,9 @@
                             <div class="overlay-score" id="gameover-score-ai"></div>
                             <div class="overlay-sub">Restarting…</div>
                         </div>
+                        <!-- "To beat: N" once the AI's first life in the match
+                             is over, or how your last match went (game.js). -->
+                        <div class="ai-target" id="target-ai" hidden></div>
                     </section>
 
                     <!-- Speed multiplier for the AI, the same control on all

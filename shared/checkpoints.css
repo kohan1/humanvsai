@@ -52,7 +52,7 @@
     cursor: pointer;
     transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.ckpt-btn:hover:not(.is-active) {
+.ckpt-btn:hover:not(.is-active):not(:disabled) {
     color: var(--ckpt-fg);
     border-color: var(--ckpt-dim);
 }
@@ -85,7 +85,17 @@
     color: var(--ckpt-dim);
     font-size: 11px;
     line-height: 1.2;
+    /* Even lines rather than a full first line and an orphan ("1B / steps"
+       on Tetris at 1440). */
+    text-wrap: balance;
 }
+
+/* Under file:// only the shipped rung can load — see checkpoint_switcher.js. */
+.ckpt-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.ckpt-local { display: block; }
 
 /* ── Watermelon's variant ────────────────────────────────────────────────────
  * Measured on the staged site at a 899px viewport: Watermelon's AI column runs

@@ -18,10 +18,13 @@
  *
  * The reason this beats the obvious alternatives: slowing the AI down does not
  * make it play worse, and picking a random move x% of the time produces
- * nonsense rather than a weaker opponent. Temperature makes it choose moves it
- * rated SECOND best — still reasonable, just not optimal. It plays like a
- * weaker player instead of a broken one, from the same model file, with no
- * extra download.
+ * nonsense rather than a weaker opponent. Temperature samples every move in
+ * proportion to how the model rated it, so at moderate T the moves that win
+ * the draw instead of the best are mostly ones it rated nearly as good —
+ * still reasonable, just not optimal. It plays like a weaker player instead
+ * of a broken one, from the same model file, with no extra download. (At
+ * very high T the scores flatten and it does approach uniform — see
+ * Watermelon's floor below.)
  */
 (function (global) {
     'use strict';

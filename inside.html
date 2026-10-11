@@ -212,6 +212,9 @@
         .h2h-tally i { color: #d98a8a; font-style: normal; }
         .h2h-bar { grid-column: 1 / -1; height: 3px; background: #d98a8a; margin-top: 0.5rem; }
         .h2h-bar span { display: block; height: 100%; background: #8fd6a8; }
+        .h2h-other { grid-column: 1 / -1; margin-top: 0.45rem; font-size: 0.68rem; color: #7a7a7a; font-variant-numeric: tabular-nums; }
+        .h2h-other b { color: inherit; font-weight: 500; }
+        .h2h-other i { color: inherit; font-style: normal; }
         .tip {
             position: absolute; pointer-events: none; opacity: 0;
             background: #131313; border: 1px solid #262626;
@@ -284,7 +287,7 @@
         /* ── Ledger ─────────────────────────────────────────────────────── */
         .ledger { border: 1px solid #1e1e1e; }
         .row {
-            display: grid; grid-template-columns: 12px 1.6fr 0.55fr 0.55fr 0.6fr minmax(8.5rem, 0.7fr);
+            display: grid; grid-template-columns: 12px minmax(0, 1.6fr) 0.55fr 0.55fr 0.6fr minmax(max-content, 0.7fr);
             gap: 1rem; align-items: center;
             padding: 0.85rem 1.1rem; border-top: 1px solid #141414;
             font-size: 0.72rem; color: #888;
@@ -313,7 +316,7 @@
             .row:not(.head) > :nth-child(3)::after { content: ' steps'; }
             .row > :nth-child(4) { display: none; }
             .row > :nth-child(5) { grid-area: score; }
-            .row > :nth-child(6) { grid-area: outcome; text-align: right; }
+            .row > :nth-child(6) { grid-area: outcome; text-align: right; white-space: normal; }
             .row-note { padding: 0.9rem; }
         }
         .row-dot { display: inline-block; vertical-align: middle; width: 7px; height: 7px; border-radius: 50%; }
@@ -342,7 +345,10 @@
         }
         .row-tag { display: block; margin-top: 0.2rem; font-size: 0.6875rem; color: var(--dim, #7d7d7d); }
         .row .num { font-variant-numeric: tabular-nums; text-align: right; }
-        .row-outcome { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; }
+        /* One line: "beat its start · not kept" wrapped to two in its column.
+           Phones (below) let it wrap again, since there it shares a row with
+           the run's name. */
+        .row-outcome { font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
         /* NOT a .row. It used to carry that class, which made it a six-column
            grid, so its text became an anonymous grid item in the 12px dot
            column and wrapped one word wide. It is a plain block. */
@@ -491,12 +497,22 @@
             <p class="how-to-read">
                 Sideways is <b>total</b> training, not the length of one run: a run that
                 continues from an earlier model inherits everything that model already
-                learned, so 4M steps on top of a 10M-step model sits at 14M. Up is the
+                learned, so 4M steps on top of a 10M-step model sits at 14M. A run that
+                started from fresh weights — a new clone of the heuristic, or a changed
+                observation the old weights could not read — starts again from 0. So do
+                Snake runs whose parent was never recorded, so their position
+                understates how much training sat behind them. Up is the
                 score it achieved. The line only joins versions that were kept and built
                 on — a run that scored worse was discarded, so nothing was ever built on
                 top of it, and joining it to the line would suggest otherwise. Hover any
                 point for what changed in that run, what it bought per million steps, and
                 whether its weights still exist to be played.
+            </p>
+            <p class="how-to-read">
+                A discarded Watermelon point can sit just above a kept one because they
+                were scored over different games. The kept 1032.43 was measured over 30;
+                the same model scores 1042.4 over 60, and that is the bar the later runs
+                scored over 60 games had to beat.
             </p>
             <p class="how-to-read">
                 <b>Watermelon has a break in it.</b> Its fruit sizes were changed after
@@ -543,7 +559,9 @@
                 is the line that was kept and built on. Everything hanging below it is a
                 branch that stopped: usually a run that finished below the model it
                 started from, so it was kept as a record and never built on. Runs with no
-                score were stopped before they were worth measuring. Watermelon's line
+                score here were not evaluated in a way comparable to the others. A run
+                that started from fresh weights has no curve, even where it followed on
+                from the run before it. Watermelon's line
                 <b>restarts</b> after a break: the fruit sizes changed, which made it a
                 different game, and the model the site serves was trained afresh on it
                 rather than continued from anything to the left.
@@ -564,9 +582,9 @@
                 <div>
                     <h2>The same model, sixty games</h2>
                     <p class="block-note">
-                        Nothing changes between these games — same model, same weights,
-                        same starting conditions. Every difference in the result comes
-                        from how the game itself unfolded.
+                        Same model and weights; only each game's random seed differs.
+                        Every difference in the result comes from how the game itself
+                        unfolded.
                     </p>
                 </div>
                 <div class="controls">
@@ -725,7 +743,9 @@
                         set gives a different average for the same model. Snake's shipped
                         model scored 145.70 when it was installed, averages 149 over the 30
                         games the in-game version picker measures, and 144 over the sixty in
-                        the histogram above.
+                        the histogram above. Watermelon's 1032.43 was measured over 30 games;
+                        the same model scores 1042.4 over 60, which is the bar the later
+                        60-game runs had to beat.
                     </p>
                 </div>
             </div>
@@ -1701,11 +1721,21 @@
 
             // Links first, then dots, then labels last, so no line crosses a
             // label. A restart has no link: nothing was inherited across it.
+            // Nor does a run that started from fresh weights (continues:
+            // false) — its parent is what came before, not what it started from.
             const byFile = Object.fromEntries(list.map(r => [r.key, r]));
+            const linkPts = [];             // sampled, so labels can avoid them
             list.forEach(r => {
                 const p = byFile[r.parent];
-                if (!p || RESTARTS[r.key]) return;
+                if (!p || RESTARTS[r.key] || r.continues === false) return;
                 const x1 = X(p), y1 = Y(p), x2 = X(r), y2 = Y(r);
+                for (let i = 1; i < 40; i++) {
+                    const t = i / 40, u = 1 - t, xm = (x1 + x2) / 2;
+                    linkPts.push({
+                        x: u * u * u * x1 + 3 * u * u * t * xm + 3 * u * t * t * xm + t * t * t * x2,
+                        y: u * u * u * y1 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y2,
+                    });
+                }
                 const dead = r.outcome === 'rejected';
                 ctx.strokeStyle = dead ? PAL.bad : PAL.ink;
                 ctx.lineWidth = dead ? 1 : trunk.has(r.key) ? 2 : 1.2;
@@ -1738,9 +1768,11 @@
                to the right, left or below. Two runs at the same total steps
                (1032 and 1014 both sit at 34.07M) used to print one number on
                top of the other. Unscored runs get no label — a lone "—"
-               floating by a dot read as a stray mark. */
+               floating by a dot read as a stray mark. Links count as taken
+               space too: Watermelon's 614 sat on the dashed branches from 902. */
             const boxes = list.map(r => ({ x0: X(r) - 7, x1: X(r) + 7, y0: Y(r) - 7, y1: Y(r) + 7 }));
             const hit = (b) => boxes.some(o => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0)
+                            || linkPts.some(q => q.x > b.x0 - 2 && q.x < b.x1 + 2 && q.y > b.y0 - 2 && q.y < b.y1 + 2)
                             || b.x0 < 2 || b.x1 > w - 2 || b.y0 < 2 || b.y1 > h - PAD.b + 4;
             ctx.font = FONT;
             list.slice().sort((a, b) => lane.get(a.key) - lane.get(b.key)).forEach(r => {
@@ -1750,6 +1782,7 @@
                     [x, y - 16, 'center'], [x, y + 17, 'center'], [x + 12, y, 'left'],
                     [x - 12, y, 'right'], [x + 12, y - 14, 'left'], [x - 12, y - 14, 'right'],
                     [x + 12, y + 14, 'left'], [x - 12, y + 14, 'right'], [x, y - 30, 'center'],
+                    [x + 24, y, 'left'], [x - 24, y, 'right'], [x, y + 30, 'center'],
                 ];
                 const box = ([sx, sy, al]) => {
                     const x0 = al === 'center' ? sx - tw / 2 : al === 'left' ? sx : sx - tw;
@@ -2121,7 +2154,12 @@
             document.getElementById('timeline-key').innerHTML =
                 Object.entries(byGame).map(([g, l]) =>
                     `<span><i class="bar" style="background:${l[l.length - 1].color}"></i> ${g}</span>`).join('')
-                + `<span><i class="bar" style="background:${PAL.axis};opacity:0.4"></i> faded — rejected</span>`
+                // Faded the way the chart fades them: each game's own colour at
+                // 0.4. A grey swatch at 0.4 was ~1.25:1 on the dark themes and
+                // matched nothing actually drawn.
+                + `<span><i class="bar" style="background:linear-gradient(90deg,${
+                    Object.values(byGame).map((l, i, a) => `${l[l.length - 1].color} ${100 * i / a.length}% ${100 * (i + 1) / a.length}%`).join(',')
+                  });opacity:0.4;width:18px"></i> faded — rejected</span>`
                 + `<span><i class="vdash"></i> idle time cut out</span>`;
         }
 
@@ -2154,18 +2192,30 @@
                 return;
             }
 
+            /* The headline is the opponent the page is about: the shipped
+               model at full strength. Results now record the difficulty and
+               the model version (shared/results.js), and a win on Gentle
+               against an early checkpoint is a different claim, so it is
+               counted on a line of its own. A result with no difficulty was
+               recorded before either was noted and cannot be placed in the
+               headline. */
             const byGame = {};
             played.forEach(m => {
-                const g = byGame[m.game] || (byGame[m.game] = { w: 0, l: 0, d: 0 });
-                if (m.human > m.ai) g.w++; else if (m.human < m.ai) g.l++; else g.d++;
+                const g = byGame[m.game] || (byGame[m.game] = {
+                    full: { w: 0, l: 0, d: 0 }, other: { w: 0, l: 0, d: 0 } });
+                const t = m.difficulty === 'full' && m.shipped !== false ? g.full : g.other;
+                if (m.human > m.ai) t.w++; else if (m.human < m.ai) t.l++; else t.d++;
             });
+            const tally = t => `<b>${t.w}</b> won · <i>${t.l}</i> lost${t.d ? ` · ${t.d} drawn` : ''}`;
 
             el.innerHTML = Object.entries(byGame).map(([game, g]) => {
-                const total = g.w + g.l + g.d;
+                const total = g.full.w + g.full.l + g.full.d;
+                const rest = g.other.w + g.other.l + g.other.d;
                 return `<div class="h2h-row">
                     <span class="h2h-name">${game}</span>
-                    <span class="h2h-tally"><b>${g.w}</b> won · <i>${g.l}</i> lost${g.d ? ` · ${g.d} drawn` : ''}</span>
-                    <span class="h2h-bar"><span style="width:${(100 * g.w / total).toFixed(1)}%"></span></span>
+                    <span class="h2h-tally">${total ? tally(g.full) : 'none yet at full strength'}</span>
+                    ${total ? `<span class="h2h-bar"><span style="width:${(100 * g.full.w / total).toFixed(1)}%"></span></span>` : ''}
+                    ${rest ? `<span class="h2h-other">${tally(g.other)} against easier settings or earlier versions</span>` : ''}
                 </div>`;
             }).join('');
         }

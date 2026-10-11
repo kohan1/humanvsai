@@ -196,8 +196,9 @@
         <p class="settings-title" style="margin-top:1.3rem">AI difficulty</p>
         <p class="settings-blurb">
             Every opponent picks its move from a score it gives each option.
-            Easing off does not slow it down or make it act at random — it lets
-            it take a move it rated second best. Same model, weaker play.
+            Easing off does not slow it down: it samples from its own move scores,
+            so the lower it rated a move, the less often it plays it. Same model,
+            weaker play.
         </p>
         <div id="settings-difficulty"></div>
         <p class="settings-foot">

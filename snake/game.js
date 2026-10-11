@@ -66,12 +66,26 @@
        death, so crashing in the first second beat the AI 1-0, and the AI's
        restart button locked in a win the same way.
 
-       Null when nothing is being counted: before the first input, or when the
-       model was not loaded when the human began. Kept after the human's game
-       ends, so the game-over card can show match.line() — live, while the AI
-       is still playing — until the next game starts. */
+       `match` is the human's CURRENT game: a real match, an unscored one
+       (MatchResults.unscored: the model arrived after they started, or the
+       AI was still finishing their last match), or null before the first
+       input and when no model has loaded. Kept after the human's game ends,
+       so the game-over card can show match.line() — live, while the AI is
+       still playing — until the player restarts.
+
+       `aiMatch` is the match the AI board's first life is feeding. Usually
+       the same object; it outlives a restart while it is still WAITING on
+       the AI (match.humanRestarted() says so), because a waiting match only
+       exists when the human is ahead, and cancelling it would throw away
+       exactly their wins. The AI board keeps playing until it settles, then
+       pauses on "AI ready" (see onAiMatchChange). */
     let match = null;
-    let aiInMatch = false;         // the AI's current life is the match's first one
+    let aiMatch = null;
+    let aiInMatch = false;         // the AI's current life is aiMatch's first one
+    // The previous match, settled after the player had already restarted:
+    // shown on the AI board until they start again, so the result is seen.
+    let lastLine = "";
+    const BUSY = "the AI was still finishing your last game";
     let aiSpeed = 1;               // the AI SPEED control; see stepAi's accumulator
 
     // Game over shows after the death flash; a restart key is honoured only a
@@ -191,6 +205,18 @@
                     this.head.dir.y = this.dir.y;
                 }
 
+                /* A move into the wall ends the game here, where the move is
+                   committed, instead of at the next boundary once the head
+                   has slid a whole cell off the board — it was drawn clipped
+                   to a sliver at the edge. Nothing about play changes: the
+                   last chance to turn was this same boundary before, the
+                   score cannot change on the way out (no food is off the
+                   board), and every move that is not fatal runs exactly as
+                   it did, so the AI's decision phase is untouched (bug #19).
+                   Body collisions still end at the boundary after the move,
+                   as in snake_env, where the head is drawn on the board. */
+                if (outOfBounds(this.head.xx + this.dir.x, this.head.yy + this.dir.y)) return this.die();
+
                 for (let i = this.length - 1; i > 0; i--) {
                     this.body[i].dir.x = (this.body[i - 1].x - this.body[i].x) / scl;
                     this.body[i].dir.y = (this.body[i - 1].y - this.body[i].y) / scl;
@@ -264,9 +290,9 @@
             // update() returns early once isDead, so this fires exactly once.
             // The identity checks are needed because both snakes share this
             // class.
-            if (this === aiSnake && match && aiInMatch) {
+            if (this === aiSnake && aiMatch && aiInMatch) {
                 aiInMatch = false;               // later lives are for show only
-                match.aiDied(aiScore);
+                aiMatch.aiDied(aiScore);
             }
             if (this === window.snake) {
                 // Only a real match counts: not a human run that began before
@@ -275,7 +301,7 @@
                 const line = matchLine();
                 announce(srHuman, "Game over. Score " + score + "." +
                     (line ? " " + line.replace("—", "-") + "." : "") +
-                    (TOUCH ? " Tap the board to play again." : " Press Space or Enter to play again."));
+                    (TOUCH ? " Tap to play again." : " Press Space or Enter to play again."));
             } else if (this === aiSnake) {
                 announce(srAi, "The AI died with " + aiScore + ".");
             }
@@ -383,6 +409,9 @@
         return Math.max(units, minCss * BOARD / shown);
     }
 
+    // `css` CSS pixels in board units, at the size the board is shown.
+    function cssUnits(c, css) { return css * BOARD / (c.canvas._shownCss || BOARD); }
+
     function roundRect(c, x, y, w, h, r) {
         c.beginPath();
         if (c.roundRect) c.roundRect(x, y, w, h, r);
@@ -426,7 +455,11 @@
        message on its own card. The text used to sit straight on the scrim, so
        the food and snake showed through it ("Enter" printed over a red
        square), and the final score was left faded under the scrim. `lines`
-       is [{ text, size, minCss, bold, alpha }], top to bottom.
+       is [{ text, css, min, fit, bold, alpha }], top to bottom: `css` is the
+       size in CSS px, the type scale all three games share (title 32,
+       result 16, hint 14). Only a `fit` line (a title) shrinks to fit the
+       card, never below `min`; every other line wraps at its size, so the
+       hint can never end up larger than the result above it.
 
        A line wider than the card WRAPS at spaces rather than shrinking: the
        match line ("You 12 · AI 3 — AI still playing, needs 10 to win") is
@@ -444,8 +477,12 @@
         let width = 0, height = 0;
         const sized = [];
         for (const l of lines) {
-            const px = fontUnits(c, l.size, l.minCss);
+            let px = cssUnits(c, l.css);
             c.font = (l.bold ? "bold " : "") + px + "px Arial";
+            if (l.fit && c.measureText(l.text).width > maxText) {
+                px = Math.max(cssUnits(c, l.min), px * maxText / c.measureText(l.text).width);
+                c.font = (l.bold ? "bold " : "") + px + "px Arial";
+            }
             // Break after the dash first, so the scores stay on one row and
             // the verdict on the next, then at spaces if a part still overflows.
             const parts = c.measureText(l.text).width > maxText && l.text.includes(" — ")
@@ -548,15 +585,15 @@
         // Game over used to be only the snake turning red, with no
         // instruction, and any key at all reloaded the page.
         if (snake.isDead && performance.now() - (snake.diedAt || 0) > GAME_OVER_SHOW_MS) {
-            const lines = [{ text: "GAME OVER", size: scl, minCss: 20, bold: true }];
+            const lines = [{ text: "GAME OVER", css: 32, min: 18, fit: true, bold: true }];
             // The match result, at full ink like the score. Absent when the
             // AI never loaded, or was not loaded when this game began. Read
             // every paint, so "AI still playing, needs N" counts down live
             // and turns into the result the moment the match settles.
             const line = matchLine();
-            if (line) lines.push({ text: line, size: 0.55 * scl, minCss: 12 });
+            if (line) lines.push({ text: line, css: 16 });
             lines.push({ text: TOUCH ? "Tap to play again" : "Press Space or Enter to play again",
-                         size: 0.45 * scl, minCss: 11, alpha: 0.75 });
+                         css: 14, alpha: 0.75 });
             drawGameOver(ctx, score, highScore, lines);
         }
     }
@@ -717,13 +754,20 @@
         aiStatusEl.lastElementChild.textContent = detail || "";
     }
     function updateAiStatus() {
-        if (aiLoadFailed) setAiStatus("Couldn't load the AI", "Check your connection and refresh");
+        if (aiLoadFailed) setAiStatus("Couldn't load the AI", failHint());
         else if (!aiReady) setAiStatus("Loading AI…", aiLoadDetail);
         // Loaded, holding for the player's first move (an arrow, WASD, a
         // swipe or a tap), which starts both boards. "Press a key" promised
         // more than that: Space and Enter are not moves and start nothing.
         else if (!aiActive) setAiStatus("AI ready", "Starts with your first move");
         else setAiStatus(null);
+    }
+
+    // model-source.js knows whether this is a connection problem or a page
+    // opened from disk; an older copy without failHint gets the http line.
+    function failHint() {
+        return (window.modelSource && modelSource.failHint) ? modelSource.failHint()
+                                                            : "Check your connection and refresh";
     }
 
     async function loadModel() {
@@ -750,8 +794,11 @@
             aiSession = await ort.InferenceSession.create(src, { executionProviders: ["wasm"] });
             aiReady = true;
             // Loaded mid-game: the AI plays along for show, but this game is
-            // not a match (match stays null) because it did not start level.
-            if (matchStarted) aiActive = true;
+            // not a match because it did not start level, and its card says so.
+            if (matchStarted && !window.snake.isDead) {
+                aiActive = true;
+                if (typeof MatchResults !== "undefined") match = MatchResults.unscored("late");
+            }
             updateAiStatus();
             announce(srAi, aiActive ? "The AI is ready and playing." : "The AI is ready. It starts when you do.");
             mountCheckpointSwitcher();
@@ -759,7 +806,7 @@
             console.error("Failed to load Snake AI model:", err);
             aiLoadFailed = true;
             updateAiStatus();
-            announce(srAi, "Couldn't load the AI. Check your connection and refresh.");
+            announce(srAi, "Couldn't load the AI. " + failHint() + ".");
         }
     }
 
@@ -966,7 +1013,7 @@
             aiFood.generateNew(aiSnake);
             aiSnake.appendNew();
             aiScore++;
-            if (match && aiInMatch) match.aiScore(aiScore);
+            if (aiMatch && aiInMatch) aiMatch.aiScore(aiScore);
             aiStepsSinceFood = 0;
             aiAteThisCell = true;
         }
@@ -1045,8 +1092,8 @@
         drawBoard(ctxAi, aiSnake, aiFood, aiScore, aiHighScore);
         if (aiSnake.isDead && performance.now() - (aiSnake.diedAt || 0) > GAME_OVER_SHOW_MS) {
             drawGameOver(ctxAi, aiScore, aiHighScore, [
-                { text: "AI GAME OVER", size: scl, minCss: 20, bold: true },
-                { text: "Restarting\u2026", size: 0.45 * scl, minCss: 11, alpha: 0.75 },
+                { text: "AI GAME OVER", css: 32, min: 18, fit: true, bold: true },
+                { text: "Restarting\u2026", css: 14, alpha: 0.75 },
             ]);
         }
     }
@@ -1071,12 +1118,18 @@
         score = 0;
         // Every restart waits for the first input, like the first game. A
         // match still in play is abandoned unrecorded. One that is WAITING on
-        // the AI is left to settle (and record) while the board waits; the
-        // next game's first input cancels it if it still has not.
+        // the AI (you are ahead) is left to settle and record: the AI board
+        // plays on until it does, then pauses like any other restart.
         matchStarted = false;
-        if (match && match.state === "playing") match.cancel("you restarted");
+        if (match) match.humanRestarted();
+        match = null;
+        aiActive = aiOwed();
+        if (aiStatusEl) updateAiStatus();
         if (controlsOverlay) controlsOverlay.hidden = false;
     }
+    // The AI's first life still decides a match the player has left.
+    function aiOwed() { return !!aiMatch && aiMatch.state === "waiting"; }
+
     function resetAi() {
         clearTimeout(aiRestartTimer);
         aiRestartTimer = null;
@@ -1141,6 +1194,7 @@
             steps++;
         }
         if (steps === 8) acc = 0;
+        updateTarget();
         if (steps || needsPaint) {
             drawHuman();
             drawAi();
@@ -1164,30 +1218,63 @@
         if (matchStarted) return;
         matchStarted = true;
         if (controlsOverlay) controlsOverlay.hidden = true;
-        // The previous match, if it is still waiting on the AI's first life:
-        // the board that life is on is about to be reset.
-        if (match) match.cancel("a new game started");
+        lastLine = "";
         match = null;
-        if (aiReady) {
+        if (aiOwed()) {
+            // The last match is still waiting on the AI's first life, which
+            // is on the board now. It keeps playing that life to settle it;
+            // this game runs alongside, unscored, since it cannot start level.
+            if (typeof MatchResults !== "undefined") match = MatchResults.unscored(BUSY);
+        } else if (aiReady) {
             resetAi();
             aiActive = true;
-            aiInMatch = true;
+            aiMatch = null;
             if (typeof MatchResults !== "undefined") {
-                const m = match = MatchResults.begin("snake", { speed: aiSpeed });
-                // A match that settles after the card is up (the AI passing
-                // the player, or dying) is announced; the card itself re-reads
-                // match.line() every paint.
-                m.onChange(() => {
-                    // diedAt is set after die()'s own announcement, so a match
-                    // that settles AT the human's death is not read out twice.
-                    if (m === match && window.snake.isDead && window.snake.diedAt &&
-                        m.state !== "waiting") {
-                        announce(srHuman, m.line().replace("—", "-") + ".");
-                    }
-                });
+                aiInMatch = true;
+                const m = match = aiMatch = MatchResults.begin("snake", { speed: aiSpeed });
+                m.onChange(() => onAiMatchChange(m));
             }
         }
         updateAiStatus();
+    }
+
+    /* A match that settles after the card is up (the AI passing the player,
+       or dying) is announced; the card itself re-reads match.line() every
+       paint. One that settles after the player restarted is announced as
+       their last game, and if they have not started again, it pauses the AI
+       board and is shown on it until they do. */
+    function onAiMatchChange(m) {
+        if (m !== aiMatch || (m.state !== "done" && m.state !== "void")) return;
+        const line = m.line().replace("—", "-");
+        if (m === match) {
+            // diedAt is set after die()'s own announcement, so a match that
+            // settles AT the human's death is not read out twice.
+            if (window.snake.isDead && window.snake.diedAt) announce(srHuman, line + ".");
+            return;
+        }
+        announce(srHuman, "Your last game: " + line + ".");
+        if (!matchStarted) {
+            lastLine = m.line();
+            aiActive = false;
+            updateAiStatus();
+        }
+    }
+
+    /* "To beat: N" on the AI board once its first life in this match is over
+       and you are still playing, so you know the number; and, while you wait
+       to start again, how the last match is going or how it ended. */
+    const targetEl = document.getElementById("target-ai");
+    let targetText = "";
+    function updateTarget() {
+        let t = "";
+        const n = match && match.target ? match.target() : null;
+        if (n !== null) t = "To beat: " + n;
+        else if (!matchStarted && aiOwed()) t = "Last game: AI needs " + (aiMatch.human - aiMatch.ai + 1) + " to win";
+        else if (!matchStarted && lastLine) t = "Last game: " + lastLine;
+        if (t === targetText || !targetEl) return;
+        targetText = t;
+        targetEl.textContent = t;
+        targetEl.hidden = !t;
     }
     function matchLine() { return match ? match.line() : ""; }
 
@@ -1260,12 +1347,13 @@
        Space and Enter on a focused button never reach the game (see the
        keydown handler), so it cannot double as a restart key there.
 
-       Restarting the AI mid-match voids the match: the AI's restart used to
-       end its first life early and freeze that score, so one click locked in
-       a win. */
+       Restarting the AI during its first life in a match voids the match
+       (MatchResults aiRestarted): the AI's restart used to end that life
+       early and freeze its score, so one click locked in a win. After that
+       life it changes nothing. */
     if (restartBtn) restartBtn.addEventListener("click", resetHuman);
     if (restartAiBtn) restartAiBtn.addEventListener("click", () => {
-        if (match) match.cancel("the AI was restarted");
+        if (aiMatch) aiMatch.aiRestarted();
         resetAi();
     });
 
@@ -1292,7 +1380,7 @@
                 b.classList.toggle("active", on);
                 b.setAttribute("aria-pressed", on ? "true" : "false");
             }
-            if (match) match.speed(v);
+            if (aiMatch) aiMatch.speed(v);
             announce(srAi, "AI speed " + btn.textContent + ".");
         });
     }

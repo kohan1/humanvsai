@@ -224,12 +224,17 @@ function createInspector(config) {
     cue.type = 'button';
     cue.className = 'insp-cue';
     cue.innerHTML =
-        '<span class="insp-cue-text">scroll down to see inside</span>' +
+        '<span class="insp-cue-text">scroll down to see what the AI sees</span>' +
         '<svg class="insp-cue-arrow" viewBox="0 0 24 14" aria-hidden="true">' +
         '<path d="M1 1 L12 12 L23 1" fill="none" stroke="currentColor" ' +
         'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    cue.addEventListener('click', () => {
+    cue.addEventListener('click', (e) => {
         root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        /* A mouse click leaves focus on the cue, and a focused button owns
+           Space/Enter (keyscroll.js), so the game's next Space scrolled the
+           page down again instead of reaching the board. detail is 0 for
+           keyboard activation, which keeps focus where the reader put it. */
+        if (e.detail > 0) cue.blur();
     });
     document.body.append(cue);
 
@@ -239,6 +244,8 @@ function createInspector(config) {
         // Faded out but still focusable used to leave an invisible tab stop.
         cue.tabIndex = gone ? -1 : 0;
         cue.setAttribute('aria-hidden', gone ? 'true' : 'false');
+        // An invisible button must not keep focus either, for the same reason.
+        if (gone && document.activeElement === cue) cue.blur();
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
@@ -258,16 +265,18 @@ function createInspector(config) {
        per animation frame.
 
        And "not overlapping" is not enough: text 2px under a board still reads
-       as touching it. The cue needs CLEARANCE px of empty space all round. */
+       as touching it. The cue needs CLEARANCE px of empty space above and
+       below, and more to the sides: on Watermelon at 1440x900 it sat 45px
+       left of the AI speed row on the same baseline and read as part of it. */
     const arena = document.getElementById('arena');
-    const CLEARANCE = 12;
+    const CLEARANCE = 12, CLEARANCE_X = 48;
     const checkOverlap = () => {
         if (!arena) return;
         cue.classList.remove('is-blocked');
         const c = cue.getBoundingClientRect();
         if (!c.height) return;                 // hidden by a media query
         const top = c.top - CLEARANCE, bottom = c.bottom + CLEARANCE;
-        const left = c.left - CLEARANCE, right = c.right + CLEARANCE;
+        const left = c.left - CLEARANCE_X, right = c.right + CLEARANCE_X;
         let hit = false;
         for (const el of arena.querySelectorAll('*')) {
             if (el.firstElementChild && el.tagName !== 'BUTTON') continue;
