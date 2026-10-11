@@ -94,8 +94,13 @@
                 <div class="board-label">YOU</div>
                 <section class="board-main" aria-label="Your board">
                     <canvas id="canvas-human" width="300" height="540" role="img" aria-label="Your board, score 0"></canvas>
-                    <button id="restart-human" title="Restart your game">
-                        <img src="assets/restart.png" alt="Restart your game" />
+                    <!-- The same inline icon as Snake's, in board ink, so it
+                         follows the theme (the PNG was white and inverted). -->
+                    <button id="restart-human" title="Restart your game" aria-label="Restart your game">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
                     </button>
                     <div class="controls" hidden>
                         <!-- The card holds the legend on its own backing, so
@@ -139,9 +144,15 @@
                 <div class="board-label">AI</div>
                 <section class="board-main" aria-label="AI board">
                     <canvas id="canvas-ai" width="300" height="540" role="img" aria-label="AI board, score 0"></canvas>
-                    <button id="restart-ai" title="Restart the AI">
-                        <img src="assets/restart.png" alt="Restart the AI" />
+                    <button id="restart-ai" title="Restart the AI" aria-label="Restart the AI">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
                     </button>
+                    <!-- "To beat: N" once the AI's first life in the match is
+                         over, or how your last match went (game.js). -->
+                    <div class="ai-target" id="target-ai" hidden></div>
                 </section>
                 <p class="sr-only" id="live-ai" aria-live="polite"></p>
 

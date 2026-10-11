@@ -940,7 +940,22 @@
             function showResult(result) {
                 if (!domResult) return;
                 const text = result && result.text ? result.text : "";
-                domResult.textContent = text;
+                // Breaks after the dash first, as Snake and Tetris do, so the
+                // scores keep a row and the verdict gets the next one: each
+                // half is an inline-block that wraps on its own only if it
+                // still does not fit.
+                const cut = text.indexOf(" \u2014 ");
+                domResult.textContent = "";
+                if (cut > 0) {
+                    for (const part of [text.slice(0, cut + 2), text.slice(cut + 3)]) {
+                        const span = document.createElement("span");
+                        span.className = "result-part";
+                        span.textContent = part;
+                        domResult.append(span, " ");
+                    }
+                } else {
+                    domResult.textContent = text;
+                }
                 domResult.classList.toggle("is-note", !!(result && result.note));
                 domResult.hidden = !text;
             }
@@ -1112,14 +1127,29 @@
        - A game RESTORED after a reload is not a match. Your board comes back
          mid-game; the AI's does not, and there is no fair way to line a fresh
          AI up against a head start. You finish the game, the AI plays
-         alongside for show, and the card says "Resumed game, not scored".
-       - Restarting the AI or changing its speed voids the match; results.js
-         itself voids it on a model-version or difficulty change.
-       - A model that arrives mid-game joins on your next drop, unranked. */
+         alongside for show, and the card says it was not scored.
+       - Restarting the AI or changing its speed during its first life voids
+         the match; results.js itself voids it on a model-version or
+         difficulty change.
+       - A model that arrives mid-game joins on your next drop, unranked.
+       - Playing again while the match still WAITS on the AI (you are ahead)
+         keeps it: the AI plays its first life out and the result records,
+         then the AI pauses for your next game. If you start before that,
+         your new game runs alongside unscored.
+
+       `match` is YOUR current game (a match, an unscored one, or null);
+       `aiMatch` is the one the AI's first life is feeding. Usually the same
+       object; a waiting match outlives your restart. */
     let aiRunning = false;       // the AI may drop fruit
-    let match = null;            // the MatchResults match in play, if any
+    let match = null;            // your current game's match, if any
+    let aiMatch = null;          // the match the AI's first life feeds
     let matchAiGen = -1;         // the AI board's gen during its first life
-    let resumed = false;         // your current game was restored on load
+    let lastLine = "";           // the last match, settled after you restarted
+    const BUSY = "the AI was still finishing your last game";
+    function aiOwed() { return !!aiMatch && aiMatch.state === "waiting"; }
+    function unscored(why) {
+        return typeof MatchResults !== "undefined" ? MatchResults.unscored(why) : null;
+    }
 
     function startAiBoard() {
         const ai = window.watermelonBoards.ai;
@@ -1142,7 +1172,6 @@
 
     // The line for your Game Over card: { text, note } or null.
     function matchResult() {
-        if (resumed) return { text: "Resumed game, not scored", note: true };
         if (!match) return null;
         const text = match.line();
         return text ? { text, note: match.state === "void" } : null;
@@ -1150,20 +1179,46 @@
 
     function watchMatch(m) {
         m.onChange(() => {
-            if (m !== match) return;
+            if (m !== aiMatch) return;
             const human = getHuman();
             if (!human) return;
             const settled = m.state === "done" || m.state === "void";
-            if (human.isGameOver()) {
-                // Live while the AI plays on, then the verdict.
-                human.showResult(matchResult());
-                if (settled) human.say(m.line());
-            } else if (settled && !human.isStarted() && aiRunning) {
+            if (m === match) {
+                if (human.isGameOver()) {
+                    // Live while the AI plays on, then the verdict.
+                    human.showResult(matchResult());
+                    if (settled) human.say(m.line());
+                }
+            } else if (settled) {
                 // You already restarted and the AI has now settled the old
-                // match: it waits for your first drop like any other game.
-                pauseAiBoard();
+                // match. Said, and shown on the AI board until you start; it
+                // then waits for your first drop like any other game.
+                human.say("Your last game: " + m.line());
+                if (!human.isStarted() && aiRunning) {
+                    lastLine = m.line();
+                    pauseAiBoard();
+                }
             }
         });
+    }
+
+    /* "To beat: N" on the AI board once its first life in the match is over
+       and you are still playing; while you wait to start again, how your
+       last match is going or how it ended. Polled from driveAI. */
+    const targetEl = document.getElementById("target-ai");
+    let targetText = "";
+    function updateTarget() {
+        const human = getHuman();
+        const idle = !human || !human.isStarted();
+        const n = match && match.target ? match.target() : null;
+        let t = "";
+        if (n !== null) t = "To beat: " + n;
+        else if (idle && aiOwed()) t = "Last game: AI needs " + (aiMatch.human - aiMatch.ai + 1) + " to win";
+        else if (idle && lastLine) t = "Last game: " + lastLine;
+        if (t === targetText || !targetEl) return;
+        targetText = t;
+        targetEl.textContent = t;
+        targetEl.hidden = !t;
     }
 
     const getHuman = createBoard({
@@ -1174,37 +1229,43 @@
         announceScore: true,
         onDrop(first, restored) {
             if (first) {
-                // A new game: an earlier match still waiting on the AI's
-                // first life is abandoned, not settled.
-                if (match) match.cancel("a new game started");
+                lastLine = "";
                 match = null;
-                resumed = restored;
-                const up = aiAvailable() && startAiBoard();
-                if (up && !restored && typeof MatchResults !== "undefined") {
-                    match = MatchResults.begin("watermelon", { speed: AI_SPEED });
-                    matchAiGen = getAI().getGen();
-                    watchMatch(match);
+                if (aiOwed()) {
+                    // The last match still waits on the AI's first life, which
+                    // is on the board: it plays on to settle it, and this game
+                    // runs alongside, unscored, since it cannot start level.
+                    match = restored ? unscored("resumed") : unscored(BUSY);
+                } else {
+                    aiMatch = null;
+                    const up = aiAvailable() && startAiBoard();
+                    if (restored) match = unscored("resumed");
+                    else if (up && typeof MatchResults !== "undefined") {
+                        match = aiMatch = MatchResults.begin("watermelon", { speed: AI_SPEED });
+                        matchAiGen = getAI().getGen();
+                        watchMatch(match);
+                    }
                 }
             } else if (!aiRunning && aiAvailable()) {
                 // The model arrived mid-game: the AI joins in, unranked.
                 startAiBoard();
+                if (!match) match = unscored("late");
             }
         },
         onGameOver(score, restored) {
             // A restored game can end before its first drop (it came back
             // already over the line), so the board's own flag counts too.
-            if (restored) resumed = true;
+            if (restored) match = unscored("resumed");
             if (match) match.humanDied(score);
             return matchResult();
         },
         onReset() {
-            resumed = false;
-            // Restarted mid-game: nothing to settle.
-            if (match && match.state === "playing") match.cancel("a new game started");
-            // Lost, and the AI is still on its first life: let it finish, so
-            // the result is recorded. It pauses once it has (watchMatch).
-            if (match && match.state === "waiting") return;
+            // Restarted mid-game: void, nothing to settle. Lost while ahead,
+            // with the AI still on its first life: let it finish, so the
+            // result is recorded. It pauses once it has (watchMatch).
+            if (match) match.humanRestarted();
             match = null;
+            if (aiOwed()) return;
             pauseAiBoard();
         },
     });
@@ -1215,14 +1276,15 @@
         interactive: false,
         persist: false,
         onScore(score) {
-            if (match && getAI().getGen() === matchAiGen) match.aiScore(score);
+            if (aiMatch && getAI().getGen() === matchAiGen) aiMatch.aiScore(score);
         },
         onGameOver(score) {
-            if (match && getAI().getGen() === matchAiGen) match.aiDied(score);
+            if (aiMatch && getAI().getGen() === matchAiGen) aiMatch.aiDied(score);
             return null;
         },
         onRestartClick() {
-            if (match && !match.aiDone) match.cancel("the AI was restarted");
+            // Voids the match only during the AI's first life (results.js).
+            if (aiMatch) aiMatch.aiRestarted();
         },
     });
 
@@ -1479,7 +1541,8 @@
             mountCheckpointSwitcher();
         } catch (err) {
             console.error("Failed to load Watermelon AI model:", err);
-            setAiStatus("Couldn't load the AI", "Check your connection and refresh");
+            setAiStatus("Couldn't load the AI", (window.modelSource && modelSource.failHint)
+                ? modelSource.failHint() : "Check your connection and refresh");
         }
     }
 
@@ -1545,6 +1608,7 @@
     // synchronously, so it just reports the current target. Inference and the
     // decision to release are driven from the loop below.
     function driveAI() {
+        updateTarget();
         const ai = window.watermelonBoards.ai;
         if (!aiSession || !aiRunning || !ai || aiStopped || !ai.isReady()) return;
 
@@ -1600,7 +1664,7 @@
             const v = parseFloat(btn.getAttribute("data-speed"));
             if (!isFinite(v) || v <= 0) return;
             AI_SPEED = v;
-            if (match) match.speed(v);
+            if (aiMatch) aiMatch.speed(v);
             speedBox.querySelectorAll("button[data-speed]").forEach((b) => {
                 b.classList.toggle("active", b === btn);
                 b.setAttribute("aria-pressed", b === btn ? "true" : "false");

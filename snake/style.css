@@ -154,8 +154,9 @@ body {
     background-color: transparent;
     border-radius: 4px;
     transition: background-color 0.08s ease;
-    width: 42px;
-    height: 42px;
+    /* 40px, the same button and icon as Tetris's restart. */
+    width: 40px;
+    height: 40px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -164,8 +165,8 @@ body {
 }
 
 .board-main > button svg {
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     display: block;
 }
 
@@ -199,10 +200,10 @@ body {
     gap: 0.25em;
     padding: 0.55em 0.95em;
     border-radius: 8px;
-    /* Scales with the board, so on a 215px phone board the card stays one
-       line per message and clear of the spawn row instead of wrapping up
-       into it. 15px at the full 480px board, never below 11px. */
-    font-size: clamp(11px, calc(var(--snake-board) / 32), 15px);
+    /* The hint size of the type scale the three games share, 14px down to
+       a ~280px board, then following the board so the card stays clear of
+       the spawn row on the smallest phones; never below 11px. */
+    font-size: clamp(11px, calc(var(--snake-board) / 20), 14px);
     line-height: 1.25;
     background: rgba(var(--board-scrim, 0, 0, 0), 0.82);
     color: var(--board-ink, #fff);
@@ -222,10 +223,28 @@ body {
     color: var(--board-ink, #fff);
 }
 
-#board-ai .ai-status b { font-size: 1em; font-weight: 700; }
-/* Never below 11px: 0.82em of the card's 11px floor came out at 9px on
-   phones. On a narrow board the detail wraps instead of shrinking. */
-#board-ai .ai-status span { font-size: max(11px, 0.82em); opacity: 0.75; }
+/* Status title 20px and detail 14px, as on Tetris and Watermelon. On a
+   narrow board the detail wraps instead of shrinking past 11px. */
+#board-ai .ai-status b { font-size: clamp(14px, calc(var(--snake-board) / 14), 20px); font-weight: 700; }
+#board-ai .ai-status span { font-size: clamp(11px, calc(var(--snake-board) / 20), 14px); opacity: 0.75; }
+
+/* "To beat: N", small, at the foot of the AI board (game.js updateTarget). */
+#board-ai .ai-target {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: calc(100% - 16px);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: center;
+    background: rgba(var(--board-scrim, 0, 0, 0), 0.82);
+    color: var(--board-ink, #fff);
+    pointer-events: none;
+}
 #board-ai .ai-status[hidden] { display: none !important; }
 
 /* Read by screen readers, not shown. */
@@ -318,23 +337,24 @@ body {
     text-transform: uppercase;
     color: var(--dim, #7d7d7d);
 }
-/* Six equal columns, never wrapping: at the smallest board (200px) each
-   button is ~30px wide, which still holds "0.25x" at 11px. */
+/* One row, the same buttons in all three games: 44px wide, 24px tall (32px
+   on touch), 12px text, 4px apart. Six come to 284px, under every board
+   this page shows side by side or stacked. */
 .speed-controls {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
     gap: 4px;
-    width: min(100%, 330px);
 }
 .speed-controls button {
-    /* 24px: the WCAG 2.2 minimum target size; 32px on touch, below. */
     min-height: 24px;
-    min-width: 0;
-    padding: 3px 0;
+    min-width: 44px;
+    padding: 3px 6px;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
     cursor: pointer;
     color: #888;
     background: transparent;
@@ -349,6 +369,6 @@ body {
     background-color: rgba(255, 255, 255, 0.08);
 }
 .speed-controls button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
-@media (hover: none) and (pointer: coarse) {
+@media (pointer: coarse) {
     .speed-controls button { min-height: 32px; }
 }

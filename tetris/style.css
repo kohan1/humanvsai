@@ -34,14 +34,16 @@
        below; the width follows at the well's 10:18. game.js draws in fixed
        300x540 units and sizes its backing store to whatever this comes to.
 
-       275px: what the AI column needs besides its board — the label row, the
+       345px: what the AI column needs besides its board — the label row, the
        speed block (heading and buttons), the stacked model-version control
-       (~210px together; measured 35px to spare at 1440x900) and
-       .screen's 2rem top padding — plus most of its 4.5rem bottom padding,
-       which is room for the scroll cue; the cue hides itself wherever it
-       would overlap the boards. 200px: the two gaps, the VS text and the side
-       padding when the boards sit side by side. */
-    --tetris-h: clamp(300px, min(calc(100svh - 275px), calc((100vw - 200px) * 0.9)), 900px);
+       (~210px together) and .screen's 2rem top padding — plus ~70px under
+       it for the scroll cue and its clearance. At 275px the board grew with
+       the viewport until the AI column reached the cue (y~865 at 1440x900,
+       an 805px board at 1920x1080), and the cue, which hides itself
+       wherever it would overlap the boards, was never shown on a desktop.
+       200px: the two gaps, the VS text and the side padding when the boards
+       sit side by side. */
+    --tetris-h: clamp(300px, min(calc(100svh - 345px), calc((100vw - 200px) * 0.9)), 900px);
     --tetris-w: calc(var(--tetris-h) / 1.8);
 }
 
@@ -150,7 +152,6 @@ body {
    percentages so it stays there as the board scales. */
 .board-main > button {
     position: absolute;
-    left: 10%;
     top: 6.667%;
     transform: translate(-50%, -50%);
     margin: 0;
@@ -160,18 +161,40 @@ body {
     background-color: transparent;
     border-radius: 4px;
     transition: background-color 0.08s ease;
-    width: clamp(28px, calc(var(--tetris-w) * 0.14), 48px);
-    height: clamp(28px, calc(var(--tetris-w) * 0.14), 48px);
+    /* 40px with a 22px icon, the same as Snake's restart. It scaled with
+       the board and was 28x28 on a phone, under the touch-target minimum;
+       max() keeps it inside the board's left edge there. */
+    left: max(10%, 20px);
+    width: 40px;
+    height: 40px;
     display: flex;
     justify-content: center;
     align-items: center;
+    color: var(--board-ink, #ccc);
 }
 
-.board-main > button img {
-    width: 62%;
-    height: 62%;
+.board-main > button svg {
+    width: 22px;
+    height: 22px;
     display: block;
-    object-fit: contain;
+}
+
+/* "To beat: N", small, at the foot of the AI board (game.js updateTarget). */
+#board-ai .ai-target {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: calc(100% - 16px);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: center;
+    background: rgba(var(--board-scrim, 0, 0, 0), 0.82);
+    color: var(--board-ink, #fff);
+    pointer-events: none;
 }
 
 .board-main > button:hover {
@@ -305,14 +328,15 @@ kbd.space {
 }
 
 .speed-controls button {
-    /* 24px: the WCAG 2.2 minimum target size. It measured 21. */
+    /* The same buttons in all three games: 44px wide, 24px tall (32px on
+       touch), 12px text, 4px apart. */
     min-height: 24px;
-    min-width: 24px;
+    min-width: 44px;
     font-family: inherit;
-    /* Pixels with an 11px floor, like .speed-title: 0.7rem is 12.6px here. */
     font-size: 12px;
     letter-spacing: 0.02em;
-    padding: 4px 5px;
+    white-space: nowrap;
+    padding: 3px 6px;
     cursor: pointer;
     color: #888;
     background: transparent;
@@ -365,13 +389,11 @@ kbd.space {
     #arena { gap: 6px; }
     #vs { font-size: 0.85rem; margin-top: calc(28px + var(--tetris-h) / 2 - 0.5 * 0.85rem * 1.15); }
     .board-wrap { gap: 8px; }
-    /* Six buttons at the 11px text floor still come to ~172px against a
-       ~160px column, so the block lines up with the board's RIGHT edge and
-       any overhang goes left, into the VS gap, which is empty below the
-       boards. Centred, it ran off the screen and scrolled the page sideways. */
+    /* Six 44px buttons come to 284px against a ~170px column, so the block
+       lines up with the board's RIGHT edge and the overhang goes left, under
+       the empty space below the human board. Centred, it ran off the screen
+       and scrolled the page sideways. */
     .speed-block { margin-top: 2px; align-self: flex-end; }
-    .speed-controls { gap: 2px; }
-    .speed-controls button { font-size: 11px; padding: 4px 2px; }
     /* A row of its own for the fixed back link. The page centres the boards
        vertically, and on a 375x667 phone that put the "YOU" label under the
        link's pill. */
@@ -380,9 +402,10 @@ kbd.space {
 
 /* Start hints: keyboard wording by default, touch wording on phones and
    tablets. Pure CSS, so the right text is there from first paint. */
-/* max(11px, …): 0.8em of the board-scaled legend came out at 8.8-10px on a
-   laptop. The line wraps instead of shrinking past that. */
-.controls-start { margin-top: 1em; font-size: max(11px, 0.8em); opacity: 0.75; }
+/* The hint size of the type scale all three games share, at every board
+   size; on a phone it wraps rather than shrinking. It was 0.8em of the
+   board-scaled legend, 11px there. */
+.controls-start { margin-top: 1em; font-size: 14px; opacity: 0.75; }
 .hint-touch { display: none; }
 @media (hover: none) and (pointer: coarse) {
     .hint-touch { display: inline; }
@@ -392,10 +415,6 @@ kbd.space {
 /* A visible focus ring for keyboard users. The buttons set outline: none and
    had no replacement, so tabbing to Restart showed nothing at all. */
 .board-main > button:focus-visible { outline: 2px solid var(--accent, #cfe4ff); outline-offset: 2px; }
-
-/* The restart icon is a white PNG; invert it on the two light boards. */
-[data-theme="filings"] .board-main > button img,
-[data-theme="dispersion"] .board-main > button img { filter: invert(1); }
 
 /* The switcher defaults to min(420px, 100%), which widened the AI column
    past its board and overflowed the side-by-side layout. */
@@ -409,7 +428,7 @@ kbd.space {
 }
 
 /* Bigger targets for fingers. */
-@media (hover: none) and (pointer: coarse) {
+@media (pointer: coarse) {
     .speed-controls button { min-height: 32px; }
 }
 
