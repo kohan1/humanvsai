@@ -89,9 +89,9 @@ function bgFlush(ctx, buckets, rgb, max, stroke) {
 
 /* Boilerplate every renderer needs: sizing, pointer tracking, teardown.
  *
- * opts.maxFps caps the PAINT rate (unset: every frame). Behind a game board
- * the backgrounds are ambient, and 30 fps halves their share of the main
- * thread at no visible cost. The simulation still steps on every animation
+ * opts.maxFps caps the PAINT rate (unset: every frame); bgPaceMs lowers it
+ * further on a page that is measurably missing frames. The simulation still
+ * steps on every animation
  * frame — each renderer's draw(now, paint) integrates its motion always and
  * touches the canvas only when `paint` is true — because all of them advance
  * a fixed amount per call, and skipping calls would slow the motion down

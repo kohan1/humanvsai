@@ -12,9 +12,10 @@
  * legible.
  *
  * opts.maxFps caps the background's frame rate (motion keeps its speed).
- * The game pages should pass 30: there the background shares the main thread
- * with physics, rendering and WASM inference, and is behind the boards. While
- * a game is being played it drops further, to opts.busyFps — see bgPaceMs.
+ * The game pages pass 60 — the background is cheap enough that sharing the
+ * thread with physics, rendering and WASM inference costs it nothing visible.
+ * If the page turns out not to keep up, bgPaceMs drops it to opts.slowFps on
+ * its own, from the frame intervals it measures.
  */
 /* Which background a theme draws. Each one reacts to the cursor, because that
  * is the whole point — the page should feel like a surface being disturbed,
@@ -31,28 +32,50 @@
  */
 /* How long to leave between background frames, in ms (0 = every frame).
  *
- * opts.maxFps is the cap a page asks for (the game pages pass 30). On top of
- * that, while someone is actually PLAYING the background drops to
- * opts.busyFps (default 15): the boards cover the middle of the screen, the
- * player is looking at them, and the background shares the main thread with
- * the game loop, the physics and the AI. "Playing" is detected rather than
- * reported, so no game has to call anything: a key or a press anywhere in the
- * last BUSY_MS, or a `playing` class on <html> if a page ever wants to say so
- * itself. Pages without maxFps (landing, picker, Inside) are never throttled.
- * Every renderer's motion is paced by the clock or integrated per frame, so
- * the frame rate changes how smooth the background is, never how fast. */
-const BG_BUSY_MS = 8000;
-let bgLastInput = -Infinity;
-(function () {
-    const note = () => { bgLastInput = performance.now(); };
-    window.addEventListener('keydown', note, true);
-    window.addEventListener('pointerdown', note, true);
-})();
+ * opts.maxFps is the ceiling a page asks for. The game pages pass 60: on a
+ * 60 Hz screen that is every frame, on a 120 Hz one every other.
+ *
+ * This used to halve AGAIN, to opts.busyFps (15), whenever a key or a pointer
+ * had gone down in the last 8 seconds. On a game page that condition is never
+ * false — you are playing, so you are pressing keys — so the background ran
+ * permanently at 15 fps, and a lattice that follows the cursor at 15 fps
+ * reads as broken rather than as considerate. It was reported as "extremely
+ * laggy" and it was the cap, not the cost.
+ *
+ * The premise had also expired. After the batching above, every renderer
+ * costs 0.1-0.4 ms per frame at 1265x720 (measured 2026-10-12, all seven) —
+ * about 2% of a 60 fps budget. A keypress is no reason to drop any of it.
+ *
+ * What does deserve a drop is a page that genuinely cannot keep up, and that
+ * can be OBSERVED rather than guessed at. bgPaceMs is called once per
+ * animation frame, so the gap between its own calls is the page's real frame
+ * interval — note that this holds whether or not we painted, so throttling
+ * ourselves never fakes a recovery. Missing 60 Hz consistently drops the
+ * background to opts.slowFps; keeping up lifts it back, with enough
+ * hysteresis either way that it cannot flicker between the two. Pages without
+ * maxFps (landing, picker) are never paced at all.
+ *
+ * Every renderer's motion is integrated against the clock, so the frame rate
+ * changes how smooth the background looks, never how fast it moves. */
+const BG_SLOW_MS  = 22;    // a 60 Hz frame that took this long missed its vsync
+const BG_SLOW_IN  = 20;    // ...this many such frames before we believe it
+const BG_SLOW_OUT = 4;     // ...and this few before we stop believing it
+let bgLastFrame = 0, bgSlow = 0, bgStruggling = false;
 function bgPaceMs(o) {
     if (!o || !o.maxFps) return 0;
-    const busy = performance.now() - bgLastInput < BG_BUSY_MS ||
-                 document.documentElement.classList.contains('playing');
-    const fps = busy ? Math.min(o.maxFps, o.busyFps || 15) : o.maxFps;
+    const now = performance.now();
+    const dt = now - bgLastFrame;
+    bgLastFrame = now;
+    /* Ignore the first call and any gap long enough to be a hidden tab, a
+       stall or a breakpoint: none of them says anything about how fast this
+       page can paint, and counting them would throttle a page that is fine. */
+    if (dt > 0 && dt < 500) {
+        bgSlow = dt > BG_SLOW_MS ? Math.min(bgSlow + 1, BG_SLOW_IN)
+                                 : Math.max(bgSlow - 1, 0);
+        if (bgSlow >= BG_SLOW_IN) bgStruggling = true;
+        else if (bgSlow <= BG_SLOW_OUT) bgStruggling = false;
+    }
+    const fps = bgStruggling ? Math.min(o.maxFps, o.slowFps || 30) : o.maxFps;
     return 1000 / fps - 2;
 }
 
@@ -395,10 +418,9 @@ function initLattice(cvs, opts) {
         nodePaths = new Array(NQ + 1);
     }
 
-    /* opts.maxFps caps the frame rate — motion AND paint. The motion is slow
-     * drift, so 30 fps is indistinguishable from 60 behind a game, and halves
-     * the cost on the thread the game's physics and inference share. Unset
-     * means every frame. A skipped frame now does nothing at all: update()
+    /* opts.maxFps caps the frame rate — motion AND paint. Unset means every
+     * frame; the game pages ask for 60, and bgPaceMs lowers that by itself if
+     * the page is missing frames. A skipped frame does nothing at all: update()
      * used to run on every frame regardless, because it advanced a fixed
      * amount per call, so the capped pages still paid for the wave on
      * frames they never drew. It is time-scaled now (see update), so the

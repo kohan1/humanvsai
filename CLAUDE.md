@@ -699,6 +699,38 @@ with a visible pane (a screenshot succeeding is the tell) before acting.
 
 ---
 
+## Background pacing, 2026-10-12
+
+**A cap is not free just because the thing it caps is cheap.** The 2026-10-07
+pass dropped the background to `busyFps` (15) "while the visitor is playing",
+detected as *any key or pointer down in the last 8 seconds*. On a game page
+that condition is never false — playing IS pressing keys — so the background
+ran permanently at 15 fps, and a lattice that follows the cursor at 15 fps
+looks broken. Reported as "extremely laggy", and it was the cap, not the cost.
+
+**Measure the thing before throttling it.** All seven renderers were timed on
+the real Snake page at 1265x720 by capturing the rAF callback and driving it
+by hand (rAF does not run in the Claude browser pane, so frame RATE cannot be
+measured there — per-frame COST can): mesh 0.2 ms median / 0.4 max, sand and
+flow 0.1-0.3, filings, constellation, dispersion and reveal 0.1-0.2. That is
+~2% of a 60 fps budget. The batching work of 2026-10-07 had already won; the
+cap was still paying for a bill that had been settled. Note this measures
+script time, not raster/composite.
+
+**Load is observable, so do not infer it from input.** `bgPaceMs` is called
+once per animation frame, so the gap between its own calls IS the page's frame
+interval — and that holds whether or not the background painted, so throttling
+itself can never fake a recovery. It now counts frames over 22 ms, backs off to
+`slowFps` (30) after 20 of them and lifts again once 4 or fewer are
+outstanding. The hysteresis matters: with a single threshold the background
+oscillates between rates, which is more visible than either rate. Game pages
+now ask for `maxFps: 60`, which also bounds the cost on a 120 Hz screen.
+Verified by driving `bgPaceMs` with synthetic frame gaps: steady 16 ms -> 60,
+a short burst of 30 ms -> still 60, sustained 30 ms -> 30, a short good patch
+-> still 30, sustained 16 ms -> 60, and a hidden-tab-sized gap ignored.
+
+**`<html class=playing>` is gone.** No page ever set it.
+
 ## Theme + performance pass, 2026-10-07
 
 **Theme rules must use `[data-theme]`, never a list of theme names.** Several
@@ -720,10 +752,11 @@ drew). Snake's head is drawn in code now; `snake/images/head.png` and
 `stroke()` calls per frame, each with a fresh `rgba()` string: 3.5-5.9 ms of
 script and ~20 MB of garbage per frame-second, ~12x Snake's own loop. It now
 draws each edge once in ~63 alpha buckets (~0.9 ms); `backgrounds.js` buckets
-particles into 16 alpha paths. Game pages pass `maxFps: 30`; motion is paced by elapsed time
-so skipped frames cost nothing, and while the visitor is playing (8 s after
-any key/pointer, or `<html class=playing>`) the background drops to
-`busyFps` (15). Landing, picker and Inside are never throttled. Changing difficulty in one tab used to restart the
+particles into 16 alpha paths. Game pages pass `maxFps`; motion is paced by elapsed time
+so skipped frames cost nothing. (This pass also added a `busyFps` drop to 15
+while the visitor was playing — see "Background pacing, 2026-10-12" below for
+why that was wrong and what replaced it.) Landing and picker are never
+throttled. Changing difficulty in one tab used to restart the
 background in every other tab via the cross-tab listener.
 
 **Use `ort.wasm.min.js`, not `ort.min.js`.** The latter pulls the 27.8 MB JSEP
